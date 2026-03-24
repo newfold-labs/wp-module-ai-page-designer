@@ -7,7 +7,7 @@
 
 namespace NewfoldLabs\WP\Module\AIPageDesigner\RestApi;
 
-use NewfoldLabs\WP\Module\Data\SiteCapabilities;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
 
 /**
  * REST API Controller for WordPress Content Operations
@@ -403,25 +403,6 @@ class WordPressProxyController extends \WP_REST_Controller {
 	 * @return bool|\WP_Error True if user has permission, WP_Error otherwise
 	 */
 	public function check_permission() {
-		// Check user capability
-		if ( ! current_user_can( 'edit_pages' ) ) {
-			return new \WP_Error(
-				'rest_forbidden',
-				__( 'You must have permission to edit pages', 'wp-module-ai-page-designer' ),
-				array( 'status' => 401 )
-			);
-		}
-
-		// Check Hiive capability
-		$capabilities = new SiteCapabilities();
-		if ( ! $capabilities->get( 'hasAISiteGen' ) ) {
-			return new \WP_Error(
-				'rest_forbidden',
-				__( 'AI Site Generation is not enabled for your site', 'wp-module-ai-page-designer' ),
-				array( 'status' => 403 )
-			);
-		}
-
-		return true;
+		return CapabilityGate::rest_permission();
 	}
 }

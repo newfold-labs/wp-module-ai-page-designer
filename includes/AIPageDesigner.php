@@ -7,7 +7,7 @@
 
 namespace NewfoldLabs\WP\Module\AIPageDesigner;
 
-use NewfoldLabs\WP\Module\Data\SiteCapabilities;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
 use NewfoldLabs\WP\ModuleLoader\Container;
 
 /**
@@ -25,13 +25,6 @@ class AIPageDesigner {
 	protected $container;
 
 	/**
-	 * Site capabilities instance
-	 *
-	 * @var SiteCapabilities
-	 */
-	protected $capabilities;
-
-	/**
 	 * Constructor.
 	 *
 	 * @param Container $container The primary module container
@@ -39,10 +32,8 @@ class AIPageDesigner {
 	public function __construct( Container $container ) {
 		$this->container = $container;
 
-		// Verify Hiive capability
-		$this->capabilities = new SiteCapabilities();
-		if ( ! $this->capabilities->get( 'hasAISiteGen' ) ) {
-			return; // Exit if capability not enabled
+		if ( ! CapabilityGate::has_ai_site_gen() ) {
+			return;
 		}
 
 		// Register REST API routes
@@ -84,7 +75,7 @@ class AIPageDesigner {
 		}
 
 		// Only enqueue if capability is enabled
-		if ( ! $this->capabilities->get( 'hasAISiteGen' ) ) {
+		if ( ! CapabilityGate::has_ai_site_gen() ) {
 			return;
 		}
 
@@ -133,7 +124,7 @@ class AIPageDesigner {
 				'apiRoot'          => esc_url_raw( rest_url() ),
 				'nonce'            => wp_create_nonce( 'wp_rest' ),
 				'siteUrl'          => get_site_url(),
-				'hasAISiteGen'     => $this->capabilities->get( 'hasAISiteGen' ),
+				'hasAISiteGen'     => CapabilityGate::has_ai_site_gen(),
 				'currentUserId'    => get_current_user_id(),
 				'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
 				'previewStylesheets' => array(

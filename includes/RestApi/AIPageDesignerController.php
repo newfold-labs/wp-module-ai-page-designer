@@ -7,10 +7,13 @@
 
 namespace NewfoldLabs\WP\Module\AIPageDesigner\RestApi;
 
-use NewfoldLabs\WP\Module\AIPageDesigner\Data\SystemPrompts;
-use NewfoldLabs\WP\Module\Data\HiiveConnection;
-use NewfoldLabs\WP\Module\Data\SiteCapabilities;
-use NewfoldLabs\WP\Module\Patterns\Library\Items;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\AiClient;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\BlockMarkupSanitizer;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\FastPathHandler;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\ImageService;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PatternLayoutProvider;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PromptBuilder;
 
 /**
  * REST API Controller for AI Page Generation
@@ -30,6 +33,52 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @var string
 	 */
 	protected $rest_base = 'generate';
+
+	/**
+	 * Prompt builder.
+	 *
+	 * @var PromptBuilder
+	 */
+	private $prompt_builder;
+
+	/**
+	 * AI client.
+	 *
+	 * @var AiClient
+	 */
+	private $ai_client;
+
+	/**
+	 * Image service.
+	 *
+	 * @var ImageService
+	 */
+	private $image_service;
+
+	/**
+	 * Markup sanitizer.
+	 *
+	 * @var BlockMarkupSanitizer
+	 */
+	private $block_markup_sanitizer;
+
+	/**
+	 * Fast path handler.
+	 *
+	 * @var FastPathHandler
+	 */
+	private $fast_path_handler;
+
+	/**
+	 * Constructor.
+	 */
+	public function __construct() {
+		$this->prompt_builder         = new PromptBuilder( new PatternLayoutProvider() );
+		$this->ai_client              = new AiClient();
+		$this->image_service          = new ImageService();
+		$this->block_markup_sanitizer = new BlockMarkupSanitizer();
+		$this->fast_path_handler      = new FastPathHandler( $this->image_service );
+	}
 
 	/**
 	 * Register the routes for this controller
@@ -94,314 +143,65 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	public function generate_content( \WP_REST_Request $request ) {
 		try {
 			$messages = $request['messages'];
-
-		// Get system prompt with active theme context appended
-		$system_prompt = SystemPrompts::get_page_designer_prompt() . $this->get_theme_context_prompt();
-
-			// Get Hiive authentication token
-			$hiive_token = HiiveConnection::get_auth_token();
-
-			if ( ! $hiive_token ) {
-				return new \WP_Error(
-					'rest_forbidden',
-					__( 'You are not authorized to make this call. Hiive authentication failed.', 'wp-module-ai-page-designer' ),
-					array( 'status' => 403 )
-				);
-			}
-
-			// Exchange Hiive token for JWT token from JWT worker (same as Cloudflare worker's verifyCapabilities)
-			$jwt_token = $this->get_jwt_token( $hiive_token );
-
-			if ( is_wp_error( $jwt_token ) ) {
-				return $jwt_token;
-			}
-
-			// Prepare messages array for AI service
-			// Format: [ { role: 'system', content: systemQuery }, ...user messages only ]
-			$user_messages = array();
-			$is_new_page   = count( $messages ) === 1;
-			
-			// Get current markup if it exists from context
 			$current_markup = isset( $request['context']['current_markup'] ) ? trim( $request['context']['current_markup'] ) : '';
-
-			$last_user_index = -1;
-			foreach ( $messages as $index => $msg ) {
-				if ( 'user' === $msg['role'] ) {
-					$last_user_index = $index;
-				}
-			}
-
-			// Fetch relevant images from Unsplash to provide to the AI
 			$last_user_prompt = '';
-			if ( $last_user_index !== -1 ) {
-				$last_user_prompt = $messages[ $last_user_index ]['content'];
-			}
 
-			// =========================================================
-			// FAST PATH INTERCEPTIONS (Save AI tokens & time)
-			// =========================================================
-			if ( ! empty( $current_markup ) ) {
-				$prompt_lower = strtolower( $last_user_prompt );
-				
-				// 1. Image Replacement Intent
-				if ( preg_match( '/\b(change|update|new|different|regenerate|replace|swap|add)\s+(images?|pictures?|photos?|pics?|backgrounds?)\b/i', $prompt_lower ) ) {
-					$unsplash_images = $this->get_unsplash_images( $last_user_prompt );
-					if ( ! empty( $unsplash_images ) ) {
-						// Randomize array so we don't keep getting the exact same first images if query is identical
-						shuffle( $unsplash_images );
-						
-						// In order to perform the fast path replacement on a TARGETED block edit, we need to extract the block HTML
-						// The React app passes `current_markup` as the selected block.
-						$new_html = $this->replace_images_in_html( $current_markup, $unsplash_images );
-						
-						return new \WP_REST_Response(
-							array(
-								'data' => array(
-									// Use a random HTML comment instead of a wrapper div as React was skipping some wrapper div re-renders.
-									// But adding it to the end is not always reliable if there are multiple root nodes.
-									'content' => trim($new_html) . '<!-- fastpath_cb=' . time() . ' -->',
-									'title'   => '', // Keep existing title
-								),
-							),
-							200
-						);
-					}
-				}
-
-				// 2. Color/Theme Change Intent
-				if ( preg_match( '/\b(change|make|use|switch to)\s+(dark|light|white|black|blue|red|green|yellow)\s*(mode|theme|colors?|background)?\b/i', $prompt_lower, $matches ) ||
-					 preg_match( '/\b(make it)\s+(dark|light|white|black|blue|red|green|yellow)\b/i', $prompt_lower, $matches ) ) {
-					$theme_mode = $matches[2];
-					
-					$blocks = parse_blocks( $current_markup );
-					if ( ! empty( $blocks ) ) {
-						$this->update_block_theme_recursive( $blocks, $theme_mode );
-						
-						// Remove empty parsed blocks
-						$blocks = array_filter( $blocks, function( $block ) {
-							return ! empty( trim( $block['innerHTML'] ) ) || ! empty( $block['innerBlocks'] );
-						} );
-						
-						$new_html = serialize_blocks( $blocks );
-						
-						return new \WP_REST_Response(
-							array(
-								'data' => array(
-									// Use a random HTML comment
-									'content' => trim($new_html) . '<!-- fastpath_cb=' . time() . ' -->',
-									'title'   => '',
-								),
-							),
-							200
-						);
-					}
-				}
-			}
-			// =========================================================
-
-			$unsplash_images = array();
-			// We no longer pre-fetch here unless we are intercepting a fast-path request.
-			// Image fetching happens AFTER the AI call so we can use its contextual title.
-
-			foreach ( $messages as $index => $msg ) {
-				if ( 'user' === $msg['role'] ) {
-					$content = $msg['content'];
-
-					if ( $index === $last_user_index ) {
-						// Only inject the base layout if this is the first message AND we don't already have current markup
-						if ( $is_new_page && empty( $current_markup ) ) {
-							$base_layout = $this->get_random_pattern_layout( $content );
-							if ( ! empty( $base_layout ) ) {
-								$content .= "\n\n--- BASE LAYOUT ---\nPlease use this Gutenberg block structure as the foundation and modify its text and styling attributes to match the user's request. Preserve all block comment delimiters.\n\n" . $base_layout;
-							}
-						} elseif ( ! empty( $current_markup ) ) {
-							// If we HAVE current markup (either a follow-up message, or a targeted block edit)
-							$content .= "\n\n--- CURRENT TARGET LAYOUT ---\nPlease modify the following existing Gutenberg block markup according to the request above. Preserve all block comment delimiters.\n\n" . $current_markup;
-						}
-					}
-
-					$user_messages[] = array(
-						'role'    => 'user',
-						'content' => $content,
-					);
+			for ( $index = count( $messages ) - 1; $index >= 0; $index-- ) {
+				if ( isset( $messages[ $index ]['role'] ) && 'user' === $messages[ $index ]['role'] ) {
+					$last_user_prompt = $messages[ $index ]['content'] ?? '';
+					break;
 				}
 			}
 
-			$ai_messages = array_merge(
-				array(
-					array(
-						'role'    => 'system',
-						'content' => $system_prompt,
-					),
-				),
-				$user_messages
-			);
-
-			// Call the AI chat service
-			// Uses https://api-gw.builderservices.io/ai-api/v1/response endpoint
-			$request_body = wp_json_encode(
-				array(
-					'promptId' => '4d5d7866-cbaf-4274-ad72-f789e358965d',
-					'inputPayload' => array(
-						'input' => $ai_messages,
-						'model' => 'gpt-5-mini',
-					),
-				)
-			);
-			
-			error_log( 'AI Service Request Body: ' . $request_body );
-
-			// Add filter to ensure timeout is respected for this specific request
-			add_filter( 'http_request_timeout', function( $timeout ) {
-				return 120;
-			}, 999 );
-			
-			$response = wp_remote_post(
-				'https://api-gw.builderservices.io/ai-api/v1/response',
-				array(
-					'headers' => array(
-						'Content-Type'  => 'application/json',
-						'Authorization' => 'Bearer ' . $jwt_token,
-					),
-					'timeout' => 120,
-					'body'    => $request_body,
-				)
-			);
-
-			// Remove the timeout filter
-			remove_all_filters( 'http_request_timeout', 999 );
-
-			// Check for WP_Error (network/timeout errors)
-			if ( is_wp_error( $response ) ) {
-				return new \WP_Error(
-					'ai_service_timeout',
-					sprintf( 
-						__( 'AI service request failed: %s', 'wp-module-ai-page-designer' ), 
-						$response->get_error_message() 
-					),
-					array( 'status' => 408 )
-				);
+			$fast_path_response = $this->fast_path_handler->maybe_handle_fast_path( $current_markup, $last_user_prompt );
+			if ( $fast_path_response ) {
+				return $fast_path_response;
 			}
 
-			$response_code = wp_remote_retrieve_response_code( $response );
-			
-			if ( 200 !== $response_code ) {
-				$error_body = json_decode( wp_remote_retrieve_body( $response ), true );
-				
-				if ( 400 === $response_code && isset( $error_body['payload']['reason'] ) ) {
-					return new \WP_Error(
-						'ai_generation_error',
-						$error_body['payload']['reason'],
-						array( 'status' => 400 )
-					);
-				}
-				
-				if ( isset( $error_body['payload'] ) ) {
-					return new \WP_Error(
-						'ai_generation_error',
-						is_string( $error_body['payload'] ) ? $error_body['payload'] : wp_json_encode( $error_body['payload'] ),
-						array( 'status' => $response_code )
-					);
-				}
-				
-				$default_message = 'We are unable to process the request at this moment';
-				if ( isset( $error_body['message'] ) ) {
-					$default_message = $error_body['message'];
-				} elseif ( isset( $error_body['error'] ) && is_array( $error_body['error'] ) && isset( $error_body['error']['message'] ) ) {
-					$default_message = $error_body['error']['message'];
-				}
-				
-				return new \WP_Error(
-					'ai_generation_error',
-					$default_message,
-					array( 'status' => $response_code )
-				);
+			$ai_messages = $this->prompt_builder->build_ai_messages( $messages, $current_markup );
+			$content     = $this->ai_client->generate_content( $ai_messages );
+
+			if ( is_wp_error( $content ) ) {
+				return $content;
 			}
 
-			$result = json_decode( wp_remote_retrieve_body( $response ), true );
-			
-			// Extract content from response
-			// New structure: { outputPayload: { output: [ { type: "message", content: [ { text: "..." } ] } ] } }
-			$content = '';
-			
-			if ( isset( $result['outputPayload']['output'] ) && is_array( $result['outputPayload']['output'] ) ) {
-				foreach ( $result['outputPayload']['output'] as $output_item ) {
-					// Look for message type items
-					if ( isset( $output_item['type'] ) && 'message' === $output_item['type'] ) {
-						if ( isset( $output_item['content'] ) && is_array( $output_item['content'] ) ) {
-							foreach ( $output_item['content'] as $content_item ) {
-								if ( isset( $content_item['type'] ) && 'output_text' === $content_item['type'] ) {
-									if ( isset( $content_item['text'] ) ) {
-										$content .= $content_item['text'];
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			
-			// Fallback: try old OpenAiResponse structure for backward compatibility
-			if ( empty( $content ) && isset( $result['OpenAiResponse']['choices'] ) && is_array( $result['OpenAiResponse']['choices'] ) ) {
-				foreach ( $result['OpenAiResponse']['choices'] as $choice ) {
-					if ( isset( $choice['message']['content'] ) ) {
-						$content .= $choice['message']['content'];
-					}
-				}
-			}
-			
-			if ( empty( $content ) ) {
-				return new \WP_Error(
-					'ai_generation_error',
-					__( 'No content generated by AI service', 'wp-module-ai-page-designer' ),
-					array( 'status' => 500 )
-				);
-			}
-			
-		// Extract the PAGE_TITLE comment embedded in the HTML by the AI
-		$title_data = $this->extract_page_title( $content );
-		
-			// If we fetched Unsplash images from a FAST PATH request, replace them
+			$title_data = $this->block_markup_sanitizer->extract_page_title( $content );
 			$final_html = $title_data['html'];
-			if ( ! empty( $unsplash_images ) ) {
-				$final_html = $this->replace_images_in_html( $final_html, $unsplash_images );
-			} else {
-				// We didn't fetch images beforehand. Let's try doing it after using the AI's title and all prompts!
-				$all_prompts = '';
-				foreach ( $messages as $msg ) {
-					if ( 'user' === $msg['role'] ) {
-						// Don't include the base layout markup we append in the system prompt
-						$clean_msg = explode('--- BASE LAYOUT ---', $msg['content'])[0];
-						$clean_msg = explode('--- CURRENT TARGET LAYOUT ---', $clean_msg)[0];
-						$all_prompts .= ' ' . trim($clean_msg);
-					}
-				}
-				
-				// Combine the AI-generated title and prompts to get a richer context for image search
-				$search_context = '';
-				if ( ! empty( $title_data['title'] ) ) {
-					$search_context .= rtrim($title_data['title'], ' -|') . ' ';
-				}
-				$search_context .= $all_prompts;
-				
-				// Only fetch images if we actually found placeholders that need replacing
-				if (
-					preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $final_html) ||
-					preg_match('/<!-- wp:(image|cover)/i', $final_html) ||
-					preg_match('/background-image:\s*url\(/i', $final_html) ||
-					preg_match('/https?:\/\/images\.unsplash\.com\//i', $final_html) ||
-					preg_match('/https?:\/\/(www\.)?unsplash\.com\//i', $final_html)
-				) {
-					$unsplash_images = $this->get_unsplash_images( $search_context );
-					if ( ! empty( $unsplash_images ) ) {
-						// We must randomize the array here too so different layout generations for the same query get different images
-						shuffle( $unsplash_images );
-						$final_html = $this->replace_images_in_html( $final_html, $unsplash_images );
-					}
+
+			// We didn't fetch images beforehand. Let's try doing it after using the AI's title and all prompts.
+			$all_prompts = '';
+			foreach ( $messages as $msg ) {
+				if ( 'user' === ( $msg['role'] ?? '' ) ) {
+					// Don't include the base layout markup we append in the system prompt.
+					$clean_msg   = explode( '--- BASE LAYOUT ---', $msg['content'] )[0];
+					$clean_msg   = explode( '--- CURRENT TARGET LAYOUT ---', $clean_msg )[0];
+					$all_prompts .= ' ' . trim( $clean_msg );
 				}
 			}
 
-			// Return content with extracted title (title comment stripped from HTML)
+			// Combine the AI-generated title and prompts to get a richer context for image search.
+			$search_context = '';
+			if ( ! empty( $title_data['title'] ) ) {
+				$search_context .= rtrim( $title_data['title'], ' -|' ) . ' ';
+			}
+			$search_context .= $all_prompts;
+
+			// Only fetch images if we actually found placeholders that need replacing.
+			if (
+				preg_match( '/<img[^>]+src=["\']([^"\']+)["\']/i', $final_html ) ||
+				preg_match( '/<!-- wp:(image|cover)/i', $final_html ) ||
+				preg_match( '/background-image:\s*url\(/i', $final_html ) ||
+				preg_match( '/https?:\/\/images\.unsplash\.com\//i', $final_html ) ||
+				preg_match( '/https?:\/\/(www\.)?unsplash\.com\//i', $final_html )
+			) {
+				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
+				if ( ! empty( $unsplash_images ) ) {
+					// We must randomize the array here too so different layout generations for the same query get different images.
+					shuffle( $unsplash_images );
+					$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images );
+				}
+			}
+
 			return new \WP_REST_Response(
 				array(
 					'data' => array(
@@ -411,7 +211,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				),
 				200
 			);
-			
 		} catch ( \Exception $e ) {
 			return new \WP_Error(
 				'server_error',
@@ -1186,25 +985,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @return bool|\WP_Error True if user has permission, WP_Error otherwise
 	 */
 	public function check_permission() {
-		// Check user capability
-		if ( ! current_user_can( 'edit_pages' ) ) {
-			return new \WP_Error(
-				'rest_forbidden',
-				__( 'You must have permission to edit pages', 'wp-module-ai-page-designer' ),
-				array( 'status' => 401 )
-			);
-		}
-
-		// Check Hiive capability
-		$capabilities = new SiteCapabilities();
-		if ( ! $capabilities->get( 'hasAISiteGen' ) ) {
-			return new \WP_Error(
-				'rest_forbidden',
-				__( 'AI Site Generation is not enabled for your site', 'wp-module-ai-page-designer' ),
-				array( 'status' => 403 )
-			);
-		}
-
-		return true;
+		return CapabilityGate::rest_permission();
 	}
 }

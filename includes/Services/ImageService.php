@@ -1,0 +1,385 @@
+<?php
+/**
+ * Image replacement service for AI Page Designer.
+ *
+ * @package NewfoldLabs\WP\Module\AIPageDesigner\Services
+ */
+
+namespace NewfoldLabs\WP\Module\AIPageDesigner\Services;
+
+/**
+ * Fetches Unsplash imagery and rewrites image URLs in HTML/block markup.
+ */
+class ImageService {
+
+	/**
+	 * Fetch images from Unsplash based on a query.
+	 *
+	 * @param string $query The search query.
+	 * @return array Array of image URLs.
+	 */
+	public function get_unsplash_images( $query ) {
+		$hiive_base_url = defined( 'NFD_HIIVE_BASE_URL' ) ? NFD_HIIVE_BASE_URL : 'https://hiive.cloud';
+		$endpoint       = '/workers/unsplash/search/photos';
+
+		// Clean up query: remove common conversational words to get better image results.
+		// Also remove site/brand name tokens to avoid skewing results.
+		$stopwords = array( 'create', 'a', 'an', 'the', 'page', 'post', 'about', 'for', 'with', 'design', 'make', 'website', 'site', 'my', 'new', 'add', 'some', 'images', 'image', 'picture', 'photos', 'photo', 'update', 'modify', 'change', 'landing', 'home', 'homepage', 'contact', 'services', 'portfolio' );
+		$site_name = get_bloginfo( 'name' );
+		if ( $site_name ) {
+			$site_words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $site_name ) ) );
+			$stopwords  = array_merge( $stopwords, array_filter( $site_words ) );
+		}
+
+		$words        = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $query ) ) );
+		$keywords     = array_diff( $words, $stopwords );
+		$search_query = implode( ' ', array_slice( $keywords, 0, 4 ) );
+
+		if ( empty( trim( $search_query ) ) ) {
+			$search_query = 'nature';
+		}
+
+		$args = array(
+			'query'    => trim( $search_query ),
+			'per_page' => 15,
+		);
+		error_log( 'Unsplash search query: ' . $args['query'] );
+
+		$transient_key = 'nfd_unsplash_' . md5( $args['query'] );
+		$cached_images  = get_transient( $transient_key );
+
+		if ( false !== $cached_images && is_array( $cached_images ) && ! empty( $cached_images ) ) {
+			return $cached_images;
+		}
+
+		$request_url = $hiive_base_url . $endpoint . '?' . http_build_query( $args );
+
+		$response = wp_remote_get( $request_url, array( 'timeout' => 10 ) );
+		$images   = array();
+
+		if ( ! is_wp_error( $response ) && 200 === wp_remote_retrieve_response_code( $response ) ) {
+			$body = json_decode( wp_remote_retrieve_body( $response ), true );
+			if ( ! empty( $body['results'] ) ) {
+				foreach ( $body['results'] as $result ) {
+					if ( ! empty( $result['urls']['regular'] ) ) {
+						$images[] = $result['urls']['regular'];
+					}
+				}
+
+				if ( ! empty( $images ) ) {
+					// Cache the image results for an hour.
+					set_transient( $transient_key, $images, HOUR_IN_SECONDS );
+				}
+			}
+		}
+
+		return $images;
+	}
+
+	/**
+	 * Replace image URLs in HTML content with Unsplash images using native WP parsers.
+	 *
+	 * @param string $html The HTML content containing images.
+	 * @param array  $unsplash_images Array of Unsplash image URLs.
+	 * @return string The updated HTML.
+	 */
+	public function replace_images_in_html( $html, $unsplash_images ) {
+		if ( empty( $unsplash_images ) ) {
+			return $html;
+		}
+
+		$image_index  = 0;
+		$total_images  = count( $unsplash_images );
+		$url_map       = array();
+
+		// 1. Replace URLs inside Gutenberg block comments safely using parse_blocks.
+		$blocks = parse_blocks( $html );
+
+		if ( ! empty( $blocks ) ) {
+			$this->update_block_images_recursive( $blocks, $url_map, $unsplash_images, $image_index, $total_images );
+
+			// Rebuild HTML from blocks.
+			$html = '';
+			foreach ( $blocks as $block ) {
+				$html .= serialize_blocks( array( $block ) );
+			}
+		}
+
+		// 2. Replace <img> src attributes safely using WP_HTML_Tag_Processor.
+		// Doing this after parse_blocks/serialize_blocks catches any stragglers.
+		if ( class_exists( 'WP_HTML_Tag_Processor' ) ) {
+			$tags = new \WP_HTML_Tag_Processor( $html );
+			while ( $tags->next_tag( 'img' ) ) {
+				$orig_url = $tags->get_attribute( 'src' );
+				if ( $orig_url ) {
+					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
+					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
+						$image_index++;
+					}
+					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
+
+					if ( isset( $url_map[ $orig_url ] ) ) {
+						$new_url = $url_map[ $orig_url ];
+						if ( strpos( $new_url, 'cb=' ) === false ) {
+							$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+						}
+						$tags->set_attribute( 'src', $new_url );
+					}
+					// Remove srcset if it exists so browser falls back to src.
+					$tags->remove_attribute( 'srcset' );
+				}
+			}
+			$html = $tags->get_updated_html();
+
+			// Also replace inline styles for background images.
+			$html = preg_replace_callback(
+				'/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i',
+				function ( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images ) {
+					$orig_url = $matches[1];
+
+					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
+					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
+						$image_index++;
+					}
+					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
+
+					$new_url = $url_map[ $orig_url ];
+					if ( strpos( $new_url, 'cb=' ) === false ) {
+						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+					}
+					return 'background-image: url(' . $new_url . ')';
+				},
+				$html
+			);
+		} else {
+			// Fallback if WP_HTML_Tag_Processor doesn't exist (older WP versions).
+			$html = preg_replace_callback(
+				'/<img[^>]+src=["\']([^"\']+)["\']/i',
+				function ( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images ) {
+					$orig_url = $matches[1];
+
+					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
+					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
+						$image_index++;
+					}
+					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
+
+					$new_url = $url_map[ $orig_url ];
+					if ( strpos( $new_url, 'cb=' ) === false ) {
+						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+					}
+					return str_replace( $orig_url, $new_url, $matches[0] );
+				},
+				$html
+			);
+			// Also strip srcset from fallback since we don't have srcset unsplash URLs.
+			$html = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $html );
+		}
+
+		// Fallback for any other remaining images using regex just in case.
+		$html = preg_replace_callback(
+			'/(<img[^>]+src=["\'])([^"\']+)["\']/',
+			function ( $matches ) use ( &$url_map, $unsplash_images, &$image_index, $total_images ) {
+				$orig_url = $matches[2];
+
+				$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
+				if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+					$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
+					$image_index++;
+				}
+				$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
+
+				$new_url = $url_map[ $orig_url ];
+				if ( strpos( $new_url, 'cb=' ) === false ) {
+					$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+				}
+				return $matches[1] . $new_url . '"';
+			},
+			$html
+		);
+
+		// Remove all srcset attributes to prevent old images from showing.
+		$html = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $html );
+
+		return trim( $html );
+	}
+
+	/**
+	 * Recursively update image URLs in parsed Gutenberg blocks.
+	 *
+	 * @param array &$blocks Parsed blocks array.
+	 * @param array &$url_map Map of original to new URLs.
+	 * @param array $unsplash_images Array of available Unsplash URLs.
+	 * @param int   &$image_index Current index in the Unsplash array.
+	 * @param int   $total_images Total number of Unsplash images.
+	 * @return void
+	 */
+	private function update_block_images_recursive( &$blocks, &$url_map, $unsplash_images, &$image_index, $total_images ) {
+		foreach ( $blocks as &$block ) {
+			// Check if block has an attrs array.
+			if ( ! isset( $block['attrs'] ) ) {
+				$block['attrs'] = array();
+			}
+
+			// Update wp:image block URL attribute.
+			if ( 'core/image' === $block['blockName'] ) {
+				if ( isset( $block['attrs']['url'] ) ) {
+					$orig_url = $block['attrs']['url'];
+				} else {
+					// Sometimes the URL is only in the innerHTML, extract it.
+					if ( preg_match( '/src=["\']([^"\']+)["\']/i', $block['innerHTML'], $m ) ) {
+						$orig_url = $m[1];
+					} else {
+						$orig_url = '';
+					}
+				}
+
+				if ( ! empty( $orig_url ) ) {
+					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
+
+					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
+						$image_index++;
+					}
+					// Map both with and without cb to the same new base image.
+					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
+
+					if ( isset( $url_map[ $orig_url ] ) ) {
+						$block['attrs']['url'] = $url_map[ $orig_url ];
+						$block['attrs']['id']  = null;
+
+						// Also update HTML content strings inside the block array.
+						if ( ! empty( $block['innerHTML'] ) ) {
+							$new_url = $url_map[ $orig_url ];
+							// Add a random cache buster so images look "new" even if URL is same.
+							if ( strpos( $new_url, 'cb=' ) === false ) {
+								$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+							}
+							$block['innerHTML'] = preg_replace_callback(
+								'/(src=["\'])([^"\']+)(["\'])/i',
+								function ( $matches ) use ( $new_url ) {
+									return $matches[1] . $new_url . $matches[3];
+								},
+								$block['innerHTML']
+							);
+							$block['innerHTML'] = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $block['innerHTML'] );
+						}
+						if ( ! empty( $block['innerContent'] ) ) {
+							foreach ( $block['innerContent'] as &$content_string ) {
+								if ( is_string( $content_string ) ) {
+									$new_url = $url_map[ $orig_url ];
+									if ( strpos( $new_url, 'cb=' ) === false ) {
+										$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+									}
+									$content_string = preg_replace_callback(
+										'/(src=["\'])([^"\']+)(["\'])/i',
+										function ( $matches ) use ( $new_url ) {
+											return $matches[1] . $new_url . $matches[3];
+										},
+										$content_string
+									);
+									$content_string = preg_replace_callback(
+										'/"url":"([^"]+)"/i',
+										function ( $matches ) use ( $new_url ) {
+											return '"url":"' . $new_url . '"';
+										},
+										$content_string
+									);
+									$content_string = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $content_string );
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Update wp:cover block URL attribute.
+			if ( 'core/cover' === $block['blockName'] ) {
+				if ( isset( $block['attrs']['url'] ) ) {
+					$orig_url = $block['attrs']['url'];
+				} else {
+					$orig_url = '';
+				}
+
+				if ( ! empty( $orig_url ) ) {
+					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
+
+					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
+						$image_index++;
+					}
+					// Map both with and without cb to the same new base image.
+					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
+
+					if ( isset( $url_map[ $orig_url ] ) ) {
+						$block['attrs']['url'] = $url_map[ $orig_url ];
+						$block['attrs']['id']  = null;
+
+						// Also update HTML content strings inside the block array.
+						if ( ! empty( $block['innerHTML'] ) ) {
+							$new_url = $url_map[ $orig_url ];
+							if ( strpos( $new_url, 'cb=' ) === false ) {
+								$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+							}
+							$block['innerHTML'] = preg_replace_callback(
+								'/url\([\'"]?([^\'"]+)[\'"]?\)/i',
+								function ( $matches ) use ( $new_url ) {
+									return 'url(' . $new_url . ')';
+								},
+								$block['innerHTML']
+							);
+							$block['innerHTML'] = preg_replace_callback(
+								'/(src=["\'])([^"\']+)(["\'])/i',
+								function ( $matches ) use ( $new_url ) {
+									return $matches[1] . $new_url . $matches[3];
+								},
+								$block['innerHTML']
+							);
+							$block['innerHTML'] = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $block['innerHTML'] );
+						}
+						if ( ! empty( $block['innerContent'] ) ) {
+							foreach ( $block['innerContent'] as &$content_string ) {
+								if ( is_string( $content_string ) ) {
+									$new_url = $url_map[ $orig_url ];
+									if ( strpos( $new_url, 'cb=' ) === false ) {
+										$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+									}
+									$content_string = preg_replace_callback(
+										'/url\([\'"]?([^\'"]+)[\'"]?\)/i',
+										function ( $matches ) use ( $new_url ) {
+											return 'url(' . $new_url . ')';
+										},
+										$content_string
+									);
+									$content_string = preg_replace_callback(
+										'/(src=["\'])([^"\']+)(["\'])/i',
+										function ( $matches ) use ( $new_url ) {
+											return $matches[1] . $new_url . $matches[3];
+										},
+										$content_string
+									);
+									$content_string = preg_replace_callback(
+										'/"url":"([^"]+)"/i',
+										function ( $matches ) use ( $new_url ) {
+											return '"url":"' . $new_url . '"';
+										},
+										$content_string
+									);
+									$content_string = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $content_string );
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Process inner blocks recursively.
+			if ( ! empty( $block['innerBlocks'] ) ) {
+				$this->update_block_images_recursive( $block['innerBlocks'], $url_map, $unsplash_images, $image_index, $total_images );
+			}
+		}
+	}
+}

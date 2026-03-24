@@ -8,7 +8,7 @@
 namespace NewfoldLabs\WP\Module\AIPageDesigner;
 
 use NewfoldLabs\WP\Module\AIPageDesigner\AIPageDesigner;
-use NewfoldLabs\WP\Module\Data\SiteCapabilities;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
 use NewfoldLabs\WP\ModuleLoader\Container;
 
 use function NewfoldLabs\WP\ModuleLoader\register;
@@ -18,16 +18,8 @@ if ( function_exists( 'add_action' ) ) {
 	add_action(
 		'plugins_loaded',
 		function () {
-			// Check for hasAISiteGen capability before loading module
-			if ( class_exists( 'NewfoldLabs\WP\Module\Data\SiteCapabilities' ) ) {
-				$capabilities = new SiteCapabilities();
-				
-				// Only load module if hasAISiteGen capability is enabled
-				if ( ! $capabilities->get( 'hasAISiteGen' ) ) {
-					return;
-				}
-			} else {
-				// If SiteCapabilities class doesn't exist, don't load module
+			// Only load module if AI SiteGen is enabled.
+			if ( ! CapabilityGate::has_ai_site_gen() ) {
 				return;
 			}
 

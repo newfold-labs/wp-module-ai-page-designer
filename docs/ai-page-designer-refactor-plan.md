@@ -4,19 +4,19 @@ overview: Analyze the AI Page Designer module (PHP + React) and outline a refact
 todos:
   - id: backend-services
     content: Draft service boundaries and move controller logic
-    status: pending
+    status: completed
   - id: capability-gate
     content: Unify hasAISiteGen checks via helper
-    status: pending
+    status: completed
   - id: frontend-split
     content: Extract App.tsx into components/hooks
-    status: pending
+    status: completed
   - id: css-organize
     content: Reorganize styles.css sections, no tooling change
-    status: pending
+    status: completed
   - id: tests-checklist
     content: Add minimal tests + manual verification list
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -37,54 +37,56 @@ isProject: false
 
 ## Backend refactor structure (no API changes)
 
-- [ ] Add internal service classes (under `includes/Services/` or `includes/Domain/`) with narrow responsibilities:
-- [ ] Add `CapabilityGate` (single source of truth for `hasAISiteGen` checks).
-- [ ] Add `PromptBuilder` (system prompt + theme context + base/current markup injection).
-- [ ] Add `AiClient` (Hiive JWT exchange + API request/response decoding, including timeout behavior).
-- [ ] Add `ImageService` (Unsplash query, caching, replacement, URL mapping).
-- [ ] Add `BlockMarkupSanitizer` (title extraction and block-comment repair).
-- [ ] Add `PatternLayoutProvider` (pattern selection and minification).
-- [ ] Keep `AIPageDesignerController` as HTTP boundary: validate input, call services, map errors to `WP_Error`, shape responses.
-- [ ] Consolidate capability checks across `bootstrap.php`, `AIPageDesigner`, and controller into `CapabilityGate`.
-- [ ] Preserve response payloads and error codes currently returned to the client.
+- [x] Add internal service classes (under `includes/Services/` or `includes/Domain/`) with narrow responsibilities:
+- [x] Add `CapabilityGate` (single source of truth for `hasAISiteGen` checks).
+- [x] Add `PromptBuilder` (system prompt + theme context + base/current markup injection).
+- [x] Add `AiClient` (Hiive JWT exchange + API request/response decoding, including timeout behavior).
+- [x] Add `ImageService` (Unsplash query, caching, replacement, URL mapping).
+- [x] Add `BlockMarkupSanitizer` (title extraction and block-comment repair).
+- [x] Add `PatternLayoutProvider` (pattern selection and minification).
+- [x] Keep `AIPageDesignerController` as HTTP boundary: validate input, call services, map errors to `WP_Error`, shape responses.
+- [x] Consolidate capability checks across `bootstrap.php`, `AIPageDesigner`, and controller into `CapabilityGate`.
+- [x] Preserve response payloads and error codes currently returned to the client.
 
 ## Backend behavior-preserving cleanup
 
-- [ ] Extract fast-path logic for image replacements and theme changes into private helpers or a `FastPathHandler`.
+- [x] Extract fast-path logic for image replacements and theme changes into private helpers or a `FastPathHandler`.
 - [ ] Centralize logging and error formatting for AI calls to reduce repeated branches.
-- [ ] Add small unit-testable helpers for:
-- [ ] Prompt assembly.
-- [ ] `sanitize_block_content()` behavior.
-- [ ] Unsplash query sanitization.
-- [ ] Block image replacement mapping.
-- [ ] Ensure `get_jwt_token()` uses the incoming token and isolate it in `AiClient`.
+- [x] Add small unit-testable helpers for:
+- [x] Prompt assembly.
+- [x] `sanitize_block_content()` behavior.
+- [x] Unsplash query sanitization.
+- [x] Block image replacement mapping.
+- [x] Ensure `get_jwt_token()` uses the incoming token and isolate it in `AiClient`.
 
 ## Frontend componentization (no tooling change)
 
-- [ ] Split `App.tsx` into feature-focused components:
-- [ ] `components/ChatPanel`
-- [ ] `components/PreviewFrame`
-- [ ] `components/Sidebar`
-- [ ] `components/PublishModal`
-- [ ] `components/HistoryDrawer`
-- [ ] Extract hooks:
-- [ ] `hooks/useSiteContent`
-- [ ] `hooks/usePreviewIframe`
-- [ ] `hooks/useAiConversation`
-- [ ] `hooks/usePublishFlow`
-- [ ] `hooks/useBlockSelection`
-- [ ] Keep API calls and URL shapes identical; move them into a thin `api.ts`.
-- [ ] Keep global `window.AIPageDesignerApp` integration and `src/index.tsx` mount behavior unchanged.
+- [x] Split `App.tsx` into feature-focused components:
+- [x] `components/ChatPanel` (left designer panel)
+- [x] `components/DesignerTabs`
+- [x] `components/DashboardView`
+- [x] `components/PreviewFrame`
+- [x] `components/PublishModal`
+- [x] `components/HistoryDrawer`
+- [x] Extract hooks:
+- [x] `hooks/useSiteContent`
+- [x] `hooks/usePreviewIframe`
+- [x] `hooks/useAiConversation`
+- [x] `hooks/usePublishFlow`
+- [x] `hooks/useBlockSelection`
+- [x] Keep API calls and URL shapes identical; move them into a thin `api.ts`.
+- [x] Keep global `window.AIPageDesignerApp` integration and `src/index.tsx` mount behavior unchanged.
 
 ## CSS organization without tooling changes
 
-- [ ] Keep `styles.css` as a single output file.
-- [ ] Group styles by feature (layout, sidebar, chat, preview, modal, history) with section headers.
-- [ ] Prefer existing `:root` variables to reduce duplication.
+- [x] Keep `styles.css` as a single output file.
+- [x] Group styles by feature (layout, sidebar, chat, preview, modal, history) with section headers.
+- [x] Prefer existing `:root` variables to reduce duplication.
 
 ## Validation and safety checks
 
-- [ ] Add or update lightweight tests (PHP unit tests for helpers if available; frontend tests optional).
+- [x] Add or update lightweight tests (PHP unit tests for helpers if available; frontend tests optional).
+- [x] Run module build and PHP lint verification.
 - [ ] Run a manual test checklist:
 - [ ] AI generation.
 - [ ] Fast-path image swap.
@@ -96,6 +98,6 @@ isProject: false
 
 ## Expected outcomes
 
-- [ ] `AIPageDesignerController` becomes a thin orchestrator with smaller helpers.
-- [ ] Reusable services reduce duplication and make changes safer.
-- [ ] `App.tsx` becomes a composable set of components and hooks, improving readability and maintainability.
+- [x] `AIPageDesignerController` becomes a thin orchestrator with smaller helpers.
+- [x] Reusable services reduce duplication and make changes safer.
+- [x] `App.tsx` becomes a composable set of components and hooks, improving readability and maintainability.
