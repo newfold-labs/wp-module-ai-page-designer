@@ -156,8 +156,10 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 		}
 
-		if ( ! isset( $context['post_id'] ) && isset( $context['conversation_id'] ) && ! is_string( $context['conversation_id'] ) ) {
-			return false;
+		if ( ! isset( $context['post_id'] ) && isset( $context['conversation_id'] ) ) {
+			if ( ! is_string( $context['conversation_id'] ) || ! $this->is_valid_uuid_v4( $context['conversation_id'] ) ) {
+				return false;
+			}
 		}
 
 		return true;
@@ -183,6 +185,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$conversation_id  = $conversation_context['conversation_id'];
 
 			$current_markup = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
+			$content_type   = isset( $context['content_type'] ) && 'post' === $context['content_type'] ? 'post' : 'page';
 			$last_user_prompt = '';
 
 			for ( $index = count( $messages ) - 1; $index >= 0; $index-- ) {
@@ -197,7 +200,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				return $fast_path_response;
 			}
 
-			$ai_messages         = $this->prompt_builder->build_ai_messages( $messages, $current_markup );
+			$ai_messages         = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type );
 			$previous_response_id = $this->load_previous_response_id( $conversation_key );
 			$ai_result           = $this->ai_client->generate_content(
 				$ai_messages,

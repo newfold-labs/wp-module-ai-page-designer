@@ -13,6 +13,7 @@ export type GenerateContentContext = {
   current_markup: string;
   post_id?: number;
   conversation_id?: string;
+  content_type?: 'page' | 'post';
 };
 
 export type GenerateContentResponse = {

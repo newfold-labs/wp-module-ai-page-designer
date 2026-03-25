@@ -62,6 +62,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
   const [ isHistoryOpen, setIsHistoryOpen ] = useState( false );
   const [ hasAIGenerated, setHasAIGenerated ] = useState( false );
   const [ conversationId, setConversationId ] = useState<string | null>( null );
+  const [ responseId, setResponseId ] = useState<string | null>( null );
   const chatMessagesRef = useRef<HTMLDivElement>( null );
 
   useEffect( () => {
@@ -166,6 +167,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         current_markup: contextMarkup,
         post_id: selectedItem?.id,
         conversation_id: selectedItem ? undefined : conversationId || undefined,
+        content_type: ( selectedItem?.type ?? 'page' ) as 'page' | 'post',
       };
 
       const response = await generateContent( apiUrl, newMessages, context );
@@ -175,6 +177,10 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
       if ( ! selectedItem && response?.data?.conversation_id ) {
         setConversationId( response.data.conversation_id );
+      }
+
+      if ( response?.data?.response_id ) {
+        setResponseId( response.data.response_id );
       }
 
       setMessages( [ ...newMessages, { role: 'assistant', content: assistantContent } ] );
@@ -374,6 +380,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setIsHistoryOpen( false );
     setHasAIGenerated( false );
     setConversationId( null );
+    setResponseId( null );
     clearSelection( iframeRef );
   }, [ clearSelection, iframeRef ] );
 
