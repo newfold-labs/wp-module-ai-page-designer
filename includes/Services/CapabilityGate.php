@@ -26,7 +26,7 @@ class CapabilityGate {
 
 		$capabilities = new SiteCapabilities();
 
-		return (bool) $capabilities->get( 'hasAISiteGen' );
+		return (bool) $capabilities->get( 'canAccessAI' );
 	}
 
 	/**

@@ -124,7 +124,7 @@ class AIPageDesigner {
 				'apiRoot'          => esc_url_raw( rest_url() ),
 				'nonce'            => wp_create_nonce( 'wp_rest' ),
 				'siteUrl'          => get_site_url(),
-				'hasAISiteGen'     => CapabilityGate::has_ai_site_gen(),
+				'canAccessAI'      => CapabilityGate::has_ai_site_gen(),
 				'currentUserId'    => get_current_user_id(),
 				'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
 				'previewStylesheets' => array(

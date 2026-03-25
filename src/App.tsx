@@ -19,7 +19,7 @@ declare global {
       apiRoot: string;
       nonce: string;
       siteUrl: string;
-      hasAISiteGen: boolean;
+      canAccessAI: boolean;
       currentUserId: number;
       ajaxUrl: string;
       previewStylesheets?: {
