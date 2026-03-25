@@ -108,6 +108,10 @@ class WordPressProxyController extends \WP_REST_Controller {
 							'required' => false,
 							'type'     => 'string',
 						),
+						'featured_media' => array(
+							'required' => false,
+							'type'     => 'integer',
+						),
 					),
 					'permission_callback' => array( $this, 'check_permission' ),
 				),
@@ -200,19 +204,7 @@ class WordPressProxyController extends \WP_REST_Controller {
 		$data  = array();
 
 		foreach ( $posts as $post ) {
-			$data[] = array(
-				'id'      => $post->ID,
-				'title'   => array(
-					'rendered' => get_the_title( $post->ID ),
-				),
-				'content' => array(
-					'rendered' => apply_filters( 'the_content', $post->post_content ),
-					'raw'      => $post->post_content,
-				),
-				'status'  => $post->post_status,
-				'link'    => get_permalink( $post->ID ),
-				'type'    => $post_type,
-			);
+			$data[] = $this->build_item_data( $post );
 		}
 
 		return new \WP_REST_Response( $data, 200 );
@@ -236,19 +228,7 @@ class WordPressProxyController extends \WP_REST_Controller {
 			);
 		}
 
-		$data = array(
-			'id'      => $post->ID,
-			'title'   => array(
-				'rendered' => get_the_title( $post->ID ),
-			),
-			'content' => array(
-				'rendered' => apply_filters( 'the_content', $post->post_content ),
-				'raw'      => $post->post_content,
-			),
-			'status'  => $post->post_status,
-			'link'    => get_permalink( $post->ID ),
-			'type'    => $post->post_type,
-		);
+		$data = $this->build_item_data( $post );
 
 		return new \WP_REST_Response( $data, 200 );
 	}
@@ -355,13 +335,16 @@ class WordPressProxyController extends \WP_REST_Controller {
 
 		$post = get_post( $id );
 
-		$data = array(
-			'id'   => $post->ID,
-			'link' => get_permalink( $post->ID ),
-			'guid' => array(
-				'rendered' => get_the_guid( $post->ID ),
-			),
-		);
+		if ( isset( $request['featured_media'] ) ) {
+			$featured_media = absint( $request['featured_media'] );
+			if ( 0 === $featured_media ) {
+				delete_post_thumbnail( $id );
+			} else {
+				set_post_thumbnail( $id, $featured_media );
+			}
+		}
+
+		$data = $this->build_item_data( $post );
 
 		return new \WP_REST_Response( $data, 200 );
 	}
@@ -404,5 +387,60 @@ class WordPressProxyController extends \WP_REST_Controller {
 	 */
 	public function check_permission() {
 		return CapabilityGate::rest_permission();
+	}
+
+	/**
+	 * Build a consistent content payload.
+	 *
+	 * @param \WP_Post $post Post object.
+	 * @return array
+	 */
+	private function build_item_data( $post ) {
+		$post_type = $post->post_type;
+		$excerpt_raw = $post->post_excerpt ?? '';
+		$featured_media = get_post_thumbnail_id( $post->ID );
+
+		return array(
+			'id'      => $post->ID,
+			'title'   => array(
+				'rendered' => get_the_title( $post->ID ),
+			),
+			'content' => array(
+				'rendered' => apply_filters( 'the_content', $post->post_content ),
+				'raw'      => $post->post_content,
+			),
+			'excerpt' => array(
+				'rendered' => apply_filters( 'the_excerpt', $excerpt_raw ),
+				'raw'      => $excerpt_raw,
+			),
+			'featured_media'     => $featured_media,
+			'featured_image_url' => $this->get_featured_image_url( $featured_media ),
+			'supports_thumbnail' => post_type_supports( $post_type, 'thumbnail' ),
+			'status'  => $post->post_status,
+			'link'    => get_permalink( $post->ID ),
+			'type'    => $post_type,
+		);
+	}
+
+	/**
+	 * Resolve featured image URL with size fallback.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return string
+	 */
+	private function get_featured_image_url( $attachment_id ) {
+		if ( ! $attachment_id ) {
+			return '';
+		}
+
+		$sizes = array( 'medium', 'large', 'full' );
+		foreach ( $sizes as $size ) {
+			$image = wp_get_attachment_image_src( $attachment_id, $size );
+			if ( $image && ! empty( $image[0] ) ) {
+				return $image[0];
+			}
+		}
+
+		return '';
 	}
 }

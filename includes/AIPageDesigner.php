@@ -88,6 +88,9 @@ class AIPageDesigner {
 			true
 		);
 
+		// Ensure media picker is available for featured image selection.
+		wp_enqueue_media();
+
 		// Enqueue styles with cache busting
 		wp_enqueue_style(
 			'nfd-ai-page-designer',

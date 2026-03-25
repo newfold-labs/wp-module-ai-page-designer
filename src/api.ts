@@ -52,12 +52,35 @@ export const publishNewContent = (
   } );
 };
 
-export const updateExistingItem = ( item: WPItem, content: string ) => {
+type UpdateExistingMeta = {
+  title?: string;
+  excerpt?: string;
+  featuredMedia?: number;
+};
+
+export const updateExistingItem = (
+  apiUrl: string,
+  item: WPItem,
+  content: string,
+  meta: UpdateExistingMeta = {}
+) => {
   const itemType = item.type === 'post' ? 'posts' : 'pages';
+  const data: Record<string, any> = { content };
+
+  if ( typeof meta.title === 'string' ) {
+    data.title = meta.title;
+  }
+  if ( typeof meta.excerpt === 'string' ) {
+    data.excerpt = meta.excerpt;
+  }
+  if ( typeof meta.featuredMedia === 'number' ) {
+    data.featured_media = meta.featuredMedia;
+  }
+
   return apiFetch<any>( {
-    path: `/wp/v2/${ itemType }/${ item.id }`,
+    path: `${ apiUrl }/content/${ itemType }/${ item.id }`,
     method: 'POST',
-    data: { content },
+    data,
   } );
 };
 

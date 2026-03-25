@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ChatPanel from './components/ChatPanel';
 import DashboardView from './components/DashboardView';
 import DesignerTabs from './components/DesignerTabs';
+import MetaStrip from './components/MetaStrip';
 import PreviewFrame from './components/PreviewFrame';
 import PublishModal from './components/PublishModal';
 import RevertConfirm from './components/RevertConfirm';
@@ -43,6 +44,17 @@ const App = () => {
   const [ pagesSearchQuery, setPagesSearchQuery ] = useState( '' );
   const [ postsSearchQuery, setPostsSearchQuery ] = useState( '' );
   const [ publishTitle, setPublishTitle ] = useState( '' );
+  const [ metaTitle, setMetaTitle ] = useState( '' );
+  const [ metaExcerpt, setMetaExcerpt ] = useState( '' );
+  const [ metaFeaturedMediaId, setMetaFeaturedMediaId ] = useState<number | null>( null );
+  const [ metaFeaturedImageUrl, setMetaFeaturedImageUrl ] = useState<string | null>( null );
+  const [ originalMeta, setOriginalMeta ] = useState<{
+    title: string;
+    excerpt: string;
+    featuredMediaId: number | null;
+  } | null>( null );
+
+  const stripHtml = ( value: string ) => value.replace( /<[^>]*>/g, '' );
 
   const { sitePages, sitePosts, loadingSite } = useSiteContent(
     nfdAIPageDesigner.apiUrl,
@@ -54,6 +66,18 @@ const App = () => {
     nfdAIPageDesigner.previewStylesheets
   );
   const { selectedBlockIndex, selectedBlockHtml, clearSelection } = useBlockSelection();
+  const canUseMedia = Boolean( ( window as any )?.wp?.media );
+  const supportsThumbnail = selectedItem?.supports_thumbnail !== false;
+  const metaDirty = useMemo( () => {
+    if ( ! selectedItem || ! originalMeta ) {
+      return false;
+    }
+    return (
+      metaTitle !== originalMeta.title ||
+      metaExcerpt !== originalMeta.excerpt ||
+      metaFeaturedMediaId !== originalMeta.featuredMediaId
+    );
+  }, [ metaExcerpt, metaFeaturedMediaId, metaTitle, originalMeta, selectedItem ] );
 
   const conversation = useAiConversation( {
     apiUrl: nfdAIPageDesigner.apiUrl,
@@ -70,8 +94,27 @@ const App = () => {
   } );
 
   const publishFlow = usePublishFlow( {
+    apiUrl: nfdAIPageDesigner.apiUrl,
     previewHtml,
     publishTitle: conversation.publishTitle,
+    metaTitle,
+    metaExcerpt,
+    metaFeaturedMediaId,
+    onMetaUpdated: ( item ) => {
+      const nextTitle = stripHtml( item.title?.rendered || '' );
+      const nextExcerpt = item.excerpt?.raw || '';
+      const nextFeaturedMediaId = typeof item.featured_media === 'number' ? item.featured_media : 0;
+      const nextFeaturedImageUrl = item.featured_image_url || null;
+      setMetaTitle( nextTitle );
+      setMetaExcerpt( nextExcerpt );
+      setMetaFeaturedMediaId( nextFeaturedMediaId );
+      setMetaFeaturedImageUrl( nextFeaturedImageUrl );
+      setOriginalMeta( {
+        title: nextTitle,
+        excerpt: nextExcerpt,
+        featuredMediaId: nextFeaturedMediaId,
+      } );
+    },
     appendAssistantMessage: conversation.appendAssistantMessage,
   } );
 
@@ -84,6 +127,18 @@ const App = () => {
     const baseHtml = item.content?.raw || item.content?.rendered || '';
     setOriginalPreviewHtml( baseHtml );
     setPreviewHtml( baseHtml );
+    const nextTitle = stripHtml( item.title?.rendered || '' );
+    const nextExcerpt = item.excerpt?.raw || '';
+    const nextFeaturedMediaId = typeof item.featured_media === 'number' ? item.featured_media : 0;
+    setMetaTitle( nextTitle );
+    setMetaExcerpt( nextExcerpt );
+    setMetaFeaturedMediaId( nextFeaturedMediaId );
+    setMetaFeaturedImageUrl( item.featured_image_url || null );
+    setOriginalMeta( {
+      title: nextTitle,
+      excerpt: nextExcerpt,
+      featuredMediaId: nextFeaturedMediaId,
+    } );
     setPublishTitle( '' );
   };
 
@@ -93,6 +148,11 @@ const App = () => {
     setSelectedItem( null );
     setPreviewHtml( null );
     setOriginalPreviewHtml( null );
+    setMetaTitle( '' );
+    setMetaExcerpt( '' );
+    setMetaFeaturedMediaId( null );
+    setMetaFeaturedImageUrl( null );
+    setOriginalMeta( null );
     setPublishTitle( '' );
     setView( 'designer' );
   };
@@ -103,6 +163,11 @@ const App = () => {
     setSelectedItem( null );
     setPreviewHtml( null );
     setOriginalPreviewHtml( null );
+    setMetaTitle( '' );
+    setMetaExcerpt( '' );
+    setMetaFeaturedMediaId( null );
+    setMetaFeaturedImageUrl( null );
+    setOriginalMeta( null );
     setPublishTitle( '' );
     setView( 'dashboard' );
   };
@@ -116,6 +181,12 @@ const App = () => {
   const handleRevertConfirm = () => {
     conversation.handleConfirmRevertChanges();
     publishFlow.closeRevertConfirm();
+    if ( originalMeta ) {
+      setMetaTitle( originalMeta.title );
+      setMetaExcerpt( originalMeta.excerpt );
+      setMetaFeaturedMediaId( originalMeta.featuredMediaId );
+      setMetaFeaturedImageUrl( selectedItem?.featured_image_url || null );
+    }
   };
 
   const handlePublishBarClick = () => {
@@ -126,9 +197,49 @@ const App = () => {
     publishFlow.openPublishModal();
   };
 
+  const handlePickImage = () => {
+    const wpMedia = ( window as any )?.wp?.media;
+    if ( ! wpMedia ) {
+      return;
+    }
+    const frame = wpMedia( {
+      title: 'Select featured image',
+      button: { text: 'Use image' },
+      library: { type: 'image' },
+      multiple: false,
+    } );
+
+    frame.on( 'select', () => {
+      const attachment = frame.state().get( 'selection' ).first()?.toJSON();
+      if ( attachment?.id ) {
+        const url =
+          attachment?.sizes?.medium?.url ||
+          attachment?.sizes?.large?.url ||
+          attachment?.url ||
+          '';
+        setMetaFeaturedMediaId( attachment.id );
+        setMetaFeaturedImageUrl( url || null );
+      }
+    } );
+
+    frame.open();
+  };
+
+  const handleRemoveImage = () => {
+    setMetaFeaturedMediaId( 0 );
+    setMetaFeaturedImageUrl( null );
+  };
+
+  useEffect( () => {
+    if ( ! selectedItem ) {
+      return;
+    }
+    setMetaFeaturedImageUrl( selectedItem.featured_image_url || null );
+  }, [ selectedItem ] );
+
   if ( 'dashboard' === view ) {
     return (
-      <div className="ai-designer-container">
+      <div id="nfd-ai-page-designer-root" className="ai-designer-container">
         <DesignerTabs
           view={ view }
           onDashboard={ handleShowDashboard }
@@ -156,7 +267,7 @@ const App = () => {
   }
 
   return (
-    <div className="ai-designer-container">
+    <div id="nfd-ai-page-designer-root" className="ai-designer-container">
       <DesignerTabs
         view={ view }
         onDashboard={ handleShowDashboard }
@@ -164,6 +275,19 @@ const App = () => {
       />
       <div className="ai-designer-body">
         <div className="ai-designer-main">
+          <MetaStrip
+            visible={ Boolean( selectedItem ) }
+            title={ metaTitle }
+            excerpt={ metaExcerpt }
+            featuredImageUrl={ metaFeaturedImageUrl }
+            featuredMediaId={ metaFeaturedMediaId }
+            supportsThumbnail={ supportsThumbnail }
+            canUseMedia={ canUseMedia }
+            onChangeTitle={ setMetaTitle }
+            onChangeExcerpt={ setMetaExcerpt }
+            onPickImage={ handlePickImage }
+            onRemoveImage={ handleRemoveImage }
+          />
           <div className="ai-designer-content">
             <ChatPanel
               messages={ conversation.messages }
@@ -176,7 +300,7 @@ const App = () => {
               onToggleHistorySelection={ conversation.handleToggleHistorySelection }
               onRevertSelected={ conversation.handleRevertSelectedHistory }
               onClearSelectedHistory={ () => conversation.setSelectedHistoryIds( [] ) }
-              hasAIGenerated={ conversation.hasAIGenerated }
+              hasAIGenerated={ conversation.hasAIGenerated || metaDirty }
               publishing={ publishFlow.publishing }
               selectedItem={ selectedItem }
               onPublish={ handlePublishBarClick }

@@ -3,8 +3,13 @@ import type { Message, PublishStatus, WPItem } from '../types';
 import { publishNewContent, setHomepage, updateExistingItem } from '../api';
 
 type UsePublishFlowOptions = {
+  apiUrl: string;
   previewHtml: string | null;
   publishTitle: string;
+  metaTitle?: string;
+  metaExcerpt?: string;
+  metaFeaturedMediaId?: number | null;
+  onMetaUpdated?: (item: WPItem) => void;
   appendAssistantMessage: (message: Message) => void;
 };
 
@@ -25,8 +30,13 @@ type UsePublishFlowResult = {
 
 export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlowResult => {
   const {
+    apiUrl,
     previewHtml,
     publishTitle,
+    metaTitle,
+    metaExcerpt,
+    metaFeaturedMediaId,
+    onMetaUpdated,
     appendAssistantMessage,
   } = options;
 
@@ -105,8 +115,15 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     setPublishStatus( null );
     setPublishedUrl( null );
     try {
-      await updateExistingItem( item, previewHtml );
+      const response = await updateExistingItem( apiUrl, item, previewHtml, {
+        title: typeof metaTitle === 'string' ? metaTitle : undefined,
+        excerpt: typeof metaExcerpt === 'string' ? metaExcerpt : undefined,
+        featuredMedia: typeof metaFeaturedMediaId === 'number' ? metaFeaturedMediaId : undefined,
+      } );
       const url = item.link || null;
+      if ( response && typeof onMetaUpdated === 'function' ) {
+        onMetaUpdated( response as WPItem );
+      }
       setPublishedUrl( url );
       setPublishStatus( { type: 'success', message: `"${ item.title.rendered }" updated!` } );
       setTimeout( () => {
@@ -125,7 +142,15 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     } finally {
       setPublishing( false );
     }
-  }, [ appendAssistantMessage, previewHtml ] );
+  }, [
+    apiUrl,
+    appendAssistantMessage,
+    metaExcerpt,
+    metaFeaturedMediaId,
+    metaTitle,
+    onMetaUpdated,
+    previewHtml,
+  ] );
 
   return {
     publishing,

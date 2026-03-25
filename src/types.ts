@@ -8,6 +8,10 @@ export type WPItem = {
   id: number;
   title: { rendered: string };
   content?: { rendered: string; raw?: string };
+  excerpt?: { rendered?: string; raw?: string };
+  featured_media?: number;
+  featured_image_url?: string;
+  supports_thumbnail?: boolean;
   status: string;
   link: string;
   type: string;

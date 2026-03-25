@@ -46,14 +46,35 @@ export const getLocalStyleChange = ( text: string, targetSelector: string ): Loc
   const labels: string[] = [];
   let colorValue: string | null = null;
   let isFontReset = false;
+  const colorTargets = [
+    targetSelector,
+    `${ targetSelector } h1`,
+    `${ targetSelector } h1 *`,
+    `${ targetSelector } h2`,
+    `${ targetSelector } h2 *`,
+    `${ targetSelector } h3`,
+    `${ targetSelector } h3 *`,
+    `${ targetSelector } h4`,
+    `${ targetSelector } h4 *`,
+    `${ targetSelector } h5`,
+    `${ targetSelector } h5 *`,
+    `${ targetSelector } h6`,
+    `${ targetSelector } h6 *`,
+    `${ targetSelector } .has-text-color`,
+    `${ targetSelector } .has-text-color *`,
+    `${ targetSelector } [class*="has-"][class*="-color"]`,
+    `${ targetSelector } [class*="has-"][class*="-color"] *`,
+  ].join( ', ' );
 
   if ( /\bdark mode\b|\bdark theme\b/u.test( normalized ) ) {
-    cssParts.push( 'body{background:#0f1115;color:#f1f1f1;}' );
+    cssParts.push( 'body{background:#0f1115;}' );
+    cssParts.push( 'body, body h1, body h1 *, body h2, body h2 *, body h3, body h3 *, body h4, body h4 *, body h5, body h5 *, body h6, body h6 *{color:#f1f1f1;}' );
     labels.push( 'dark mode' );
   }
 
   if ( /\blight mode\b|\blight theme\b/u.test( normalized ) ) {
-    cssParts.push( 'body{background:#ffffff;color:#111111;}' );
+    cssParts.push( 'body{background:#ffffff;}' );
+    cssParts.push( 'body, body h1, body h1 *, body h2, body h2 *, body h3, body h3 *, body h4, body h4 *, body h5, body h5 *, body h6, body h6 *{color:#111111;}' );
     labels.push( 'light mode' );
   }
 
@@ -80,13 +101,13 @@ export const getLocalStyleChange = ( text: string, targetSelector: string ): Loc
 
   if ( /\bfont\b/u.test( normalized ) ) {
     if ( /\b(remove|clear|reset)\b.*\bfont\b.*\bcolor\b|\bremove\b.*\bcolor\b/u.test( normalized ) ) {
-      cssParts.push( `${ targetSelector }{color:inherit !important;}` );
+      cssParts.push( `${ colorTargets }{color:inherit !important;}` );
       labels.push( 'font color reset' );
       isFontReset = true;
     }
 
     if ( matchedColor ) {
-      cssParts.push( `${ targetSelector }{color:${ colorMap[matchedColor] } !important;}` );
+      cssParts.push( `${ colorTargets }{color:${ colorMap[matchedColor] } !important;}` );
       labels.push( `${ matchedColor } font` );
       colorValue = colorMap[matchedColor];
     }
@@ -97,7 +118,7 @@ export const getLocalStyleChange = ( text: string, targetSelector: string ): Loc
     /\b(change|set|update)\b.*\bcolor\b|\bcolor\b.*\b(change|set|update)\b/u.test( normalized ) &&
     !/\bbackground\b|\bpage\b|\btheme\b|\bmode\b/u.test( normalized )
   ) {
-    cssParts.push( `${ targetSelector }{color:${ colorMap[matchedColor] } !important;}` );
+    cssParts.push( `${ colorTargets }{color:${ colorMap[matchedColor] } !important;}` );
     labels.push( `${ matchedColor } color` );
     colorValue = colorMap[matchedColor];
   }
