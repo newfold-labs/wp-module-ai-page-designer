@@ -60,6 +60,7 @@ const App = () => {
     previewHtml,
     originalPreviewHtml,
     publishTitle,
+    selectedItem,
     selectedBlockIndex,
     selectedBlockHtml,
     iframeRef,

@@ -18,9 +18,10 @@ class AiClient {
 	 * Request generated content from the AI service.
 	 *
 	 * @param array $ai_messages Message payload for the AI service.
-	 * @return string|\WP_Error
+	 * @param array $options Optional settings (previous_response_id).
+	 * @return array|\WP_Error
 	 */
-	public function generate_content( array $ai_messages ) {
+	public function generate_content( array $ai_messages, array $options = array() ) {
 		$hiive_token = HiiveConnection::get_auth_token();
 
 		if ( ! $hiive_token ) {
@@ -36,13 +37,20 @@ class AiClient {
 			return $jwt_token;
 		}
 
+		$input_payload = array(
+			'input' => $ai_messages,
+			'model' => 'gpt-5-mini',
+			'store' => true,
+		);
+
+		if ( ! empty( $options['previous_response_id'] ) && is_string( $options['previous_response_id'] ) ) {
+			$input_payload['previous_response_id'] = $options['previous_response_id'];
+		}
+
 		$request_body = wp_json_encode(
 			array(
-				'promptId' => '4d5d7866-cbaf-4274-ad72-f789e358965d',
-				'inputPayload' => array(
-					'input' => $ai_messages,
-					'model' => 'gpt-5-mini',
-				),
+				'promptId'      => '4d5d7866-cbaf-4274-ad72-f789e358965d',
+				'inputPayload'  => $input_payload,
 			)
 		);
 
@@ -116,8 +124,9 @@ class AiClient {
 			);
 		}
 
-		$result = json_decode( wp_remote_retrieve_body( $response ), true );
-		$content = $this->extract_content_from_response( $result );
+		$result      = json_decode( wp_remote_retrieve_body( $response ), true );
+		$content     = $this->extract_content_from_response( $result );
+		$response_id = $this->extract_response_id( $result );
 
 		if ( empty( $content ) ) {
 			return new \WP_Error(
@@ -127,7 +136,10 @@ class AiClient {
 			);
 		}
 
-		return $content;
+		return array(
+			'content'     => $content,
+			'response_id' => $response_id,
+		);
 	}
 
 	/**
@@ -221,5 +233,23 @@ class AiClient {
 		}
 
 		return $content;
+	}
+
+	/**
+	 * Extract the response_id for conversation chaining.
+	 *
+	 * @param array $result Decoded response body.
+	 * @return string|null
+	 */
+	private function extract_response_id( array $result ) {
+		if ( isset( $result['responseMetadata']['response_id'] ) && is_string( $result['responseMetadata']['response_id'] ) ) {
+			return $result['responseMetadata']['response_id'];
+		}
+
+		if ( isset( $result['outputPayload']['id'] ) && is_string( $result['outputPayload']['id'] ) ) {
+			return $result['outputPayload']['id'];
+		}
+
+		return null;
 	}
 }

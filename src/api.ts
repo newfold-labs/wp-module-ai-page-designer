@@ -9,18 +9,32 @@ export const fetchSitePosts = ( apiUrl: string ) => apiFetch<WPItem[]>( {
   path: `${ apiUrl }/content/posts`,
 } );
 
+export type GenerateContentContext = {
+  current_markup: string;
+  post_id?: number;
+  conversation_id?: string;
+};
+
+export type GenerateContentResponse = {
+  data: {
+    content: string;
+    title?: string;
+    response_id?: string;
+    conversation_id?: string;
+    conversation_key?: string;
+  };
+};
+
 export const generateContent = (
   apiUrl: string,
   messages: Message[],
-  currentMarkup: string
-) => apiFetch<{ data: { content: string; title?: string } }>( {
+  context: GenerateContentContext
+) => apiFetch<GenerateContentResponse>( {
   path: `${ apiUrl }/generate`,
   method: 'POST',
   data: {
     messages,
-    context: {
-      current_markup: currentMarkup,
-    },
+    context,
   },
 } );
 

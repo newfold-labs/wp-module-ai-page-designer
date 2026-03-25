@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import type { HistoryEntry, Message } from '../types';
+import type { HistoryEntry, Message, WPItem } from '../types';
 import { generateContent } from '../api';
 import { applyLocalStyle, extractHtml, getLocalStyleChange } from '../util/aiDesignerHelpers';
 
@@ -8,6 +8,7 @@ type UseAiConversationOptions = {
   previewHtml: string | null;
   originalPreviewHtml: string | null;
   publishTitle: string;
+  selectedItem: WPItem | null;
   selectedBlockIndex: string | null;
   selectedBlockHtml: string | null;
   iframeRef: RefObject<HTMLIFrameElement>;
@@ -44,6 +45,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     previewHtml,
     originalPreviewHtml,
     publishTitle,
+    selectedItem,
     selectedBlockIndex,
     selectedBlockHtml,
     iframeRef,
@@ -59,6 +61,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
   const [ selectedHistoryIds, setSelectedHistoryIds ] = useState<string[]>( [] );
   const [ isHistoryOpen, setIsHistoryOpen ] = useState( false );
   const [ hasAIGenerated, setHasAIGenerated ] = useState( false );
+  const [ conversationId, setConversationId ] = useState<string | null>( null );
   const chatMessagesRef = useRef<HTMLDivElement>( null );
 
   useEffect( () => {
@@ -159,11 +162,20 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
       setIsLoading( true );
       const contextMarkup = selectedBlockHtml || previewHtml || '';
+      const context = {
+        current_markup: contextMarkup,
+        post_id: selectedItem?.id,
+        conversation_id: selectedItem ? undefined : conversationId || undefined,
+      };
 
-      const response = await generateContent( apiUrl, newMessages, contextMarkup );
+      const response = await generateContent( apiUrl, newMessages, context );
 
       let assistantContent = response?.data?.content || 'No response generated';
       const title = response?.data?.title || '';
+
+      if ( ! selectedItem && response?.data?.conversation_id ) {
+        setConversationId( response.data.conversation_id );
+      }
 
       setMessages( [ ...newMessages, { role: 'assistant', content: assistantContent } ] );
 
@@ -361,6 +373,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setSelectedHistoryIds( [] );
     setIsHistoryOpen( false );
     setHasAIGenerated( false );
+    setConversationId( null );
     clearSelection( iframeRef );
   }, [ clearSelection, iframeRef ] );
 

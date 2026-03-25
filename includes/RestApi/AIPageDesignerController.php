@@ -102,6 +102,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 							'required'          => false,
 							'type'              => 'object',
 							'description'       => __( 'Additional context like current markup', 'wp-module-ai-page-designer' ),
+							'validate_callback' => array( $this, 'validate_context' ),
 						),
 					),
 					'permission_callback' => array( $this, 'check_permission' ),
@@ -135,6 +136,34 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Validate optional context payload.
+	 *
+	 * @param mixed $context The context to validate.
+	 * @return bool True if valid.
+	 */
+	public function validate_context( $context ) {
+		if ( null === $context || '' === $context ) {
+			return true;
+		}
+
+		if ( ! is_array( $context ) ) {
+			return false;
+		}
+
+		if ( isset( $context['post_id'] ) ) {
+			if ( ! is_numeric( $context['post_id'] ) || (int) $context['post_id'] < 1 ) {
+				return false;
+			}
+		}
+
+		if ( ! isset( $context['post_id'] ) && isset( $context['conversation_id'] ) && ! is_string( $context['conversation_id'] ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Generate content using AI
 	 *
 	 * @param \WP_REST_Request $request The REST request
@@ -143,7 +172,17 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	public function generate_content( \WP_REST_Request $request ) {
 		try {
 			$messages = $request['messages'];
-			$current_markup = isset( $request['context']['current_markup'] ) ? trim( $request['context']['current_markup'] ) : '';
+			$context  = is_array( $request['context'] ?? null ) ? $request['context'] : array();
+
+			$conversation_context = $this->get_conversation_context( $context );
+			if ( is_wp_error( $conversation_context ) ) {
+				return $conversation_context;
+			}
+
+			$conversation_key = $conversation_context['conversation_key'];
+			$conversation_id  = $conversation_context['conversation_id'];
+
+			$current_markup = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
 			$last_user_prompt = '';
 
 			for ( $index = count( $messages ) - 1; $index >= 0; $index-- ) {
@@ -158,12 +197,31 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				return $fast_path_response;
 			}
 
-			$ai_messages = $this->prompt_builder->build_ai_messages( $messages, $current_markup );
-			$content     = $this->ai_client->generate_content( $ai_messages );
+			$ai_messages         = $this->prompt_builder->build_ai_messages( $messages, $current_markup );
+			$previous_response_id = $this->load_previous_response_id( $conversation_key );
+			$ai_result           = $this->ai_client->generate_content(
+				$ai_messages,
+				array(
+					'previous_response_id' => $previous_response_id,
+				)
+			);
 
-			if ( is_wp_error( $content ) ) {
-				return $content;
+			if ( is_wp_error( $ai_result ) ) {
+				return $ai_result;
 			}
+
+			$content     = $ai_result['content'] ?? '';
+			$response_id = $ai_result['response_id'] ?? '';
+
+			if ( empty( $response_id ) ) {
+				return new \WP_Error(
+					'ai_generation_error',
+					__( 'AI response missing response_id', 'wp-module-ai-page-designer' ),
+					array( 'status' => 500 )
+				);
+			}
+
+			$this->store_response_id( $conversation_key, $response_id );
 
 			$title_data = $this->block_markup_sanitizer->extract_page_title( $content );
 			$final_html = $title_data['html'];
@@ -202,12 +260,20 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				}
 			}
 
+			$response_data = array(
+				'content'          => $final_html,
+				'title'            => $title_data['title'],
+				'response_id'      => $response_id,
+				'conversation_key' => $conversation_key,
+			);
+
+			if ( ! empty( $conversation_id ) ) {
+				$response_data['conversation_id'] = $conversation_id;
+			}
+
 			return new \WP_REST_Response(
 				array(
-					'data' => array(
-						'content' => $final_html,
-						'title'   => $title_data['title'],
-					),
+					'data' => $response_data,
 				),
 				200
 			);
@@ -218,6 +284,95 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				array( 'status' => 500 )
 			);
 		}
+	}
+
+	/**
+	 * Resolve conversation key and id from context.
+	 *
+	 * @param array $context Context data.
+	 * @return array|\WP_Error
+	 */
+	private function get_conversation_context( array $context ) {
+		if ( isset( $context['post_id'] ) ) {
+			$post_id = (int) $context['post_id'];
+			$post    = get_post( $post_id );
+
+			if ( ! $post ) {
+				return new \WP_Error(
+					'ai_post_not_found',
+					__( 'Post not found.', 'wp-module-ai-page-designer' ),
+					array( 'status' => 404 )
+				);
+			}
+
+			if ( ! current_user_can( 'edit_post', $post_id ) ) {
+				return new \WP_Error(
+					'rest_forbidden',
+					__( 'You are not allowed to edit this post.', 'wp-module-ai-page-designer' ),
+					array( 'status' => 403 )
+				);
+			}
+
+			return array(
+				'conversation_key' => 'post-' . $post_id,
+				'conversation_id'  => null,
+			);
+		}
+
+		if ( isset( $context['conversation_id'] ) && '' !== $context['conversation_id'] ) {
+			$conversation_id = (string) $context['conversation_id'];
+			if ( ! $this->is_valid_uuid_v4( $conversation_id ) ) {
+				return new \WP_Error(
+					'ai_invalid_conversation_id',
+					__( 'Invalid conversation_id format.', 'wp-module-ai-page-designer' ),
+					array( 'status' => 400 )
+				);
+			}
+
+			return array(
+				'conversation_key' => 'conv-' . $conversation_id,
+				'conversation_id'  => $conversation_id,
+			);
+		}
+
+		$conversation_id = wp_generate_uuid4();
+
+		return array(
+			'conversation_key' => 'conv-' . $conversation_id,
+			'conversation_id'  => $conversation_id,
+		);
+	}
+
+	/**
+	 * Validate UUID v4 string.
+	 *
+	 * @param string $value Value to validate.
+	 * @return bool
+	 */
+	private function is_valid_uuid_v4( $value ) {
+		return 1 === preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $value );
+	}
+
+	/**
+	 * Load previous response ID from transient.
+	 *
+	 * @param string $conversation_key Conversation key.
+	 * @return string|null
+	 */
+	private function load_previous_response_id( $conversation_key ) {
+		$previous_response_id = get_transient( 'nfd_ai_pd_conv_' . $conversation_key );
+		return is_string( $previous_response_id ) ? $previous_response_id : null;
+	}
+
+	/**
+	 * Store response ID in transient.
+	 *
+	 * @param string $conversation_key Conversation key.
+	 * @param string $response_id Response ID.
+	 * @return void
+	 */
+	private function store_response_id( $conversation_key, $response_id ) {
+		set_transient( 'nfd_ai_pd_conv_' . $conversation_key, $response_id, DAY_IN_SECONDS );
 	}
 
 	/**
