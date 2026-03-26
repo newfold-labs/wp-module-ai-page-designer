@@ -115,26 +115,48 @@ class ImageService {
 	}
 
 	/**
+	 * Check whether a URL is a placeholder that should be replaced.
+	 *
+	 * Only placehold.co URLs are placeholders. Real image URLs (Unsplash, WordPress
+	 * media library, etc.) must be preserved.
+	 *
+	 * @param string $url Image URL to test.
+	 * @return bool
+	 */
+	private function is_placeholder_url( $url ) {
+		return ! empty( $url ) && strpos( $url, 'placehold.co' ) !== false;
+	}
+
+	/**
 	 * Replace image URLs in HTML content with Unsplash images using native WP parsers.
 	 *
-	 * @param string $html The HTML content containing images.
-	 * @param array  $unsplash_images Array of Unsplash image URLs.
+	 * @param string $html             The HTML content containing images.
+	 * @param array  $unsplash_images  Array of Unsplash image URLs.
+	 * @param bool   $placeholders_only When true, only placehold.co URLs are replaced;
+	 *                                  real image URLs (Unsplash, media library) are preserved.
+	 *                                  Pass false (default) when explicitly replacing all images
+	 *                                  (e.g. the image-swap fast path).
 	 * @return string The updated HTML.
 	 */
-	public function replace_images_in_html( $html, $unsplash_images ) {
+	public function replace_images_in_html( $html, $unsplash_images, $placeholders_only = false ) {
 		if ( empty( $unsplash_images ) ) {
 			return $html;
 		}
 
+		// When only replacing placeholders, skip entirely if none are present.
+		if ( $placeholders_only && strpos( $html, 'placehold.co' ) === false ) {
+			return $html;
+		}
+
 		$image_index  = 0;
-		$total_images  = count( $unsplash_images );
-		$url_map       = array();
+		$total_images = count( $unsplash_images );
+		$url_map      = array();
 
 		// 1. Replace URLs inside Gutenberg block comments safely using parse_blocks.
 		$blocks = parse_blocks( $html );
 
 		if ( ! empty( $blocks ) ) {
-			$this->update_block_images_recursive( $blocks, $url_map, $unsplash_images, $image_index, $total_images );
+			$this->update_block_images_recursive( $blocks, $url_map, $unsplash_images, $image_index, $total_images, $placeholders_only );
 
 			// Rebuild HTML from blocks.
 			$html = '';
@@ -149,7 +171,7 @@ class ImageService {
 			$tags = new \WP_HTML_Tag_Processor( $html );
 			while ( $tags->next_tag( 'img' ) ) {
 				$orig_url = $tags->get_attribute( 'src' );
-				if ( $orig_url ) {
+				if ( $orig_url && ( ! $placeholders_only || $this->is_placeholder_url( $orig_url ) ) ) {
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
@@ -157,24 +179,26 @@ class ImageService {
 					}
 					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
-					if ( isset( $url_map[ $orig_url ] ) ) {
-						$new_url = $url_map[ $orig_url ];
-						if ( strpos( $new_url, 'cb=' ) === false ) {
-							$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
-						}
-						$tags->set_attribute( 'src', $new_url );
+					$new_url = $url_map[ $orig_url ];
+					if ( strpos( $new_url, 'cb=' ) === false ) {
+						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
 					}
-					// Remove srcset if it exists so browser falls back to src.
-					$tags->remove_attribute( 'srcset' );
+					$tags->set_attribute( 'src', $new_url );
 				}
+				// Remove srcset if it exists so browser falls back to src.
+				$tags->remove_attribute( 'srcset' );
 			}
 			$html = $tags->get_updated_html();
 
 			// Also replace inline styles for background images.
 			$html = preg_replace_callback(
 				'/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i',
-				function ( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images ) {
+				function ( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images, $placeholders_only ) {
 					$orig_url = $matches[1];
+
+					if ( $placeholders_only && ! $this->is_placeholder_url( $orig_url ) ) {
+						return $matches[0];
+					}
 
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
@@ -195,8 +219,12 @@ class ImageService {
 			// Fallback if WP_HTML_Tag_Processor doesn't exist (older WP versions).
 			$html = preg_replace_callback(
 				'/<img[^>]+src=["\']([^"\']+)["\']/i',
-				function ( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images ) {
+				function ( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images, $placeholders_only ) {
 					$orig_url = $matches[1];
+
+					if ( $placeholders_only && ! $this->is_placeholder_url( $orig_url ) ) {
+						return $matches[0];
+					}
 
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
@@ -220,8 +248,12 @@ class ImageService {
 		// Fallback for any other remaining images using regex just in case.
 		$html = preg_replace_callback(
 			'/(<img[^>]+src=["\'])([^"\']+)["\']/',
-			function ( $matches ) use ( &$url_map, $unsplash_images, &$image_index, $total_images ) {
+			function ( $matches ) use ( &$url_map, $unsplash_images, &$image_index, $total_images, $placeholders_only ) {
 				$orig_url = $matches[2];
+
+				if ( $placeholders_only && ! $this->is_placeholder_url( $orig_url ) ) {
+					return $matches[0];
+				}
 
 				$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 				if ( ! isset( $url_map[ $base_orig_url ] ) ) {
@@ -248,14 +280,15 @@ class ImageService {
 	/**
 	 * Recursively update image URLs in parsed Gutenberg blocks.
 	 *
-	 * @param array &$blocks Parsed blocks array.
-	 * @param array &$url_map Map of original to new URLs.
-	 * @param array $unsplash_images Array of available Unsplash URLs.
-	 * @param int   &$image_index Current index in the Unsplash array.
-	 * @param int   $total_images Total number of Unsplash images.
+	 * @param array &$blocks           Parsed blocks array.
+	 * @param array &$url_map          Map of original to new URLs.
+	 * @param array  $unsplash_images  Array of available Unsplash URLs.
+	 * @param int   &$image_index      Current index in the Unsplash array.
+	 * @param int    $total_images     Total number of Unsplash images.
+	 * @param bool   $placeholders_only When true, only replace placehold.co URLs.
 	 * @return void
 	 */
-	private function update_block_images_recursive( &$blocks, &$url_map, $unsplash_images, &$image_index, $total_images ) {
+	private function update_block_images_recursive( &$blocks, &$url_map, $unsplash_images, &$image_index, $total_images, $placeholders_only = false ) {
 		foreach ( $blocks as &$block ) {
 			// Check if block has an attrs array.
 			if ( ! isset( $block['attrs'] ) ) {
@@ -275,7 +308,7 @@ class ImageService {
 					}
 				}
 
-				if ( ! empty( $orig_url ) ) {
+				if ( ! empty( $orig_url ) && ( ! $placeholders_only || $this->is_placeholder_url( $orig_url ) ) ) {
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
@@ -342,7 +375,7 @@ class ImageService {
 					$orig_url = '';
 				}
 
-				if ( ! empty( $orig_url ) ) {
+				if ( ! empty( $orig_url ) && ( ! $placeholders_only || $this->is_placeholder_url( $orig_url ) ) ) {
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
@@ -416,7 +449,7 @@ class ImageService {
 
 			// Process inner blocks recursively.
 			if ( ! empty( $block['innerBlocks'] ) ) {
-				$this->update_block_images_recursive( $block['innerBlocks'], $url_map, $unsplash_images, $image_index, $total_images );
+				$this->update_block_images_recursive( $block['innerBlocks'], $url_map, $unsplash_images, $image_index, $total_images, $placeholders_only );
 			}
 		}
 	}

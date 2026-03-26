@@ -269,7 +269,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
 				if ( ! empty( $unsplash_images ) ) {
 					shuffle( $unsplash_images );
-					$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images );
+					$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images, true );
 				}
 			}
 
