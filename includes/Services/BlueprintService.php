@@ -21,18 +21,11 @@ class BlueprintService {
 	const BLUEPRINTS_API_URL = 'https://patterns.hiive.cloud/api/v1/blueprints';
 
 	/**
-	 * Our cache option key. We read from the onboarding option but never write to it.
+	 * Our cache option key.
 	 *
 	 * @var string
 	 */
 	const OPTION_KEY = 'nfd_aipd_state_blueprints';
-
-	/**
-	 * Onboarding blueprints option key (read-only).
-	 *
-	 * @var string
-	 */
-	const ONBOARDING_OPTION_KEY = 'nfd_module_onboarding_state_blueprints';
 
 	/**
 	 * Get the full blueprints list, from cache or API.
@@ -44,12 +37,6 @@ class BlueprintService {
 		$cached = get_option( self::OPTION_KEY );
 		if ( ! empty( $cached['blueprints'] ) ) {
 			return $cached['blueprints'];
-		}
-
-		// Check if onboarding already fetched and cached the list.
-		$onboarding = get_option( self::ONBOARDING_OPTION_KEY );
-		if ( ! empty( $onboarding['blueprints'] ) ) {
-			return $onboarding['blueprints'];
 		}
 
 		// Fetch from API and cache.
@@ -79,42 +66,21 @@ class BlueprintService {
 	}
 
 	/**
-	 * Get the slug of the selected blueprint, running the priority chain if needed.
+	 * Get the slug of the selected blueprint for this request.
 	 *
-	 * Priority:
-	 * 1. Onboarding selected blueprint (user explicitly picked one)
-	 * 2. Our cached selection
-	 * 3. Pick by site type (onboarding site_info → WooCommerce → 'business' fallback)
+	 * Picks by site type (WooCommerce → 'ecommerce', default → 'business'),
+	 * rotating through available blueprints to avoid repeats.
 	 *
 	 * @return string Blueprint slug, or empty string on failure.
 	 */
 	public function get_selected_blueprint() {
-		// Priority 1: onboarding explicitly selected one.
-		$onboarding = get_option( self::ONBOARDING_OPTION_KEY );
-		if ( ! empty( $onboarding['selectedBlueprint'] ) ) {
-			return $onboarding['selectedBlueprint'];
-		}
-
-		// Priority 2: we already picked one in a previous request.
-		$cached = get_option( self::OPTION_KEY );
-		if ( ! empty( $cached['selectedBlueprint'] ) ) {
-			return $cached['selectedBlueprint'];
-		}
-
-		// Priority 3: pick by site type.
 		$blueprints = $this->get_blueprints();
 		if ( empty( $blueprints ) ) {
 			return '';
 		}
 
 		$site_type = $this->get_site_type();
-		$slug      = $this->pick_blueprint_by_type( $blueprints, $site_type );
-
-		if ( ! empty( $slug ) ) {
-			$this->save_option( array_merge( $cached ?: array(), array( 'selectedBlueprint' => $slug ) ) );
-		}
-
-		return $slug;
+		return $this->pick_blueprint_by_type( $blueprints, $site_type );
 	}
 
 	/**
@@ -145,23 +111,17 @@ class BlueprintService {
 	}
 
 	/**
-	 * Determine the site type using the onboarding fallback chain.
+	 * Determine the site type.
 	 *
-	 * @return string One of: 'ecommerce', 'personal', 'business'.
+	 * @return string One of: 'ecommerce', 'business'.
 	 */
 	public function get_site_type() {
-		// 1. Onboarding completed and stored site_type.
-		$site_info = get_option( 'nfd_module_onboarding_site_info' );
-		if ( ! empty( $site_info['site_type'] ) ) {
-			return $site_info['site_type'];
-		}
-
-		// 2. WooCommerce is active.
+		// WooCommerce is active.
 		if ( class_exists( 'WooCommerce' ) ) {
 			return 'ecommerce';
 		}
 
-		// 3. Default.
+		// Default.
 		return 'business';
 	}
 
