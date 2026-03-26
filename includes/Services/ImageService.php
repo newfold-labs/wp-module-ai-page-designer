@@ -24,56 +24,94 @@ class ImageService {
 
 		// Clean up query: remove common conversational words to get better image results.
 		// Also remove site/brand name tokens to avoid skewing results.
-		$stopwords = array( 'create', 'a', 'an', 'the', 'page', 'post', 'about', 'for', 'with', 'design', 'make', 'website', 'site', 'my', 'new', 'add', 'some', 'images', 'image', 'picture', 'photos', 'photo', 'update', 'modify', 'change', 'landing', 'home', 'homepage', 'contact', 'services', 'portfolio' );
+		$stopwords = array(
+			// Articles / pronouns / prepositions.
+			'a', 'an', 'the', 'this', 'that', 'these', 'those',
+			'i', 'me', 'my', 'we', 'our', 'you', 'your', 'it', 'its',
+			'he', 'she', 'him', 'her', 'they', 'them', 'their',
+			'to', 'of', 'in', 'on', 'at', 'by', 'as', 'is', 'be',
+			'are', 'was', 'were', 'do', 'does', 'did', 'have', 'has',
+			'had', 'will', 'would', 'could', 'should', 'from', 'into',
+			'with', 'about', 'for', 'and', 'or', 'but', 'so', 'yet',
+			// Action words / verbs / gerunds common in chat prompts.
+			'create', 'make', 'add', 'update', 'modify', 'change',
+			'replace', 'swap', 'use', 'show', 'put', 'set', 'get',
+			'turn', 'keep', 'give', 'look', 'want', 'like',
+			'creating', 'making', 'adding', 'updating', 'modifying',
+			'replacing', 'swapping', 'using', 'showing', 'putting',
+			'getting', 'turning', 'keeping', 'giving', 'looking',
+			'doing', 'going', 'having', 'being', 'trying', 'taking',
+			'featuring', 'including', 'showing', 'displaying',
+			// Image-related words.
+			'image', 'images', 'picture', 'pictures', 'photo', 'photos',
+			'pic', 'pics', 'background', 'backgrounds', 'icon', 'icons',
+			// Generic people words — too broad for image search.
+			'person', 'people', 'man', 'woman', 'girl', 'boy',
+			'someone', 'anyone', 'everyone', 'somebody',
+			// Content/page words.
+			'page', 'post', 'site', 'website', 'design', 'layout',
+			'new', 'some', 'same', 'good', 'great', 'nice', 'better',
+			'landing', 'home', 'homepage', 'contact', 'services', 'portfolio',
+		);
 		$site_name = get_bloginfo( 'name' );
 		if ( $site_name ) {
 			$site_words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $site_name ) ) );
 			$stopwords  = array_merge( $stopwords, array_filter( $site_words ) );
 		}
 
-		$words        = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $query ) ) );
-		$keywords     = array_diff( $words, $stopwords );
-		$search_query = implode( ' ', array_slice( $keywords, 0, 4 ) );
+		$words    = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z\s]/', '', $query ) ) );
+		$keywords = array_values( array_diff( $words, $stopwords ) );
 
-		if ( empty( trim( $search_query ) ) ) {
-			$search_query = 'nature';
+		// Build a list of candidate queries to try, from most specific to broadest.
+		$candidate_queries = array();
+		if ( count( $keywords ) >= 2 ) {
+			$candidate_queries[] = implode( ' ', array_slice( $keywords, 0, 6 ) );
+			// Retry skipping the first keyword (may be a brand/Latin word with no results).
+			$candidate_queries[] = implode( ' ', array_slice( $keywords, 1, 5 ) );
+		} elseif ( ! empty( $keywords ) ) {
+			$candidate_queries[] = $keywords[0];
 		}
+		$candidate_queries[] = 'nature'; // Final fallback.
 
-		$args = array(
-			'query'    => trim( $search_query ),
-			'per_page' => 15,
-		);
-		error_log( 'Unsplash search query: ' . $args['query'] );
+		foreach ( $candidate_queries as $search_query ) {
+			$search_query = trim( $search_query );
+			if ( empty( $search_query ) ) {
+				continue;
+			}
 
-		$transient_key = 'nfd_unsplash_' . md5( $args['query'] );
-		$cached_images  = get_transient( $transient_key );
+			$transient_key = 'nfd_unsplash_' . md5( $search_query );
+			$cached_images = get_transient( $transient_key );
 
-		if ( false !== $cached_images && is_array( $cached_images ) && ! empty( $cached_images ) ) {
-			return $cached_images;
-		}
+			if ( false !== $cached_images && is_array( $cached_images ) && ! empty( $cached_images ) ) {
+				return $cached_images;
+			}
 
-		$request_url = $hiive_base_url . $endpoint . '?' . http_build_query( $args );
+			$args        = array(
+				'query'    => $search_query,
+				'per_page' => 8,
+			);
+			$request_url = $hiive_base_url . $endpoint . '?' . http_build_query( $args );
+			$response    = wp_remote_get( $request_url, array( 'timeout' => 10 ) );
+			$images      = array();
 
-		$response = wp_remote_get( $request_url, array( 'timeout' => 10 ) );
-		$images   = array();
-
-		if ( ! is_wp_error( $response ) && 200 === wp_remote_retrieve_response_code( $response ) ) {
-			$body = json_decode( wp_remote_retrieve_body( $response ), true );
-			if ( ! empty( $body['results'] ) ) {
-				foreach ( $body['results'] as $result ) {
-					if ( ! empty( $result['urls']['regular'] ) ) {
-						$images[] = $result['urls']['regular'];
+			if ( ! is_wp_error( $response ) && 200 === wp_remote_retrieve_response_code( $response ) ) {
+				$body = json_decode( wp_remote_retrieve_body( $response ), true );
+				if ( ! empty( $body['results'] ) ) {
+					foreach ( $body['results'] as $result ) {
+						if ( ! empty( $result['urls']['regular'] ) ) {
+							$images[] = $result['urls']['regular'];
+						}
 					}
 				}
+			}
 
-				if ( ! empty( $images ) ) {
-					// Cache the image results for an hour.
-					set_transient( $transient_key, $images, HOUR_IN_SECONDS );
-				}
+			if ( ! empty( $images ) ) {
+				set_transient( $transient_key, $images, HOUR_IN_SECONDS );
+				return $images;
 			}
 		}
 
-		return $images;
+		return array();
 	}
 
 	/**
