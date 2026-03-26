@@ -48,6 +48,7 @@ const App = () => {
   const [ metaExcerpt, setMetaExcerpt ] = useState( '' );
   const [ metaFeaturedMediaId, setMetaFeaturedMediaId ] = useState<number | null>( null );
   const [ metaFeaturedImageUrl, setMetaFeaturedImageUrl ] = useState<string | null>( null );
+  const [ metaStripOpen, setMetaStripOpen ] = useState( false );
   const [ originalMeta, setOriginalMeta ] = useState<{
     title: string;
     excerpt: string;
@@ -123,6 +124,8 @@ const App = () => {
     publishFlow.resetPublishState();
     setSelectedItem( item );
     setView( 'designer' );
+    const cleanTitle = stripHtml( item.title?.rendered || '' );
+    conversation.setInput( `Redesign my existing WordPress ${ item.type } titled "${ cleanTitle }" — keep the same topic but make it modern and professional` );
 
     const baseHtml = item.content?.raw || item.content?.rendered || '';
     setOriginalPreviewHtml( baseHtml );
@@ -155,6 +158,7 @@ const App = () => {
     setOriginalMeta( null );
     setPublishTitle( '' );
     setView( 'designer' );
+    conversation.setInput( 'Create a modern homepage with a hero section, key features, and a call to action' );
   };
 
   const handleShowDashboard = () => {
@@ -275,8 +279,21 @@ const App = () => {
       />
       <div className="ai-designer-body">
         <div className="ai-designer-main">
+          { Boolean( selectedItem ) && (
+            <button
+              type="button"
+              className="ai-meta-strip-bar"
+              onClick={ () => setMetaStripOpen( ( prev ) => ! prev ) }
+              aria-expanded={ metaStripOpen }
+            >
+              <span className="ai-meta-strip-bar__label">Page details</span>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={ { transform: metaStripOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' } }>
+                <path d="M2 4.5L7 9.5L12 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          ) }
           <MetaStrip
-            visible={ Boolean( selectedItem ) }
+            visible={ Boolean( selectedItem ) && metaStripOpen }
             title={ metaTitle }
             excerpt={ metaExcerpt }
             featuredImageUrl={ metaFeaturedImageUrl }

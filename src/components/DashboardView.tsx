@@ -69,8 +69,10 @@ const DashboardView = ( {
           <div className="ai-dashboard-action-icon ai-dashboard-action-icon--primary">
             <SparklesIcon className="icon" />
           </div>
-          <h3>Create New Page with AI</h3>
-          <p>Design a brand new page or post from scratch</p>
+          <div className="ai-dashboard-action-text">
+            <h3>Create New Page with AI</h3>
+            <p>Design a brand new page or post from scratch</p>
+          </div>
         </div>
       </div>
 
@@ -120,7 +122,6 @@ const DashboardView = ( {
                   <li key={ page.id } className="ai-dashboard-list-item" onClick={ () => onSelectItem( page ) }>
                     <DocumentIcon className="icon-sm" />
                     <span className="ai-dashboard-item-title">{ page.title.rendered }</span>
-                    <span className="ai-dashboard-status">{ page.status }</span>
                   </li>
                 ) ) }
                 { ! loadingSite && filteredPages.length === 0 && (
@@ -171,7 +172,6 @@ const DashboardView = ( {
                   <li key={ post.id } className="ai-dashboard-list-item" onClick={ () => onSelectItem( post ) }>
                     <BookOpenIcon className="icon-sm" />
                     <span className="ai-dashboard-item-title">{ post.title.rendered }</span>
-                    <span className="ai-dashboard-status">{ post.status }</span>
                   </li>
                 ) ) }
                 { ! loadingSite && filteredPosts.length === 0 && (
