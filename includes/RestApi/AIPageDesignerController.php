@@ -253,7 +253,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				preg_match( '/<!-- wp:(image|cover)/i', $final_html ) ||
 				preg_match( '/background-image:\s*url\(/i', $final_html ) ||
 				preg_match( '/https?:\/\/images\.unsplash\.com\//i', $final_html ) ||
-				preg_match( '/https?:\/\/(www\.)?unsplash\.com\//i', $final_html )
+				preg_match( '/https?:\/\/(www\.)?unsplash\.com\//i', $final_html ) ||
+				preg_match( '/https?:\/\/placehold\.co\//i', $final_html )
 			) {
 				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
 				if ( ! empty( $unsplash_images ) ) {

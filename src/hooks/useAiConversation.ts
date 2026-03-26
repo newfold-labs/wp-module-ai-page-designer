@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { HistoryEntry, Message, WPItem } from '../types';
 import { generateContent } from '../api';
-import { applyLocalStyle, extractHtml, getLocalStyleChange } from '../util/aiDesignerHelpers';
+import { applyLocalStyle, extractHtml } from '../util/aiDesignerHelpers';
 
 type UseAiConversationOptions = {
   apiUrl: string;
@@ -88,79 +88,6 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setMessages( newMessages );
 
     try {
-      const targetSelector = selectedBlockIndex !== null
-        ? `.nfd-block-wrapper[data-block-index="${ selectedBlockIndex }"]`
-        : 'body';
-      console.log( 'Local style target selector:', targetSelector );
-      const localStyleChange = getLocalStyleChange( text, targetSelector );
-      if ( localStyleChange ) {
-        const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
-        const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
-
-        if ( selectedBlockIndex !== null && iframeRef.current?.contentDocument ) {
-          const doc = iframeRef.current.contentDocument;
-          const wrapper = doc.querySelector( `.nfd-block-wrapper[data-block-index="${ selectedBlockIndex }"]` ) as HTMLElement | null;
-          if ( wrapper ) {
-            const targets = [ wrapper, ...Array.from( wrapper.querySelectorAll<HTMLElement>( '*' ) ) ];
-            if ( localStyleChange.isFontReset ) {
-              targets.forEach( ( element ) => element.style.removeProperty( 'color' ) );
-            } else if ( localStyleChange.colorValue ) {
-              targets.forEach( ( element ) =>
-                element.style.setProperty( 'color', localStyleChange.colorValue as string, 'important' )
-              );
-            }
-
-            const root = doc.getElementById( 'nfd-preview-root' );
-            let newHtml = '';
-            if ( root ) {
-              const clone = root.cloneNode( true ) as HTMLElement;
-              clone.querySelectorAll( '.nfd-block-wrapper' ).forEach( ( el ) => {
-                const wrapperEl = el as HTMLElement;
-                wrapperEl.replaceWith( ...Array.from( wrapperEl.childNodes ) );
-              } );
-              newHtml = clone.innerHTML;
-            }
-
-            const nextHtml = newHtml || ( previewHtml || originalPreviewHtml || '' );
-            setPreviewHtml( nextHtml );
-            setHistoryEntries( ( prev ) => [
-              ...prev,
-              {
-                id: historyId,
-                html: nextHtml,
-                label: `Style change: ${ localStyleChange.label }`,
-                timestamp,
-                publishTitle,
-              },
-            ] );
-            setSelectedHistoryIds( [] );
-            clearSelection( iframeRef );
-            setHasAIGenerated( true );
-            setMessages( [ ...newMessages, { role: 'assistant', content: localStyleChange.message } ] );
-            return;
-          }
-        }
-
-        const baseHtml = previewHtml || originalPreviewHtml || '';
-        const nextHtml = applyLocalStyle( baseHtml, localStyleChange.css );
-        setPreviewHtml( nextHtml );
-        setHistoryEntries( ( prev ) => [
-          ...prev,
-          {
-            id: historyId,
-            html: nextHtml,
-            label: `Style change: ${ localStyleChange.label }`,
-            timestamp,
-            publishTitle,
-          },
-        ] );
-        setSelectedHistoryIds( [] );
-        clearSelection( iframeRef );
-        setHasAIGenerated( true );
-        setMessages( [ ...newMessages, { role: 'assistant', content: localStyleChange.message } ] );
-        return;
-      }
-
       setIsLoading( true );
       const contextMarkup = selectedBlockHtml || previewHtml || '';
       const context = {
@@ -172,7 +99,17 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
       const response = await generateContent( apiUrl, newMessages, context );
 
-      let assistantContent = response?.data?.content || 'No response generated';
+      const rawContent = response?.data?.content ?? '';
+      const serverMessage = response?.data?.message ?? '';
+
+      // Message-only response: fast path signalled an error (e.g. Unsplash unavailable).
+      // Show the message in chat without touching the preview.
+      if ( ! rawContent && serverMessage ) {
+        setMessages( [ ...newMessages, { role: 'assistant', content: serverMessage } ] );
+        return;
+      }
+
+      let assistantContent = rawContent || 'No response generated';
       const title = response?.data?.title || '';
 
       if ( ! selectedItem && response?.data?.conversation_id ) {
@@ -181,6 +118,32 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
       if ( response?.data?.response_id ) {
         setResponseId( response.data.response_id );
+      }
+
+      // Handle AI-driven CSS-only style response (e.g. dark mode, color changes).
+      const CSS_ONLY_MARKER = '<!-- RESPONSE_TYPE: CSS_ONLY -->';
+      if ( assistantContent.trim().startsWith( CSS_ONLY_MARKER ) ) {
+        const css = assistantContent.trim().slice( CSS_ONLY_MARKER.length ).trim();
+        const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+        const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+        const baseHtml = previewHtml || originalPreviewHtml || '';
+        const nextHtml = applyLocalStyle( baseHtml, css );
+        setPreviewHtml( nextHtml );
+        setHistoryEntries( ( prev ) => [
+          ...prev,
+          {
+            id: historyId,
+            html: nextHtml,
+            label: `Style change: ${ text.substring( 0, 60 ) }`,
+            timestamp,
+            publishTitle,
+          },
+        ] );
+        setSelectedHistoryIds( [] );
+        clearSelection( iframeRef );
+        setHasAIGenerated( true );
+        setMessages( [ ...newMessages, { role: 'assistant', content: 'Applied style changes to the preview.' } ] );
+        return;
       }
 
       setMessages( [ ...newMessages, { role: 'assistant', content: assistantContent } ] );

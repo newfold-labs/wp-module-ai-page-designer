@@ -20,6 +20,7 @@ export type GenerateContentResponse = {
   data: {
     content: string;
     title?: string;
+    message?: string;
     response_id?: string;
     conversation_id?: string;
     conversation_key?: string;
