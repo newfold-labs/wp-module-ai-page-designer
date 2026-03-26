@@ -200,14 +200,23 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				return $fast_path_response;
 			}
 
-			$ai_messages         = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type );
+			$ai_messages          = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type );
 			$previous_response_id = $this->load_previous_response_id( $conversation_key );
-			$ai_result           = $this->ai_client->generate_content(
+			$ai_result            = $this->ai_client->generate_content(
 				$ai_messages,
 				array(
 					'previous_response_id' => $previous_response_id,
 				)
 			);
+
+			// If the stored response_id was stale/expired, clear it and retry without it.
+			if ( is_wp_error( $ai_result ) && $previous_response_id ) {
+				$error_message = $ai_result->get_error_message();
+				if ( strpos( $error_message, 'not found' ) !== false || strpos( $error_message, 'unable to process' ) !== false ) {
+					delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
+					$ai_result = $this->ai_client->generate_content( $ai_messages, array() );
+				}
+			}
 
 			if ( is_wp_error( $ai_result ) ) {
 				return $ai_result;
@@ -248,17 +257,17 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$search_context .= $all_prompts;
 
 			// Only fetch images if we actually found placeholders that need replacing.
-			if (
+			$has_image_placeholders = (
 				preg_match( '/<img[^>]+src=["\']([^"\']+)["\']/i', $final_html ) ||
 				preg_match( '/<!-- wp:(image|cover)/i', $final_html ) ||
 				preg_match( '/background-image:\s*url\(/i', $final_html ) ||
 				preg_match( '/https?:\/\/images\.unsplash\.com\//i', $final_html ) ||
 				preg_match( '/https?:\/\/(www\.)?unsplash\.com\//i', $final_html ) ||
 				preg_match( '/https?:\/\/placehold\.co\//i', $final_html )
-			) {
+			);
+			if ( $has_image_placeholders ) {
 				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
 				if ( ! empty( $unsplash_images ) ) {
-					// We must randomize the array here too so different layout generations for the same query get different images.
 					shuffle( $unsplash_images );
 					$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images );
 				}
@@ -733,7 +742,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				array( 'status' => 500 )
 			);
 		}
-		error_log( print_r( $result['jwt'], true ) );
 		return $result['jwt'];
 	}
 
@@ -767,8 +775,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			'query'    => trim( $search_query ),
 			'per_page' => 15, // Increase to 15 to have a better pool to randomize from
 		);
-		error_log( 'Unsplash search query: ' . $args['query'] );
-
 		$transient_key = 'nfd_unsplash_' . md5( $args['query'] );
 		$cached_images = get_transient( $transient_key );
 

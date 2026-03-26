@@ -49,6 +49,68 @@ class PromptBuilder {
 	}
 
 	/**
+	 * Maximum characters allowed for current_markup before it is skeletonised.
+	 */
+	const MAX_MARKUP_LENGTH = 10000;
+
+	/**
+	 * Strip inner HTML from block markup, keeping only block comment delimiters.
+	 *
+	 * Reduces a large page to its structural skeleton so the AI understands
+	 * the block layout without being overwhelmed by content.
+	 *
+	 * @param string $markup Full Gutenberg block markup.
+	 * @return string Skeletonised markup.
+	 */
+	private function skeletonise_markup( $markup ) {
+		// Keep only lines that are block comment delimiters (<!-- wp:... --> or <!-- /wp:... -->).
+		$lines    = explode( "\n", $markup );
+		$skeleton = array();
+		foreach ( $lines as $line ) {
+			$trimmed = trim( $line );
+			if ( preg_match( '/^<!--\s*\/?wp:/i', $trimmed ) ) {
+				$skeleton[] = $trimmed;
+			}
+		}
+		return implode( "\n", $skeleton );
+	}
+
+	/**
+	 * Detect whether a prompt is asking for a full redesign or regeneration.
+	 *
+	 * When true, existing markup should be skipped and the blueprint injected instead.
+	 *
+	 * @param string $prompt The user prompt text.
+	 * @return bool
+	 */
+	private function is_redesign_request( $prompt ) {
+		$prompt_lower = strtolower( $prompt );
+		$triggers     = array(
+			'redesign',
+			'regenerate',
+			'generate again',
+			'redo',
+			'remake',
+			'rebuild',
+			'start over',
+			'start fresh',
+			'from scratch',
+			'create new',
+			'make a new',
+			'build a new',
+			'try again',
+			'new version',
+			'new design',
+		);
+		foreach ( $triggers as $trigger ) {
+			if ( str_contains( $prompt_lower, $trigger ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * Build user messages for the AI request.
 	 *
 	 * Only user messages are passed through; assistant/system messages are ignored.
@@ -73,6 +135,15 @@ class PromptBuilder {
 			}
 		}
 
+		$last_user_prompt = '';
+		foreach ( $messages as $msg ) {
+			if ( 'user' === ( $msg['role'] ?? '' ) ) {
+				$last_user_prompt = $msg['content'] ?? '';
+			}
+		}
+
+		$is_redesign = $this->is_redesign_request( $last_user_prompt );
+
 		foreach ( $messages as $index => $msg ) {
 			if ( 'user' !== ( $msg['role'] ?? '' ) ) {
 				continue;
@@ -80,7 +151,10 @@ class PromptBuilder {
 
 			$content = $msg['content'] ?? '';
 			if ( $index === $last_user_index ) {
-				if ( $is_new && empty( $current_markup ) && 'post' !== $content_type ) {
+				$use_blueprint = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
+					|| ( $is_redesign && 'post' !== $content_type );
+
+				if ( $use_blueprint ) {
 					// Pages: try blueprint first, fall back to patterns.
 					$base_layout = $this->blueprint_service->get_base_layout();
 					if ( empty( $base_layout ) ) {
@@ -90,7 +164,12 @@ class PromptBuilder {
 						$content .= "\n\n--- BASE LAYOUT ---\nPlease use this Gutenberg block structure as the foundation and modify its text and styling attributes to match the user's request. Preserve all block comment delimiters.\n\n" . $base_layout;
 					}
 				} elseif ( ! empty( $current_markup ) ) {
-					$content .= "\n\n--- CURRENT TARGET LAYOUT ---\nPlease modify the following existing Gutenberg block markup according to the request above. Preserve all block comment delimiters.\n\n" . $current_markup;
+					if ( strlen( $current_markup ) > self::MAX_MARKUP_LENGTH ) {
+						$current_markup = $this->skeletonise_markup( $current_markup );
+						$content .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\nThe page markup was too large to send in full. The following is the block structure skeleton only. Please regenerate the full page content based on this structure and the user's request above. Preserve all block comment delimiters.\n\n" . $current_markup;
+					} else {
+						$content .= "\n\n--- CURRENT TARGET LAYOUT ---\nPlease modify the following existing Gutenberg block markup according to the request above. Preserve all block comment delimiters.\n\n" . $current_markup;
+					}
 				}
 			}
 

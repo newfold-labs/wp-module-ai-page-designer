@@ -53,10 +53,10 @@ class FastPathHandler {
 			$has_images_in_markup = (bool) preg_match( '/<img\b|<!--\s*wp:(image|cover)\b/i', $current_markup );
 
 			if ( $has_images_in_markup ) {
-				$unsplash_images = $this->image_service->get_unsplash_images( $last_user_prompt );
+				$page_title     = $this->extract_page_title( $current_markup );
+				$search_context = trim( $last_user_prompt . ' ' . $page_title );
+				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
 				if ( ! empty( $unsplash_images ) ) {
-					// Randomize array so identical queries do not always use the same first images.
-					shuffle( $unsplash_images );
 					$new_html = $this->image_service->replace_images_in_html( $current_markup, $unsplash_images );
 					return $this->build_response( $new_html );
 				}
@@ -68,6 +68,24 @@ class FastPathHandler {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Extract the first heading from block markup to use as page context.
+	 *
+	 * Strips HTML tags and common title separators so only meaningful words remain.
+	 *
+	 * @param string $markup Gutenberg block markup.
+	 * @return string Plain text heading, or empty string if none found.
+	 */
+	private function extract_page_title( $markup ) {
+		if ( preg_match( '/<h[1-3][^>]*>(.*?)<\/h[1-3]>/is', $markup, $m ) ) {
+			$title = strip_tags( $m[1] );
+			// Strip common separators used in page titles (e.g. "Brand | Tagline - Site").
+			$title = preg_replace( '/\s*[\|\-–—:]\s*/', ' ', $title );
+			return trim( $title );
+		}
+		return '';
 	}
 
 	/**
