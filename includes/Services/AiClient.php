@@ -39,7 +39,7 @@ class AiClient {
 
 		$input_payload = array(
 			'input' => $ai_messages,
-			'model' => 'gpt-5-mini',
+			'model' => 'gpt-5.4-mini',
 			'store' => true,
 		);
 
@@ -53,8 +53,6 @@ class AiClient {
 				'inputPayload'  => $input_payload,
 			)
 		);
-
-		error_log( 'AI Service Request Body: ' . $request_body );
 
 		$timeout_filter = static function () {
 			return 120;
@@ -90,9 +88,10 @@ class AiClient {
 		}
 
 		$response_code = wp_remote_retrieve_response_code( $response );
+		$raw_body      = wp_remote_retrieve_body( $response );
 
 		if ( 200 !== $response_code ) {
-			$error_body = json_decode( wp_remote_retrieve_body( $response ), true );
+			$error_body = json_decode( $raw_body, true );
 
 			if ( 400 === $response_code && isset( $error_body['payload']['reason'] ) ) {
 				return new \WP_Error(
@@ -103,9 +102,10 @@ class AiClient {
 			}
 
 			if ( isset( $error_body['payload'] ) ) {
+				$payload_message = is_string( $error_body['payload'] ) ? $error_body['payload'] : wp_json_encode( $error_body['payload'] );
 				return new \WP_Error(
 					'ai_generation_error',
-					is_string( $error_body['payload'] ) ? $error_body['payload'] : wp_json_encode( $error_body['payload'] ),
+					$payload_message,
 					array( 'status' => $response_code )
 				);
 			}
