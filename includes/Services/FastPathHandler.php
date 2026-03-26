@@ -20,12 +20,21 @@ class FastPathHandler {
 	private $image_service;
 
 	/**
+	 * AI client.
+	 *
+	 * @var AiClient|null
+	 */
+	private $ai_client;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param ImageService|null $image_service Image service.
+	 * @param AiClient|null     $ai_client     AI client for keyword generation.
 	 */
-	public function __construct( ?ImageService $image_service = null ) {
+	public function __construct( ?ImageService $image_service = null, ?AiClient $ai_client = null ) {
 		$this->image_service = $image_service ?: new ImageService();
+		$this->ai_client     = $ai_client;
 	}
 
 	/**
@@ -54,7 +63,7 @@ class FastPathHandler {
 
 			if ( $has_images_in_markup ) {
 				$page_title     = $this->extract_page_title( $current_markup );
-				$search_context = trim( $last_user_prompt . ' ' . $page_title );
+				$search_context = $this->generate_image_keywords( $last_user_prompt, $page_title );
 				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
 				if ( ! empty( $unsplash_images ) ) {
 					$new_html = $this->image_service->replace_images_in_html( $current_markup, $unsplash_images );
@@ -68,6 +77,45 @@ class FastPathHandler {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Use AI to generate focused image search keywords from the user prompt and page title.
+	 *
+	 * Falls back to the raw prompt + title string if the AI call fails.
+	 *
+	 * @param string $prompt     The user's image request prompt.
+	 * @param string $page_title The page title for additional context.
+	 * @return string Search context string for Unsplash.
+	 */
+	private function generate_image_keywords( $prompt, $page_title ) {
+		if ( ! $this->ai_client ) {
+			return trim( $prompt . ' ' . $page_title );
+		}
+
+		$context = $page_title ? "Page title: {$page_title}\nUser request: {$prompt}" : $prompt;
+
+		$ai_messages = array(
+			array(
+				'role'    => 'system',
+				'content' => 'You are an image search assistant. Given a user request and optional page context, return only 4-6 comma-separated search keywords suitable for finding the best matching stock photo on Unsplash. Return nothing else — no explanation, no punctuation other than commas.',
+			),
+			array(
+				'role'    => 'user',
+				'content' => $context,
+			),
+		);
+
+		$result = $this->ai_client->generate_content( $ai_messages );
+
+		if ( is_wp_error( $result ) || empty( $result['content'] ) ) {
+			return trim( $prompt . ' ' . $page_title );
+		}
+
+		// Convert comma-separated keywords to a space-separated search string.
+		$keywords = array_map( 'trim', explode( ',', $result['content'] ) );
+		$keywords = array_filter( $keywords );
+		return implode( ' ', $keywords );
 	}
 
 	/**

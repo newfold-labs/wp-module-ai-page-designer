@@ -77,7 +77,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$this->ai_client              = new AiClient();
 		$this->image_service          = new ImageService();
 		$this->block_markup_sanitizer = new BlockMarkupSanitizer();
-		$this->fast_path_handler      = new FastPathHandler( $this->image_service );
+		$this->fast_path_handler      = new FastPathHandler( $this->image_service, $this->ai_client );
 	}
 
 	/**
