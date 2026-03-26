@@ -113,28 +113,22 @@ class PromptBuilder {
 	/**
 	 * Build user messages for the AI request.
 	 *
-	 * Only user messages are passed through; assistant/system messages are ignored.
-	 * The last user message receives the base layout or current markup appendix.
+	 * Only the latest user message is sent — conversation history is maintained
+	 * server-side via previous_response_id, so replaying the full history is redundant.
+	 * The message receives the base layout or current markup appendix as needed.
 	 *
 	 * For posts, no base layout is injected — the AI generates editorial content freely.
 	 * For pages, the blueprint base layout is preferred; patterns are used as fallback.
 	 *
-	 * @param array  $messages      Message payload from the request.
+	 * @param array  $messages       Message payload from the request.
 	 * @param string $current_markup Current block markup, if any.
-	 * @param string $content_type  'page' or 'post'.
+	 * @param string $content_type   'page' or 'post'.
 	 * @return array
 	 */
 	public function build_user_messages( array $messages, $current_markup = '', $content_type = 'page' ) {
-		$user_messages = array();
-		$is_new        = count( $messages ) === 1;
+		$is_new = count( $messages ) === 1;
 
-		$last_user_index = -1;
-		foreach ( $messages as $index => $msg ) {
-			if ( isset( $msg['role'] ) && 'user' === $msg['role'] ) {
-				$last_user_index = $index;
-			}
-		}
-
+		// Extract the last user message only.
 		$last_user_prompt = '';
 		foreach ( $messages as $msg ) {
 			if ( 'user' === ( $msg['role'] ?? '' ) ) {
@@ -142,44 +136,40 @@ class PromptBuilder {
 			}
 		}
 
-		$is_redesign = $this->is_redesign_request( $last_user_prompt );
-
-		foreach ( $messages as $index => $msg ) {
-			if ( 'user' !== ( $msg['role'] ?? '' ) ) {
-				continue;
-			}
-
-			$content = $msg['content'] ?? '';
-			if ( $index === $last_user_index ) {
-				$use_blueprint = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
-					|| ( $is_redesign && 'post' !== $content_type );
-
-				if ( $use_blueprint ) {
-					// Pages: try blueprint first, fall back to patterns.
-					$base_layout = $this->blueprint_service->get_base_layout();
-					if ( empty( $base_layout ) ) {
-						$base_layout = $this->pattern_layout_provider->get_random_pattern_layout( $content );
-					}
-					if ( ! empty( $base_layout ) ) {
-						$content .= "\n\n--- BASE LAYOUT ---\nPlease use this Gutenberg block structure as the foundation and modify its text and styling attributes to match the user's request. Preserve all block comment delimiters.\n\n" . $base_layout;
-					}
-				} elseif ( ! empty( $current_markup ) ) {
-					if ( strlen( $current_markup ) > self::MAX_MARKUP_LENGTH ) {
-						$current_markup = $this->skeletonise_markup( $current_markup );
-						$content .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\nThe page markup was too large to send in full. The following is the block structure skeleton only. Please regenerate the full page content based on this structure and the user's request above. Preserve all block comment delimiters.\n\n" . $current_markup;
-					} else {
-						$content .= "\n\n--- CURRENT TARGET LAYOUT ---\nPlease modify the following existing Gutenberg block markup according to the request above. Preserve all block comment delimiters.\n\n" . $current_markup;
-					}
-				}
-			}
-
-			$user_messages[] = array(
-				'role'    => 'user',
-				'content' => $content,
-			);
+		if ( '' === $last_user_prompt ) {
+			return array();
 		}
 
-		return $user_messages;
+		$is_redesign   = $this->is_redesign_request( $last_user_prompt );
+		$use_blueprint = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
+			|| ( $is_redesign && 'post' !== $content_type );
+
+		$content = $last_user_prompt;
+
+		if ( $use_blueprint ) {
+			// Pages: try blueprint first, fall back to patterns.
+			$base_layout = $this->blueprint_service->get_base_layout();
+			if ( empty( $base_layout ) ) {
+				$base_layout = $this->pattern_layout_provider->get_random_pattern_layout( $content );
+			}
+			if ( ! empty( $base_layout ) ) {
+				$content .= "\n\n--- BASE LAYOUT ---\nPlease use this Gutenberg block structure as the foundation and modify its text and styling attributes to match the user's request. Preserve all block comment delimiters.\n\n" . $base_layout;
+			}
+		} elseif ( ! empty( $current_markup ) ) {
+			if ( strlen( $current_markup ) > self::MAX_MARKUP_LENGTH ) {
+				$current_markup = $this->skeletonise_markup( $current_markup );
+				$content .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\nThe page markup was too large to send in full. The following is the block structure skeleton only. Please regenerate the full page content based on this structure and the user's request above. Preserve all block comment delimiters.\n\n" . $current_markup;
+			} else {
+				$content .= "\n\n--- CURRENT TARGET LAYOUT ---\nPlease modify the following existing Gutenberg block markup according to the request above. Preserve all block comment delimiters.\n\n" . $current_markup;
+			}
+		}
+
+		return array(
+			array(
+				'role'    => 'user',
+				'content' => $content,
+			),
+		);
 	}
 
 	/**
