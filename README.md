@@ -5,13 +5,21 @@ AI-powered page and post designer for WordPress with live preview and publishing
 ## Features
 
 - AI chat-driven page/post generation with Gutenberg block markup output
-- Pattern-based base layouts for new pages to improve structure and speed
+- Blueprint/pattern-based base layouts for new pages to improve structure consistency
 - Live preview with block-level selection and targeted edits
-- Existing page/post selection with in-place updates
+- Dashboard to browse and edit existing pages and posts, or create new ones with AI
+- Collapsible page details strip (title, excerpt, featured image) in the designer view
+- Default context-aware prompt pre-filled when entering the designer
 - Direct publishing options (new page, new post, or set as homepage)
-- Theme-aware generation using active theme palette and typography
-- Automatic Unsplash image replacement for all image URLs (including backgrounds)
-- Fast-path updates for image swaps and theme color adjustments
+- Theme-aware generation using active theme colour palette and typography
+- Automatic Unsplash image replacement for all placeholder image URLs (including cover blocks and backgrounds)
+- AI-generated image search keywords for accurate Unsplash results when swapping images
+- Fast-path image swaps: detects image replacement intent and resolves without a full AI round-trip
+- Redesign/regeneration detection: skips existing markup and uses a clean blueprint when the user asks to redesign or start over
+- Markup size guard: large existing pages are skeletonised before being sent to the AI to avoid gateway timeouts
+- Stale conversation recovery: automatically retries without a stale `previous_response_id` on failure
+- CSS-only style changes handled via `<!-- RESPONSE_TYPE: CSS_ONLY -->` response contract
+- Conversation history drawer with revert support
 - Gated by Hiive `hasAISiteGen` capability
 
 ## Installation
@@ -23,43 +31,58 @@ This module is automatically loaded by the wp-plugin-web plugin when the `hasAIS
 ### Backend (PHP)
 
 The PHP code is located in the `includes/` directory:
-- `AIPageDesigner.php` - Main module class
-- `RestApi/AIPageDesignerController.php` - AI generation endpoint
-- `RestApi/WordPressProxyController.php` - WordPress content CRUD
-- `Data/SystemPrompts.php` - AI system prompts
+
+| File | Purpose |
+|---|---|
+| `AIPageDesigner.php` | Main module class, hooks and asset registration |
+| `RestApi/AIPageDesignerController.php` | AI generation endpoint, image replacement pipeline |
+| `RestApi/WordPressProxyController.php` | WordPress content CRUD |
+| `Services/AiClient.php` | JWT exchange and AI API request/response handling |
+| `Services/PromptBuilder.php` | System prompt, user message assembly, markup skeletonisation |
+| `Services/FastPathHandler.php` | Image swap fast path with AI keyword generation |
+| `Services/ImageService.php` | Unsplash search and image URL replacement |
+| `Services/BlueprintService.php` | Base layout blueprints for new pages |
+| `Services/BlockMarkupSanitizer.php` | Sanitises and extracts title from AI output |
+| `Data/SystemPrompts.php` | AI system prompts including CSS-only and image placeholder rules |
+
+```bash
+composer install   # Install PHP dependencies
+composer lint      # PHP CodeSniffer
+composer fix       # PHP CodeSniffer auto-fix
+```
 
 ### Frontend (React/TypeScript)
 
 The React app is in the `src/` directory.
 
-To build the frontend:
-
 ```bash
-cd vendor/newfold-labs/wp-module-ai-page-designer
-npm install
-npm run build
+npm install        # Install dependencies
+npm run build      # Production build
+npm run dev        # Development build with watch
 ```
 
-For development with auto-rebuild:
+## AI Output Contract
 
-```bash
-npm run dev
-```
+The AI is instructed to:
+- Return only raw Gutenberg block markup (no `<html>`/`<body>` wrappers)
+- Embed the page title as `<!-- PAGE_TITLE: Title Here -->`
+- Use `https://placehold.co/WIDTHxHEIGHT` for all image URLs (replaced automatically by Unsplash)
+- For pure style requests, return `<!-- RESPONSE_TYPE: CSS_ONLY -->` followed by CSS rules only
 
 ## REST API Endpoints
 
 ### AI Generation
 - `POST /newfold-ai-page-designer/v1/generate`
-  - Body: `{ messages: [{role: 'user', content: '...'}] }`
-  - Returns: AI-generated HTML content
+  - Body: `{ messages: [{role, content}], current_markup?, content_type?, conversation_id? }`
+  - Returns: AI-generated HTML content, page title, response/conversation IDs
 
 ### Content Management
-- `GET /newfold-ai-page-designer/v1/content/pages` - List pages
-- `GET /newfold-ai-page-designer/v1/content/posts` - List posts
-- `GET /newfold-ai-page-designer/v1/content/{type}/{id}` - Get single item
-- `POST /newfold-ai-page-designer/v1/content/{type}` - Create content
-- `PUT /newfold-ai-page-designer/v1/content/{type}/{id}` - Update content
-- `POST /newfold-ai-page-designer/v1/homepage/{id}` - Set as homepage
+- `GET /newfold-ai-page-designer/v1/content/pages` — List pages
+- `GET /newfold-ai-page-designer/v1/content/posts` — List posts
+- `GET /newfold-ai-page-designer/v1/content/{type}/{id}` — Get single item
+- `POST /newfold-ai-page-designer/v1/content/{type}` — Create content
+- `PUT /newfold-ai-page-designer/v1/content/{type}/{id}` — Update content
+- `POST /newfold-ai-page-designer/v1/homepage/{id}` — Set as homepage
 
 ## Capability Requirements
 
