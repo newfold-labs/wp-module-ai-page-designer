@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { HistoryEntry, Message, WPItem } from '../types';
 import { generateContent } from '../api';
-import { applyLocalStyle, extractHtml } from '../util/aiDesignerHelpers';
+import { extractHtml } from '../util/aiDesignerHelpers';
 
 type UseAiConversationOptions = {
   apiUrl: string;
@@ -22,19 +22,16 @@ type UseAiConversationResult = {
   input: string;
   isLoading: boolean;
   historyEntries: HistoryEntry[];
-  selectedHistoryIds: string[];
   isHistoryOpen: boolean;
   hasAIGenerated: boolean;
   publishTitle: string;
   chatMessagesRef: RefObject<HTMLDivElement>;
   setInput: (value: string) => void;
   setIsHistoryOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
-  setSelectedHistoryIds: (value: string[] | ((prev: string[]) => string[])) => void;
   setPublishTitle: (value: string) => void;
   handleSend: () => Promise<void>;
   handleConfirmRevertChanges: () => void;
-  handleToggleHistorySelection: (id: string) => void;
-  handleRevertSelectedHistory: () => void;
+  handleRevertToEntry: (id: string) => void;
   resetAiConversation: () => void;
   appendAssistantMessage: (message: Message) => void;
 };
@@ -58,7 +55,6 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
   const [ input, setInput ] = useState( '' );
   const [ isLoading, setIsLoading ] = useState( false );
   const [ historyEntries, setHistoryEntries ] = useState<HistoryEntry[]>( [] );
-  const [ selectedHistoryIds, setSelectedHistoryIds ] = useState<string[]>( [] );
   const [ isHistoryOpen, setIsHistoryOpen ] = useState( false );
   const [ hasAIGenerated, setHasAIGenerated ] = useState( false );
   const [ conversationId, setConversationId ] = useState<string | null>( null );
@@ -120,32 +116,6 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         setResponseId( response.data.response_id );
       }
 
-      // Handle AI-driven CSS-only style response (e.g. dark mode, color changes).
-      const CSS_ONLY_MARKER = '<!-- RESPONSE_TYPE: CSS_ONLY -->';
-      if ( assistantContent.trim().startsWith( CSS_ONLY_MARKER ) ) {
-        const css = assistantContent.trim().slice( CSS_ONLY_MARKER.length ).trim();
-        const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
-        const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
-        const baseHtml = previewHtml || originalPreviewHtml || '';
-        const nextHtml = applyLocalStyle( baseHtml, css );
-        setPreviewHtml( nextHtml );
-        setHistoryEntries( ( prev ) => [
-          ...prev,
-          {
-            id: historyId,
-            html: nextHtml,
-            label: `Style change: ${ text.substring( 0, 60 ) }`,
-            timestamp,
-            publishTitle,
-          },
-        ] );
-        setSelectedHistoryIds( [] );
-        clearSelection( iframeRef );
-        setHasAIGenerated( true );
-        setMessages( [ ...newMessages, { role: 'assistant', content: 'Applied style changes to the preview.' } ] );
-        return;
-      }
-
       setMessages( [ ...newMessages, { role: 'assistant', content: assistantContent } ] );
 
       let finalHtml = assistantContent.trim();
@@ -197,7 +167,6 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
                 publishTitle: title || publishTitle,
               },
             ] );
-            setSelectedHistoryIds( [] );
           }
         };
 
@@ -291,45 +260,29 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setHasAIGenerated( false );
     setPublishTitle( '' );
     setHistoryEntries( [] );
-    setSelectedHistoryIds( [] );
     setIsHistoryOpen( false );
     setMessages( [] );
     setInput( '' );
     clearSelection( iframeRef );
   }, [ clearSelection, iframeRef, originalPreviewHtml, setHasAIGenerated, setMessages, setPreviewHtml, setPublishTitle ] );
 
-  const handleToggleHistorySelection = useCallback( ( id: string ) => {
-    setSelectedHistoryIds( ( prev ) => (
-      prev.includes( id ) ? prev.filter( ( existingId ) => existingId !== id ) : [ ...prev, id ]
-    ) );
-  }, [] );
-
-  const handleRevertSelectedHistory = useCallback( () => {
-    if ( selectedHistoryIds.length === 0 ) {
+  const handleRevertToEntry = useCallback( ( id: string ) => {
+    const index = historyEntries.findIndex( ( entry ) => entry.id === id );
+    if ( index === -1 ) {
       return;
     }
-    const selectedSet = new Set( selectedHistoryIds );
-    const earliestIndex = historyEntries.findIndex( ( entry ) => selectedSet.has( entry.id ) );
-    if ( earliestIndex === -1 ) {
-      return;
-    }
-    const remainingHistory = historyEntries.slice( 0, earliestIndex );
-    const nextEntry = remainingHistory[ remainingHistory.length - 1 ];
-    const nextHtml = nextEntry?.html ?? originalPreviewHtml ?? null;
-    const nextTitle = nextEntry?.publishTitle ?? '';
+    const remainingHistory = historyEntries.slice( 0, index + 1 );
+    const targetEntry = historyEntries[ index ];
 
     setHistoryEntries( remainingHistory );
-    setSelectedHistoryIds( [] );
-    setPreviewHtml( nextHtml );
-    setPublishTitle( nextTitle );
-    setHasAIGenerated( remainingHistory.length > 0 );
+    setPreviewHtml( targetEntry.html );
+    setPublishTitle( targetEntry.publishTitle ?? '' );
+    setHasAIGenerated( true );
     clearSelection( iframeRef );
   }, [
     clearSelection,
     historyEntries,
     iframeRef,
-    originalPreviewHtml,
-    selectedHistoryIds,
     setHasAIGenerated,
     setPreviewHtml,
     setPublishTitle,
@@ -339,7 +292,6 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setMessages( [] );
     setInput( '' );
     setHistoryEntries( [] );
-    setSelectedHistoryIds( [] );
     setIsHistoryOpen( false );
     setHasAIGenerated( false );
     setConversationId( null );
@@ -352,19 +304,16 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     input,
     isLoading,
     historyEntries,
-    selectedHistoryIds,
     isHistoryOpen,
     hasAIGenerated,
     publishTitle,
     chatMessagesRef,
     setInput,
     setIsHistoryOpen,
-    setSelectedHistoryIds,
     setPublishTitle,
     handleSend,
     handleConfirmRevertChanges,
-    handleToggleHistorySelection,
-    handleRevertSelectedHistory,
+    handleRevertToEntry,
     resetAiConversation,
     appendAssistantMessage,
   };

@@ -311,12 +311,9 @@ const App = () => {
               chatMessagesRef={ conversation.chatMessagesRef }
               isLoading={ conversation.isLoading }
               historyEntries={ conversation.historyEntries }
-              selectedHistoryIds={ conversation.selectedHistoryIds }
               isHistoryOpen={ conversation.isHistoryOpen }
               onToggleHistoryOpen={ () => conversation.setIsHistoryOpen( ( prev ) => ! prev ) }
-              onToggleHistorySelection={ conversation.handleToggleHistorySelection }
-              onRevertSelected={ conversation.handleRevertSelectedHistory }
-              onClearSelectedHistory={ () => conversation.setSelectedHistoryIds( [] ) }
+              onRevertTo={ conversation.handleRevertToEntry }
               hasAIGenerated={ conversation.hasAIGenerated || metaDirty }
               publishing={ publishFlow.publishing }
               selectedItem={ selectedItem }

@@ -15,12 +15,9 @@ type Props = {
   chatMessagesRef: RefObject<HTMLDivElement>;
   isLoading: boolean;
   historyEntries: HistoryEntry[];
-  selectedHistoryIds: string[];
   isHistoryOpen: boolean;
   onToggleHistoryOpen: () => void;
-  onToggleHistorySelection: (id: string) => void;
-  onRevertSelected: () => void;
-  onClearSelectedHistory: () => void;
+  onRevertTo: (id: string) => void;
   hasAIGenerated: boolean;
   publishing: boolean;
   selectedItem: WPItem | null;
@@ -33,12 +30,9 @@ const ChatPanel = ( {
   chatMessagesRef,
   isLoading,
   historyEntries,
-  selectedHistoryIds,
   isHistoryOpen,
   onToggleHistoryOpen,
-  onToggleHistorySelection,
-  onRevertSelected,
-  onClearSelectedHistory,
+  onRevertTo,
   hasAIGenerated,
   publishing,
   selectedItem,
@@ -109,12 +103,9 @@ const ChatPanel = ( {
 
       <HistoryDrawer
         historyEntries={ historyEntries }
-        selectedHistoryIds={ selectedHistoryIds }
         isOpen={ isHistoryOpen }
         onToggleOpen={ onToggleHistoryOpen }
-        onToggleSelection={ onToggleHistorySelection }
-        onRevertSelected={ onRevertSelected }
-        onClearSelection={ onClearSelectedHistory }
+        onRevertTo={ onRevertTo }
       />
 
       { hasAIGenerated && ! isLoading && (

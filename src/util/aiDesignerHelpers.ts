@@ -20,15 +20,7 @@ export const extractHtml = ( content: string ): string | null => {
   return cleanContent.trim();
 };
 
-export const applyLocalStyle = ( html: string, cssText: string ) => {
-  const styleTag = `<style data-nfd-local-style="true">${ cssText }</style>`;
-  if ( html.includes( 'data-nfd-local-style="true"' ) ) {
-    return html.replace(
-      /<style data-nfd-local-style="true">[\s\S]*?<\/style>/u,
-      styleTag
-    );
-  }
+export const stripLocalStyles = ( html: string ): string =>
+  html.replace( /<style data-nfd-local-style="true">[\s\S]*?<\/style>\n?/gu, '' );
 
-  return `${ styleTag }\n${ html }`;
-};
 

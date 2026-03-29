@@ -3,26 +3,22 @@ import type { HistoryEntry } from '../types';
 
 type Props = {
   historyEntries: HistoryEntry[];
-  selectedHistoryIds: string[];
   isOpen: boolean;
   onToggleOpen: () => void;
-  onToggleSelection: (id: string) => void;
-  onRevertSelected: () => void;
-  onClearSelection: () => void;
+  onRevertTo: (id: string) => void;
 };
 
 const HistoryDrawer = ( {
   historyEntries,
-  selectedHistoryIds,
   isOpen,
   onToggleOpen,
-  onToggleSelection,
-  onRevertSelected,
-  onClearSelection,
+  onRevertTo,
 }: Props ) => {
   if ( historyEntries.length === 0 ) {
     return null;
   }
+
+  const lastId = historyEntries[ historyEntries.length - 1 ].id;
 
   return (
     <div className="ai-history">
@@ -39,49 +35,28 @@ const HistoryDrawer = ( {
         </div>
       </div>
       { isOpen ? (
-        <>
-          <ul className="ai-history-list">
-            { historyEntries.map( ( entry ) => (
-              <li key={ entry.id } className="ai-history-item">
-                <label className="ai-history-label">
-                  <input
-                    type="checkbox"
-                    checked={ selectedHistoryIds.includes( entry.id ) }
-                    onChange={ () => onToggleSelection( entry.id ) }
-                  />
-                  <span className="ai-history-text">
-                    { entry.label }
-                    <span className="ai-history-time">{ entry.timestamp }</span>
-                  </span>
-                </label>
-              </li>
-            ) ) }
-          </ul>
-          <div className="ai-history-actions">
-            <button
-              type="button"
-              className="ai-history-action"
-              disabled={ selectedHistoryIds.length === 0 }
-              onClick={ onRevertSelected }
-            >
-              Revert selected (and newer)
-            </button>
-            <button
-              type="button"
-              className="ai-history-action ai-history-action--secondary"
-              disabled={ selectedHistoryIds.length === 0 }
-              onClick={ onClearSelection }
-            >
-              Clear selection
-            </button>
-          </div>
-          <p className="ai-history-hint">
-            Reverting removes the selected edits and anything after them.
-          </p>
-        </>
+        <ul className="ai-history-list">
+          { historyEntries.map( ( entry ) => (
+            <li key={ entry.id } className="ai-history-item">
+              <span className="ai-history-text">
+                { entry.label }
+                <span className="ai-history-time">{ entry.timestamp }</span>
+              </span>
+              { entry.id !== lastId && (
+                <button
+                  type="button"
+                  className="ai-history-action"
+                  onClick={ () => onRevertTo( entry.id ) }
+                >
+                  Restore to this version
+                </button>
+              ) }
+            </li>
+          ) ) }
+        </ul>
       ) : (
         <p className="ai-history-collapsed">
-          { historyEntries.length } edits saved. Click “Show” to view.
+          { historyEntries.length } edits saved. Click &ldquo;Show&rdquo; to view.
         </p>
       ) }
     </div>

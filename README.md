@@ -18,13 +18,12 @@ AI-powered page and post designer for WordPress with live preview and publishing
 - Redesign/regeneration detection: skips existing markup and uses a clean blueprint when the user asks to redesign or start over
 - Markup size guard: large existing pages are skeletonised before being sent to the AI to avoid gateway timeouts
 - Stale conversation recovery: automatically retries without a stale `previous_response_id` on failure
-- CSS-only style changes handled via `<!-- RESPONSE_TYPE: CSS_ONLY -->` response contract
 - Conversation history drawer with revert support
-- Gated by Hiive `hasAISiteGen` capability
+- Gated by Hiive `canAccessAI` capability
 
 ## Installation
 
-This module is automatically loaded by the wp-plugin-web plugin when the `hasAISiteGen` capability is enabled.
+This module is automatically loaded by the wp-plugin-web plugin when the `canAccessAI` capability is enabled.
 
 ## Development
 
@@ -67,7 +66,7 @@ The AI is instructed to:
 - Return only raw Gutenberg block markup (no `<html>`/`<body>` wrappers)
 - Embed the page title as `<!-- PAGE_TITLE: Title Here -->`
 - Use `https://placehold.co/WIDTHxHEIGHT` for all image URLs (replaced automatically by Unsplash)
-- For pure style requests, return `<!-- RESPONSE_TYPE: CSS_ONLY -->` followed by CSS rules only
+- Apply color, background, and font changes via Gutenberg block attributes (`style.color.text`, `style.color.background`, etc.) — never as standalone CSS
 
 ## REST API Endpoints
 
@@ -88,7 +87,7 @@ The AI is instructed to:
 
 All endpoints require:
 1. User capability: `edit_pages`
-2. Hiive capability: `hasAISiteGen`
+2. Hiive capability: `canAccessAI`
 
 ## License
 
