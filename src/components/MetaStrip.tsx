@@ -33,67 +33,59 @@ const MetaStrip = ( {
 
   return (
     <div className="ai-meta-strip">
-      <div className="ai-meta-strip__field">
-        <label htmlFor="ai-meta-title">Title</label>
+      <div className="ai-meta-strip__section">
+        <span className="ai-meta-strip__label">Page Title</span>
         <input
-          id="ai-meta-title"
           type="text"
+          className="ai-meta-strip__input"
           value={ title }
           onChange={ ( event ) => onChangeTitle( event.target.value ) }
-          placeholder="Post title"
+          placeholder="Untitled"
         />
       </div>
 
-      <div className="ai-meta-strip__field ai-meta-strip__field--excerpt">
-        <label htmlFor="ai-meta-excerpt">Excerpt</label>
+      <div className="ai-meta-strip__section">
+        <span className="ai-meta-strip__label">Excerpt</span>
         <textarea
-          id="ai-meta-excerpt"
+          className="ai-meta-strip__textarea"
           value={ excerpt }
           onChange={ ( event ) => onChangeExcerpt( event.target.value ) }
           placeholder="Short summary..."
-          rows={ 3 }
+          rows={ 2 }
         />
       </div>
 
-      <div className="ai-meta-strip__field ai-meta-strip__field--image">
-        <label>Featured image</label>
-        { supportsThumbnail ? (
-          <>
-            <div className="ai-meta-strip__image">
-              { featuredImageUrl ? (
-                <img src={ featuredImageUrl } alt="" />
-              ) : (
-                <div className="ai-meta-strip__image-placeholder">
-                  No image
-                </div>
-              ) }
-            </div>
-            <div className="ai-meta-strip__actions">
-              <button
-                type="button"
-                onClick={ onPickImage }
-                disabled={ ! canUseMedia }
-                className="ai-meta-strip__button"
-              >
-                Change image
-              </button>
-              <button
-                type="button"
-                onClick={ onRemoveImage }
-                disabled={ ! featuredMediaId }
-                className="ai-meta-strip__button ai-meta-strip__button--secondary"
-              >
-                Remove
-              </button>
-            </div>
-            { ! canUseMedia && (
-              <p className="ai-meta-strip__hint">Media picker unavailable.</p>
+{ supportsThumbnail && (
+        <div className="ai-meta-strip__section ai-meta-strip__section--image">
+          <div className="ai-meta-strip__thumb">
+            { featuredImageUrl ? (
+              <img src={ featuredImageUrl } alt="" />
+            ) : (
+              <span className="ai-meta-strip__thumb-placeholder">No image</span>
             ) }
-          </>
-        ) : (
-          <p className="ai-meta-strip__hint">Featured images are not supported for this type.</p>
-        ) }
-      </div>
+          </div>
+          <button
+            type="button"
+            className="ai-meta-strip__change-link"
+            onClick={ onPickImage }
+            disabled={ ! canUseMedia }
+          >
+            Change Hero
+            { ! canUseMedia && (
+              <span className="ai-meta-strip__hint">Unavailable</span>
+            ) }
+          </button>
+          { featuredMediaId ? (
+            <button
+              type="button"
+              className="ai-meta-strip__remove-link"
+              onClick={ onRemoveImage }
+            >
+              Remove
+            </button>
+          ) : null }
+        </div>
+      ) }
     </div>
   );
 };

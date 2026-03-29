@@ -1,11 +1,7 @@
 import React, { type RefObject } from 'react';
 import {
-  ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
-  ArrowUpTrayIcon,
   ChatBubbleLeftRightIcon,
-  CpuChipIcon,
-  UserIcon,
 } from '@heroicons/react/24/outline';
 import HistoryDrawer from './HistoryDrawer';
 import type { HistoryEntry, Message, WPItem } from '../types';
@@ -16,13 +12,13 @@ type Props = {
   isLoading: boolean;
   historyEntries: HistoryEntry[];
   isHistoryOpen: boolean;
-  onToggleHistoryOpen: () => void;
-  onRevertTo: (id: string) => void;
   hasAIGenerated: boolean;
+  metaDirty: boolean;
   publishing: boolean;
   selectedItem: WPItem | null;
+  onToggleHistoryOpen: () => void;
+  onRevertTo: (id: string) => void;
   onPublish: () => void;
-  onRevertChanges: () => void;
 };
 
 const ChatPanel = ( {
@@ -31,13 +27,13 @@ const ChatPanel = ( {
   isLoading,
   historyEntries,
   isHistoryOpen,
-  onToggleHistoryOpen,
-  onRevertTo,
   hasAIGenerated,
+  metaDirty,
   publishing,
   selectedItem,
+  onToggleHistoryOpen,
+  onRevertTo,
   onPublish,
-  onRevertChanges,
 }: Props ) => {
   return (
     <div className="ai-chat-panel">
@@ -50,25 +46,15 @@ const ChatPanel = ( {
             <div className="chat-empty-state-icon">
               <ChatBubbleLeftRightIcon className="icon" />
             </div>
-            <p>Describe the page or content you'd like to create</p>
-            <p>The AI will generate HTML you can publish directly to WordPress.</p>
+            <p>Describe the page you'd like to create</p>
+            <p>The AI will generate content you can publish directly to WordPress.</p>
           </div>
         ) }
         { messages.map( ( msg, i ) => (
           <div key={ i } className={ `chat-message ${ msg.role }-message` }>
-            <div className="message-avatar">
-              { 'user' === msg.role ? (
-                <UserIcon className="icon" />
-              ) : (
-                <CpuChipIcon className="icon" />
-              ) }
-            </div>
-            <div className="message-content">
-              <div className="message-role">{ 'user' === msg.role ? 'You' : 'AI Assistant' }</div>
-              <div className="message-text">
-                { msg.content.substring( 0, 500 ) }
-                { msg.content.length > 500 && '...' }
-              </div>
+            <div className="message-bubble">
+              { msg.content.substring( 0, 500 ) }
+              { msg.content.length > 500 && '...' }
               { msg.link && (
                 <a
                   href={ msg.link }
@@ -85,12 +71,7 @@ const ChatPanel = ( {
         ) ) }
         { isLoading && (
           <div className="chat-message assistant-message">
-            <div className="message-avatar">
-              <CpuChipIcon className="icon" />
-            </div>
-            <div className="message-loading">
-              <strong>AI Assistant:</strong>
-              <span>Generating</span>
+            <div className="message-loading-bubble">
               <div className="loading-dots">
                 <span></span>
                 <span></span>
@@ -108,31 +89,18 @@ const ChatPanel = ( {
         onRevertTo={ onRevertTo }
       />
 
-      { hasAIGenerated && ! isLoading && (
-        <div className="publish-bar">
-          <div className="publish-bar-actions">
-            <button
-              className="publish-bar-button"
-              disabled={ publishing }
-              onClick={ onPublish }
-            >
-              <ArrowUpTrayIcon className="icon" />
-              { selectedItem
-                ? ( publishing ? 'Saving...' : 'Update in WordPress' )
-                : 'Publish to WordPress' }
-            </button>
-            <button
-              className="publish-bar-button publish-bar-button--secondary"
-              type="button"
-              onClick={ onRevertChanges }
-            >
-              <ArrowPathIcon className="icon" />
-              Revert AI changes
-            </button>
-          </div>
+      { ( hasAIGenerated || metaDirty ) && (
+        <div className="chat-publish-bar">
+          <button
+            type="button"
+            className="ai-btn ai-btn--primary chat-publish-bar__btn"
+            onClick={ onPublish }
+            disabled={ publishing }
+          >
+            { publishing ? 'Publishing...' : ( selectedItem ? 'Update in WordPress' : 'Publish Page' ) }
+          </button>
         </div>
       ) }
-
     </div>
   );
 };

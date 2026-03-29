@@ -29,7 +29,7 @@ type UseAiConversationResult = {
   setInput: (value: string) => void;
   setIsHistoryOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
   setPublishTitle: (value: string) => void;
-  handleSend: () => Promise<void>;
+  handleSend: (overrideText?: string) => Promise<void>;
   handleConfirmRevertChanges: () => void;
   handleRevertToEntry: (id: string) => void;
   resetAiConversation: () => void;
@@ -72,8 +72,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setMessages( ( prev ) => [ ...prev, message ] );
   }, [] );
 
-  const handleSend = useCallback( async () => {
-    const text = input.trim();
+  const handleSend = useCallback( async ( overrideText?: string ) => {
+    const text = ( overrideText !== undefined ? overrideText : input ).trim();
     if ( ! text || isLoading ) {
       return;
     }

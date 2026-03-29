@@ -15,6 +15,8 @@ export type WPItem = {
   status: string;
   link: string;
   type: string;
+  date?: string;
+  modified?: string;
 };
 
 export type PublishStatus = { type: 'success' | 'error'; message: string } | null;

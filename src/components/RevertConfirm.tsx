@@ -31,14 +31,14 @@ const RevertConfirm = ( { open, selectedItem, onClose, onConfirm }: Props ) => {
         <div className="confirm-modal-actions">
           <button
             type="button"
-            className="ai-history-action ai-history-action--secondary"
+            className="ai-btn ai-btn--ghost"
             onClick={ onClose }
           >
             Cancel
           </button>
           <button
             type="button"
-            className="ai-history-action"
+            className="ai-btn ai-btn--primary"
             onClick={ onConfirm }
           >
             Revert changes

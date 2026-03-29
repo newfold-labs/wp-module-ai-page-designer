@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { PlusIcon, SparklesIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
 import ChatPanel from './components/ChatPanel';
 import DashboardView from './components/DashboardView';
-import DesignerTabs from './components/DesignerTabs';
 import MetaStrip from './components/MetaStrip';
 import PreviewFrame from './components/PreviewFrame';
 import PublishModal from './components/PublishModal';
@@ -48,7 +48,6 @@ const App = () => {
   const [ metaExcerpt, setMetaExcerpt ] = useState( '' );
   const [ metaFeaturedMediaId, setMetaFeaturedMediaId ] = useState<number | null>( null );
   const [ metaFeaturedImageUrl, setMetaFeaturedImageUrl ] = useState<string | null>( null );
-  const [ metaStripOpen, setMetaStripOpen ] = useState( false );
   const [ originalMeta, setOriginalMeta ] = useState<{
     title: string;
     excerpt: string;
@@ -161,6 +160,22 @@ const App = () => {
     conversation.setInput( 'Create a modern homepage with a hero section, key features, and a call to action' );
   };
 
+  const handleCreateWithPrompt = ( prompt: string ) => {
+    conversation.resetAiConversation();
+    publishFlow.resetPublishState();
+    setSelectedItem( null );
+    setPreviewHtml( null );
+    setOriginalPreviewHtml( null );
+    setMetaTitle( '' );
+    setMetaExcerpt( '' );
+    setMetaFeaturedMediaId( null );
+    setMetaFeaturedImageUrl( null );
+    setOriginalMeta( null );
+    setPublishTitle( '' );
+    setView( 'designer' );
+    conversation.handleSend( prompt );
+  };
+
   const handleShowDashboard = () => {
     conversation.resetAiConversation();
     publishFlow.resetPublishState();
@@ -241,14 +256,56 @@ const App = () => {
     setMetaFeaturedImageUrl( selectedItem.featured_image_url || null );
   }, [ selectedItem ] );
 
+  const header = (
+    <header className="ai-designer-header">
+      <div className="ai-designer-header__left">
+        <span className="ai-designer-header__logo">AI Page Designer</span>
+        <nav className="ai-designer-header__nav">
+          <button
+            type="button"
+            className={ `ai-designer-header__nav-btn ${ view === 'dashboard' ? 'active' : '' }` }
+            onClick={ handleShowDashboard }
+          >
+            <Squares2X2Icon className="icon" />
+            Dashboard
+          </button>
+          <button
+            type="button"
+            className={ `ai-designer-header__nav-btn ${ view === 'designer' ? 'active' : '' }` }
+            onClick={ handleShowDesigner }
+          >
+            <SparklesIcon className="icon" />
+            Designer
+          </button>
+        </nav>
+      </div>
+      <div className="ai-designer-header__right">
+        { view === 'designer' && ( conversation.hasAIGenerated || metaDirty ) && (
+          <button
+            type="button"
+            className="ai-btn ai-btn--primary"
+            onClick={ handlePublishBarClick }
+            disabled={ publishFlow.publishing }
+          >
+            { publishFlow.publishing ? 'Publishing...' : 'Publish Page' }
+          </button>
+        ) }
+        <button
+          type="button"
+          className="ai-btn ai-btn--primary ai-btn--create-new"
+          onClick={ handleCreateNew }
+        >
+          <PlusIcon className="icon" />
+          Create New
+        </button>
+      </div>
+    </header>
+  );
+
   if ( 'dashboard' === view ) {
     return (
       <div id="nfd-ai-page-designer-root" className="ai-designer-container">
-        <DesignerTabs
-          view={ view }
-          onDashboard={ handleShowDashboard }
-          onDesigner={ handleShowDesigner }
-        />
+        { header }
         <div className="ai-designer-body">
           <DashboardView
             loadingSite={ loadingSite }
@@ -258,7 +315,7 @@ const App = () => {
             postsSearchQuery={ postsSearchQuery }
             pagesExpanded={ pagesExpanded }
             postsExpanded={ postsExpanded }
-            onCreateNew={ handleCreateNew }
+            onCreateWithPrompt={ handleCreateWithPrompt }
             onSelectItem={ handleSelectItem }
             onPagesSearchChange={ setPagesSearchQuery }
             onPostsSearchChange={ setPostsSearchQuery }
@@ -272,28 +329,11 @@ const App = () => {
 
   return (
     <div id="nfd-ai-page-designer-root" className="ai-designer-container">
-      <DesignerTabs
-        view={ view }
-        onDashboard={ handleShowDashboard }
-        onDesigner={ handleShowDesigner }
-      />
+      { header }
       <div className="ai-designer-body">
         <div className="ai-designer-main">
-          { Boolean( selectedItem ) && (
-            <button
-              type="button"
-              className="ai-meta-strip-bar"
-              onClick={ () => setMetaStripOpen( ( prev ) => ! prev ) }
-              aria-expanded={ metaStripOpen }
-            >
-              <span className="ai-meta-strip-bar__label">Page details</span>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={ { transform: metaStripOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' } }>
-                <path d="M2 4.5L7 9.5L12 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-          ) }
           <MetaStrip
-            visible={ Boolean( selectedItem ) && metaStripOpen }
+            visible={ Boolean( selectedItem ) }
             title={ metaTitle }
             excerpt={ metaExcerpt }
             featuredImageUrl={ metaFeaturedImageUrl }
@@ -312,13 +352,13 @@ const App = () => {
               isLoading={ conversation.isLoading }
               historyEntries={ conversation.historyEntries }
               isHistoryOpen={ conversation.isHistoryOpen }
-              onToggleHistoryOpen={ () => conversation.setIsHistoryOpen( ( prev ) => ! prev ) }
-              onRevertTo={ conversation.handleRevertToEntry }
-              hasAIGenerated={ conversation.hasAIGenerated || metaDirty }
+              hasAIGenerated={ conversation.hasAIGenerated }
+              metaDirty={ metaDirty }
               publishing={ publishFlow.publishing }
               selectedItem={ selectedItem }
+              onToggleHistoryOpen={ () => conversation.setIsHistoryOpen( ( prev ) => ! prev ) }
+              onRevertTo={ conversation.handleRevertToEntry }
               onPublish={ handlePublishBarClick }
-              onRevertChanges={ publishFlow.openRevertConfirm }
             />
 
             <PreviewFrame
@@ -356,15 +396,22 @@ const App = () => {
                     conversation.handleSend();
                   }
                 } }
-                placeholder="Describe your design idea... (Press Enter to send, Shift+Enter for new line)"
+                placeholder="Describe your design idea..."
                 className="chat-textarea"
+                rows={ 1 }
               />
               <button
-                onClick={ conversation.handleSend }
+                onClick={ () => conversation.handleSend() }
                 disabled={ ! conversation.input.trim() || conversation.isLoading }
                 className="chat-send-button"
+                aria-label="Send"
               >
-                { conversation.isLoading ? 'Generating...' : 'Send' }
+                { conversation.isLoading ? '...' : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                ) }
               </button>
             </div>
           </div>
