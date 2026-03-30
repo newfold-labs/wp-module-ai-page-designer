@@ -115,6 +115,14 @@ const App = () => {
         featuredMediaId: nextFeaturedMediaId,
       } );
     },
+    onPublished: ( item ) => {
+      setSelectedItem( item );
+      setOriginalMeta( {
+        title: metaTitle,
+        excerpt: metaExcerpt,
+        featuredMediaId: metaFeaturedMediaId,
+      } );
+    },
     appendAssistantMessage: conversation.appendAssistantMessage,
   } );
 
@@ -124,7 +132,6 @@ const App = () => {
     setSelectedItem( item );
     setView( 'designer' );
     const cleanTitle = stripHtml( item.title?.rendered || '' );
-    conversation.setInput( `Redesign my existing WordPress ${ item.type } titled "${ cleanTitle }" — keep the same topic but make it modern and professional` );
 
     const baseHtml = item.content?.raw || item.content?.rendered || '';
     setOriginalPreviewHtml( baseHtml );
@@ -157,7 +164,6 @@ const App = () => {
     setOriginalMeta( null );
     setPublishTitle( '' );
     setView( 'designer' );
-    conversation.setInput( 'Create a modern homepage with a hero section, key features, and a call to action' );
   };
 
   const handleCreateWithPrompt = ( prompt: string ) => {
@@ -414,6 +420,24 @@ const App = () => {
                 ) }
               </button>
             </div>
+            { conversation.messages.length === 0 && (
+              <div className="chat-input-suggestion">
+                <span className="chat-input-suggestion__label">Try:</span>
+                <button
+                  type="button"
+                  className="chat-input-suggestion__pill"
+                  onClick={ () => conversation.setInput(
+                    selectedItem
+                      ? `Redesign my existing WordPress ${ selectedItem.type } titled "${ stripHtml( selectedItem.title?.rendered || '' ) }" — keep the same topic but make it modern and professional`
+                      : 'Create a modern homepage with a hero section, key features, and a call to action'
+                  ) }
+                >
+                  { selectedItem
+                    ? `Redesign "${ stripHtml( selectedItem.title?.rendered || '' ) }" — keep topic, make it modern`
+                    : 'Create a modern homepage with a hero section, key features, and a call to action' }
+                </button>
+              </div>
+            ) }
           </div>
         </div>
       </div>

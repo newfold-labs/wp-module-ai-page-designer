@@ -11,6 +11,7 @@ type UsePublishFlowOptions = {
   metaExcerpt?: string;
   metaFeaturedMediaId?: number | null;
   onMetaUpdated?: (item: WPItem) => void;
+  onPublished?: (item: WPItem) => void;
   appendAssistantMessage: (message: Message) => void;
 };
 
@@ -38,6 +39,7 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     metaExcerpt,
     metaFeaturedMediaId,
     onMetaUpdated,
+    onPublished,
     appendAssistantMessage,
   } = options;
 
@@ -90,6 +92,9 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
       const url = result?.link || null;
       setPublishedUrl( url );
       setPublishStatus( { type: 'success', message: 'Published successfully!' } );
+      if ( result && typeof onPublished === 'function' ) {
+        onPublished( { ...result, type: publishType === 'new_page' ? 'page' : 'post' } as WPItem );
+      }
       setTimeout( () => {
         setShowPublishModal( false );
         setPublishStatus( null );
@@ -106,7 +111,7 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     } finally {
       setPublishing( false );
     }
-  }, [ appendAssistantMessage, previewHtml, publishTitle ] );
+  }, [ appendAssistantMessage, onPublished, previewHtml, publishTitle ] );
 
   const handleReplaceItem = useCallback( async ( item: WPItem ) => {
     if ( ! previewHtml ) {

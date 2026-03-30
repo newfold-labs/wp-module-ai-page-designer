@@ -55,7 +55,7 @@ const DashboardView = ( {
   onTogglePagesExpanded,
   onTogglePostsExpanded,
 }: Props ) => {
-  const [ heroPrompt, setHeroPrompt ] = useState( '' );
+  const [ heroPrompt, setHeroPrompt ] = useState( 'Create a modern homepage with a hero section, key features, and a call to action' );
 
   const normalizedPagesQuery = pagesSearchQuery.trim().toLowerCase();
   const normalizedPostsQuery = postsSearchQuery.trim().toLowerCase();
@@ -84,7 +84,7 @@ const DashboardView = ( {
     onCreateWithPrompt( prompt );
   };
 
-  const handleHeroKeyDown = ( e: React.KeyboardEvent<HTMLInputElement> ) => {
+  const handleHeroKeyDown = ( e: React.KeyboardEvent<HTMLTextAreaElement> ) => {
     if ( e.key === 'Enter' && heroPrompt.trim() ) {
       handleGenerate();
     }
@@ -98,13 +98,13 @@ const DashboardView = ( {
           <h2 className="ai-hero__heading">Create New Page with AI</h2>
           <p className="ai-hero__sub">Leverage AI to generate high-converting layouts in seconds.</p>
           <div className="ai-hero__input-wrap">
-            <input
-              type="text"
+            <textarea
               className="ai-hero__input"
               placeholder="Describe your dream page..."
               value={ heroPrompt }
               onChange={ ( e ) => setHeroPrompt( e.target.value ) }
               onKeyDown={ handleHeroKeyDown }
+              rows={ 2 }
             />
             <button
               type="button"
