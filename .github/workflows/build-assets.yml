@@ -1,0 +1,60 @@
+name: Build Assets
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and Commit Assets
+    runs-on: ubuntu-latest
+    # Skip if triggered by the bot commit to prevent an infinite loop.
+    if: github.actor != 'github-actions[bot]'
+    permissions:
+      contents: write
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 20.x
+
+      - name: Get npm cache directory
+        id: npm-cache
+        run: echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
+
+      - name: Cache node modules
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ${{ steps.npm-cache.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: NPM Install
+        run: npm install --legacy-peer-deps
+
+      - name: Build JavaScript
+        run: npm run build
+
+      - name: Commit build assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add build/
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: build compiled assets [skip ci]"
+            git push
+          fi

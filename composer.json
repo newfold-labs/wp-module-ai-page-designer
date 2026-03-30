@@ -27,6 +27,10 @@
         "i18n-po": "vendor/bin/wp i18n update-po ./languages/wp-module-ai-page-designer.pot ./languages",
         "i18n-mo": "vendor/bin/wp i18n make-mo ./languages"
     },
+    "require-dev": {
+        "newfold-labs/wp-php-standards": "^1.2.5",
+        "roave/security-advisories": "dev-latest"
+    },
     "minimum-stability": "stable",
     "prefer-stable": true
 }
