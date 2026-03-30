@@ -8,8 +8,10 @@ AI-powered page and post designer for WordPress with live preview and publishing
 - Blueprint/pattern-based base layouts for new pages to improve structure consistency
 - Live preview with block-level selection and targeted edits
 - Dashboard to browse and edit existing pages and posts, or create new ones with AI
-- Collapsible page details strip (title, excerpt, featured image) in the designer view
-- Default context-aware prompt pre-filled when entering the designer
+- Always-visible page details strip (title, excerpt, featured image) in the designer view
+- Context-aware prompt suggestion pill below the chat input (clickable, not pre-filled)
+- Dashboard hero input pre-filled with a suggested prompt for quick generation
+- Fast-path block removal: detects removal intent on a selected block and removes it without an AI round-trip
 - Direct publishing options (new page, new post, or set as homepage)
 - Theme-aware generation using active theme colour palette and typography
 - Automatic Unsplash image replacement for all placeholder image URLs (including cover blocks and backgrounds)
