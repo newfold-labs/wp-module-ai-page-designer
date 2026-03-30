@@ -36,6 +36,21 @@ type UseAiConversationResult = {
   appendAssistantMessage: (message: Message) => void;
 };
 
+const REMOVAL_KEYWORDS = [ 'remove', 'delete', 'get rid of', 'take out', 'eliminate', 'cut this', 'hide this' ];
+const CONTENT_QUALIFIERS = [ 'text', 'content', 'words', 'copy', 'inside', 'within', 'from this', 'heading', 'paragraph', 'image' ];
+
+const isRemovalIntent = ( text: string ): boolean => {
+  const lower = text.toLowerCase();
+  if ( ! REMOVAL_KEYWORDS.some( ( kw ) => lower.includes( kw ) ) ) {
+    return false;
+  }
+  // If the prompt refers to content *inside* the block, let the AI handle it.
+  if ( CONTENT_QUALIFIERS.some( ( q ) => lower.includes( q ) ) ) {
+    return false;
+  }
+  return true;
+};
+
 export const useAiConversation = ( options: UseAiConversationOptions ): UseAiConversationResult => {
   const {
     apiUrl,
@@ -85,6 +100,66 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
     try {
       setIsLoading( true );
+
+      // Fast path: remove selected block without an AI round-trip.
+      if ( selectedBlockIndex !== null && selectedBlockHtml !== null && isRemovalIntent( text ) ) {
+        const doc = iframeRef.current?.contentDocument;
+        if ( doc ) {
+          const wrapper = doc.querySelector( `.nfd-block-wrapper[data-block-index="${ selectedBlockIndex }"]` );
+          if ( wrapper ) {
+            wrapper.remove();
+
+            const root = doc.getElementById( 'nfd-preview-root' );
+            let newHtml = '';
+
+            if ( root ) {
+              const clone = root.cloneNode( true ) as HTMLElement;
+
+              clone.querySelectorAll( '.nfd-block-wrapper' ).forEach( ( w ) => {
+                while ( w.firstChild ) {
+                  w.parentNode?.insertBefore( w.firstChild, w );
+                }
+                w.parentNode?.removeChild( w );
+              } );
+
+              clone.querySelectorAll( 'span' ).forEach( ( s ) => {
+                if ( s.attributes.length === 0 ) {
+                  while ( s.firstChild ) {
+                    s.parentNode?.insertBefore( s.firstChild, s );
+                  }
+                  s.parentNode?.removeChild( s );
+                }
+              } );
+
+              newHtml = clone.innerHTML;
+            } else {
+              newHtml = Array.from( doc.querySelectorAll( '.nfd-block-wrapper' ) )
+                .map( ( w ) => w.innerHTML )
+                .join( '\n\n' );
+            }
+
+            if ( newHtml ) {
+              const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+              const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+              if ( newHtml !== previewHtml ) {
+                setHistoryEntries( ( prev ) => [ ...prev, {
+                  id: historyId,
+                  html: newHtml,
+                  label: `Removed: ${ text.substring( 0, 60 ) }`,
+                  timestamp,
+                  publishTitle,
+                } ] );
+              }
+              setPreviewHtml( newHtml );
+              setHasAIGenerated( true );
+            }
+          }
+        }
+        setMessages( [ ...newMessages, { role: 'assistant', content: 'Section removed.' } ] );
+        clearSelection( iframeRef );
+        return;
+      }
+
       const contextMarkup = selectedBlockHtml || previewHtml || '';
       const context = {
         current_markup: contextMarkup,
