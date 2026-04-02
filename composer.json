@@ -12,7 +12,10 @@
     "autoload": {
         "psr-4": {
             "NewfoldLabs\\WP\\Module\\AIPageDesigner\\": "includes"
-        }
+        },
+        "files": [
+            "bootstrap.php"
+        ]
     },
     "require": {
         "php": ">=7.3",
