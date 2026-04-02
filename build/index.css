@@ -104,8 +104,12 @@
   box-sizing: border-box;
 }
 
+.wppw-app-container:has(.wppw-page-ai-designer) {
+  min-height: 0 !important;
+}
+
 #nfd-ai-page-designer-root {
-  height: 100%;
+  height: calc(80vh - 10px);
   width: 100%;
 }
 
