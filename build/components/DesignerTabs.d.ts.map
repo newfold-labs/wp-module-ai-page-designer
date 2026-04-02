@@ -1,0 +1,1 @@
+{"version":3,"file":"DesignerTabs.d.ts","sourceRoot":"","sources":["../../src/components/DesignerTabs.tsx"],"names":[],"mappings":"AAAA,OAAO,KAAK,MAAM,OAAO,CAAC;AAG1B,KAAK,KAAK,GAAG;IACX,IAAI,EAAE,WAAW,GAAG,UAAU,CAAC;IAC/B,WAAW,EAAE,MAAM,IAAI,CAAC;IACxB,UAAU,EAAE,MAAM,IAAI,CAAC;CACxB,CAAC;AAEF,QAAA,MAAM,YAAY,GAAK,mCAAmC,KAAK,sBAmB9D,CAAC;AAEF,eAAe,YAAY,CAAC"}
