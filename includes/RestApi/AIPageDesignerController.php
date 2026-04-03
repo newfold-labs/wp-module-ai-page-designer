@@ -265,19 +265,23 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				preg_match( '/https?:\/\/(www\.)?unsplash\.com\//i', $final_html ) ||
 				preg_match( '/https?:\/\/placehold\.co\//i', $final_html )
 			);
+			$featured_image_url = '';
 			if ( $has_image_placeholders ) {
 				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
 				if ( ! empty( $unsplash_images ) ) {
+					$featured_image_url = $unsplash_images[0];
 					shuffle( $unsplash_images );
 					$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images, true );
 				}
 			}
 
 			$response_data = array(
-				'content'          => $final_html,
-				'title'            => $title_data['title'],
-				'response_id'      => $response_id,
-				'conversation_key' => $conversation_key,
+				'content'             => $final_html,
+				'title'               => $title_data['title'],
+				'excerpt'             => $title_data['excerpt'] ?? '',
+				'featured_image_url'  => $featured_image_url,
+				'response_id'         => $response_id,
+				'conversation_key'    => $conversation_key,
 			);
 
 			if ( ! empty( $conversation_id ) ) {

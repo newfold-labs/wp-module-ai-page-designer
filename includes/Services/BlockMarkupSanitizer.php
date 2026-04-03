@@ -19,18 +19,24 @@ class BlockMarkupSanitizer {
 	 * @return array{title:string,html:string}
 	 */
 	public function extract_page_title( $content ) {
-		$title = '';
-		$html  = $content;
+		$title   = '';
+		$excerpt = '';
+		$html    = $content;
 
-		if ( preg_match( '/<!--\s*PAGE_TITLE:\s*(.+?)\s*-->/i', $content, $m ) ) {
+		if ( preg_match( '/<!--\s*PAGE_TITLE:\s*(.+?)\s*-->/i', $html, $m ) ) {
 			$title = trim( $m[1] );
-			// Remove the title comment line from the HTML so it is not stored in WordPress content.
-			$html = preg_replace( '/<!--\s*PAGE_TITLE:\s*.+?\s*-->\s*/i', '', $content, 1 );
+			$html  = preg_replace( '/<!--\s*PAGE_TITLE:\s*.+?\s*-->\s*/i', '', $html, 1 );
+		}
+
+		if ( preg_match( '/<!--\s*PAGE_EXCERPT:\s*(.+?)\s*-->/i', $html, $m ) ) {
+			$excerpt = trim( $m[1] );
+			$html    = preg_replace( '/<!--\s*PAGE_EXCERPT:\s*.+?\s*-->\s*/i', '', $html, 1 );
 		}
 
 		return array(
-			'title' => $title,
-			'html'  => $this->sanitize_block_content( trim( $html ) ),
+			'title'   => $title,
+			'excerpt' => $excerpt,
+			'html'    => $this->sanitize_block_content( trim( $html ) ),
 		);
 	}
 

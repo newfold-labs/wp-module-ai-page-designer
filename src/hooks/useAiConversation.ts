@@ -14,6 +14,9 @@ type UseAiConversationOptions = {
   iframeRef: RefObject<HTMLIFrameElement>;
   setPreviewHtml: (value: string | null) => void;
   setPublishTitle: (value: string) => void;
+  setMetaTitle: (value: string) => void;
+  setMetaExcerpt: (value: string) => void;
+  setMetaFeaturedImageUrl: (value: string | null) => void;
   clearSelection: (iframeRef?: RefObject<HTMLIFrameElement>) => void;
 };
 
@@ -69,6 +72,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     iframeRef,
     setPreviewHtml,
     setPublishTitle,
+    setMetaTitle,
+    setMetaExcerpt,
+    setMetaFeaturedImageUrl,
     clearSelection,
   } = options;
 
@@ -322,6 +328,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         setHasAIGenerated( true );
         if ( title ) {
           setPublishTitle( title );
+          setMetaTitle( title );
+        }
+        const excerpt = response?.data?.excerpt || '';
+        if ( excerpt ) {
+          setMetaExcerpt( excerpt );
+        }
+        const featuredImageUrl = response?.data?.featured_image_url || null;
+        if ( featuredImageUrl ) {
+          setMetaFeaturedImageUrl( featuredImageUrl );
         }
       }
     } catch ( error: any ) {
@@ -351,6 +366,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setHasAIGenerated,
     setInput,
     setMessages,
+    setMetaExcerpt,
+    setMetaFeaturedImageUrl,
+    setMetaTitle,
     setPreviewHtml,
     setPublishTitle,
   ] );

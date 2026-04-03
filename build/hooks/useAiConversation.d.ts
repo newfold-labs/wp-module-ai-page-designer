@@ -11,6 +11,9 @@ type UseAiConversationOptions = {
     iframeRef: RefObject<HTMLIFrameElement>;
     setPreviewHtml: (value: string | null) => void;
     setPublishTitle: (value: string) => void;
+    setMetaTitle: (value: string) => void;
+    setMetaExcerpt: (value: string) => void;
+    setMetaFeaturedImageUrl: (value: string | null) => void;
     clearSelection: (iframeRef?: RefObject<HTMLIFrameElement>) => void;
 };
 type UseAiConversationResult = {

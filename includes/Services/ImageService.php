@@ -173,7 +173,8 @@ class ImageService {
 				$orig_url = $tags->get_attribute( 'src' );
 				if ( $orig_url && ( ! $placeholders_only || $this->is_placeholder_url( $orig_url ) ) ) {
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
-					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+					// Placeholder URLs are all identical — always advance index so each gets a unique image.
+					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 						$image_index++;
 					}
@@ -201,7 +202,8 @@ class ImageService {
 					}
 
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
-					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+					// Placeholder URLs are all identical — always advance index so each gets a unique image.
+					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 						$image_index++;
 					}
@@ -227,7 +229,8 @@ class ImageService {
 					}
 
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
-					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+					// Placeholder URLs are all identical — always advance index so each gets a unique image.
+					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 						$image_index++;
 					}
@@ -256,7 +259,8 @@ class ImageService {
 				}
 
 				$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
-				if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+				// Placeholder URLs are all identical — always advance index so each gets a unique image.
+				if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 					$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 					$image_index++;
 				}
@@ -311,7 +315,8 @@ class ImageService {
 				if ( ! empty( $orig_url ) && ( ! $placeholders_only || $this->is_placeholder_url( $orig_url ) ) ) {
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 
-					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+					// Placeholder URLs are all identical — always advance index so each gets a unique image.
+					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 						$image_index++;
 					}
@@ -378,7 +383,8 @@ class ImageService {
 				if ( ! empty( $orig_url ) && ( ! $placeholders_only || $this->is_placeholder_url( $orig_url ) ) ) {
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 
-					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
+					// Placeholder URLs are all identical — always advance index so each gets a unique image.
+					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 						$image_index++;
 					}

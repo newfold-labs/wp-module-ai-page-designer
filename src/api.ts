@@ -20,6 +20,8 @@ export type GenerateContentResponse = {
   data: {
     content: string;
     title?: string;
+    excerpt?: string;
+    featured_image_url?: string;
     message?: string;
     response_id?: string;
     conversation_id?: string;

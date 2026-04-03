@@ -90,6 +90,9 @@ const App = () => {
     iframeRef,
     setPreviewHtml,
     setPublishTitle,
+    setMetaTitle,
+    setMetaExcerpt,
+    setMetaFeaturedImageUrl,
     clearSelection,
   } );
 
@@ -339,7 +342,7 @@ const App = () => {
       <div className="ai-designer-body">
         <div className="ai-designer-main">
           <MetaStrip
-            visible={ Boolean( selectedItem ) }
+            visible={ Boolean( selectedItem ) || conversation.hasAIGenerated }
             title={ metaTitle }
             excerpt={ metaExcerpt }
             featuredImageUrl={ metaFeaturedImageUrl }
