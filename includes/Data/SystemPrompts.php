@@ -39,8 +39,9 @@ Rules:
 - Keep text content readable and well-structured for search engines. Use descriptive alt attributes for images.
 - IMAGE PLACEHOLDERS: When adding NEW image blocks that did not exist in the current markup, use `https://placehold.co/WIDTHxHEIGHT` with dimensions appropriate for the context (e.g. 1200x600 for hero/cover blocks, 800x600 for inline images). A real image service will replace these URLs automatically. CRITICAL: When modifying existing markup, ALWAYS preserve every existing image URL exactly as-is — never replace, rewrite, or substitute real image URLs with placehold.co or any other URL.
 
-Every response MUST start with a page title comment in this exact format:
+Every response MUST start with these two comment lines in this exact order:
 `<!-- PAGE_TITLE: <SEO-optimized title under 60 characters> -->`
+`<!-- PAGE_EXCERPT: <1-2 sentence SEO-friendly summary under 160 characters> -->`
 Followed immediately by the modified Gutenberg block markup.';
 
 		/**
