@@ -24,6 +24,7 @@ class ImageService {
 
 		// Clean up query: remove common conversational words to get better image results.
 		// Also remove site/brand name tokens to avoid skewing results.
+		// phpcs:disable WordPress.Arrays.ArrayDeclarationSpacing.ArrayItemNoNewLine
 		$stopwords = array(
 			// Articles / pronouns / prepositions.
 			'a', 'an', 'the', 'this', 'that', 'these', 'those',
@@ -53,6 +54,7 @@ class ImageService {
 			'new', 'some', 'same', 'good', 'great', 'nice', 'better',
 			'landing', 'home', 'homepage', 'contact', 'services', 'portfolio',
 		);
+		// phpcs:enable WordPress.Arrays.ArrayDeclarationSpacing.ArrayItemNoNewLine
 		$site_name = get_bloginfo( 'name' );
 		if ( $site_name ) {
 			$site_words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $site_name ) ) );
@@ -176,13 +178,13 @@ class ImageService {
 					// Placeholder URLs are all identical — always advance index so each gets a unique image.
 					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
+						++$image_index;
 					}
 					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
 					$new_url = $url_map[ $orig_url ];
 					if ( strpos( $new_url, 'cb=' ) === false ) {
-						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 					}
 					$tags->set_attribute( 'src', $new_url );
 				}
@@ -205,13 +207,13 @@ class ImageService {
 					// Placeholder URLs are all identical — always advance index so each gets a unique image.
 					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
+						++$image_index;
 					}
 					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
 					$new_url = $url_map[ $orig_url ];
 					if ( strpos( $new_url, 'cb=' ) === false ) {
-						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 					}
 					return 'background-image: url(' . $new_url . ')';
 				},
@@ -232,13 +234,13 @@ class ImageService {
 					// Placeholder URLs are all identical — always advance index so each gets a unique image.
 					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
+						++$image_index;
 					}
 					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
 					$new_url = $url_map[ $orig_url ];
 					if ( strpos( $new_url, 'cb=' ) === false ) {
-						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 					}
 					return str_replace( $orig_url, $new_url, $matches[0] );
 				},
@@ -262,13 +264,13 @@ class ImageService {
 				// Placeholder URLs are all identical — always advance index so each gets a unique image.
 				if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 					$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-					$image_index++;
+					++$image_index;
 				}
 				$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
 				$new_url = $url_map[ $orig_url ];
 				if ( strpos( $new_url, 'cb=' ) === false ) {
-					$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+					$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 				}
 				return $matches[1] . $new_url . '"';
 			},
@@ -286,10 +288,10 @@ class ImageService {
 	 *
 	 * @param array &$blocks           Parsed blocks array.
 	 * @param array &$url_map          Map of original to new URLs.
-	 * @param array  $unsplash_images  Array of available Unsplash URLs.
-	 * @param int   &$image_index      Current index in the Unsplash array.
-	 * @param int    $total_images     Total number of Unsplash images.
-	 * @param bool   $placeholders_only When true, only replace placehold.co URLs.
+	 * @param array $unsplash_images   Array of available Unsplash URLs.
+	 * @param int  &$image_index       Current index in the Unsplash array.
+	 * @param int  $total_images       Total number of Unsplash images.
+	 * @param bool $placeholders_only  When true, only replace placehold.co URLs.
 	 * @return void
 	 */
 	private function update_block_images_recursive( &$blocks, &$url_map, $unsplash_images, &$image_index, $total_images, $placeholders_only = false ) {
@@ -318,7 +320,7 @@ class ImageService {
 					// Placeholder URLs are all identical — always advance index so each gets a unique image.
 					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
+						++$image_index;
 					}
 					// Map both with and without cb to the same new base image.
 					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
@@ -332,7 +334,7 @@ class ImageService {
 							$new_url = $url_map[ $orig_url ];
 							// Add a random cache buster so images look "new" even if URL is same.
 							if ( strpos( $new_url, 'cb=' ) === false ) {
-								$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+								$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 							}
 							$block['innerHTML'] = preg_replace_callback(
 								'/(src=["\'])([^"\']+)(["\'])/i',
@@ -348,7 +350,7 @@ class ImageService {
 								if ( is_string( $content_string ) ) {
 									$new_url = $url_map[ $orig_url ];
 									if ( strpos( $new_url, 'cb=' ) === false ) {
-										$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+										$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 									}
 									$content_string = preg_replace_callback(
 										'/(src=["\'])([^"\']+)(["\'])/i',
@@ -386,7 +388,7 @@ class ImageService {
 					// Placeholder URLs are all identical — always advance index so each gets a unique image.
 					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
+						++$image_index;
 					}
 					// Map both with and without cb to the same new base image.
 					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
@@ -399,7 +401,7 @@ class ImageService {
 						if ( ! empty( $block['innerHTML'] ) ) {
 							$new_url = $url_map[ $orig_url ];
 							if ( strpos( $new_url, 'cb=' ) === false ) {
-								$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+								$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 							}
 							$block['innerHTML'] = preg_replace_callback(
 								'/url\([\'"]?([^\'"]+)[\'"]?\)/i',
@@ -422,7 +424,7 @@ class ImageService {
 								if ( is_string( $content_string ) ) {
 									$new_url = $url_map[ $orig_url ];
 									if ( strpos( $new_url, 'cb=' ) === false ) {
-										$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . rand( 1000, 9999 );
+										$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 									}
 									$content_string = preg_replace_callback(
 										'/url\([\'"]?([^\'"]+)[\'"]?\)/i',
