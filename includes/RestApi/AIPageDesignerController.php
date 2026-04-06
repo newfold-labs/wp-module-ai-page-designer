@@ -820,8 +820,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	/**
 	 * Replace image URLs in HTML content with Unsplash images using native WP parsers.
 	 *
-	 * @param string  $html The HTML content containing images
-	 * @param array   $unsplash_images Array of Unsplash image URLs
+	 * @param string $html The HTML content containing images
+	 * @param array  $unsplash_images Array of Unsplash image URLs
 	 * @return string The updated HTML
 	 */
 	private function replace_images_in_html( $html, $unsplash_images ) {
@@ -860,7 +860,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
+						++$image_index;
 					}
 					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
@@ -890,7 +890,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 					$new_url              = $url_map[ $orig_url ];
 					if ( strpos( $new_url, 'cb=' ) === false ) {
-						$new_url .= ( strpos( $new_url, '?') !== false ? '&' : '?') . 'cb=' . wp_rand( 1000, 9999 );
+						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 					}
 					return 'background-image: url(' . $new_url . ')';
 				},
@@ -952,8 +952,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @param array &$blocks Parsed blocks array
 	 * @param array &$url_map Map of original to new URLs
 	 * @param array $unsplash_images Array of available Unsplash URLs
-	 * @param int &$image_index Current index in the Unsplash array
-	 * @param int $total_images Total number of Unsplash images
+	 * @param int   &$image_index Current index in the Unsplash array
+	 * @param int   $total_images Total number of Unsplash images
 	 */
 	private function update_block_images_recursive( &$blocks, &$url_map, $unsplash_images, &$image_index, $total_images ) {
 		foreach ( $blocks as &$block ) {
@@ -966,13 +966,11 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			if ( 'core/image' === $block['blockName'] ) {
 				if ( isset( $block['attrs']['url'] ) ) {
 					$orig_url = $block['attrs']['url'];
-				} else {
+				} elseif ( preg_match( '/src=["\']([^"\']+)["\']/i', $block['innerHTML'], $m ) ) {
 					// Sometimes the URL is only in the innerHTML, extract it
-					if ( preg_match( '/src=["\']([^"\']+)["\']/i', $block['innerHTML'], $m ) ) {
-						$orig_url = $m[1];
-					} else {
-						$orig_url = '';
-					}
+					$orig_url = $m[1];
+				} else {
+					$orig_url = '';
 				}
 
 				// Make sure we have a URL to map
@@ -981,14 +979,14 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
+						++$image_index;
 					}
 					// Map both with and without cb to the same new base image
 					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
 					if ( isset( $url_map[ $orig_url ] ) ) {
 						$block['attrs']['url'] = $url_map[ $orig_url ];
-						$block['attrs']['id'] = null; // Remove the old ID to prevent block validation errors and forcing it to look new
+						$block['attrs']['id']  = null; // Remove the old ID to prevent block validation errors and forcing it to look new
 
 						// Also update HTML content strings inside the block array
 						if ( ! empty( $block['innerHTML'] ) ) {
@@ -1051,14 +1049,14 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
+						++$image_index;
 					}
 					// Map both with and without cb to the same new base image
 					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
 					if ( isset( $url_map[ $orig_url ] ) ) {
 						$block['attrs']['url'] = $url_map[ $orig_url ];
-						$block['attrs']['id'] = null; // Remove the old ID to prevent block validation errors and forcing it to look new
+						$block['attrs']['id']  = null; // Remove the old ID to prevent block validation errors and forcing it to look new
 
 						// Also update HTML content strings inside the block array
 						if ( ! empty( $block['innerHTML'] ) ) {
@@ -1095,7 +1093,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 											return 'url(' . $new_url . ')';
 										},
 										$content_string
-									) ;
+									);
 									$content_string = preg_replace_callback(
 										'/(src=["\'])([^"\']+)(["\'])/i',
 										function ( $matches ) use ( $new_url ) {
@@ -1178,8 +1176,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				if ( ! empty( $block['innerContent'] ) ) {
 					foreach ( $block['innerContent'] as &$content_string ) {
 						if ( is_string( $content_string ) && strpos( $content_string, 'is-style-nfd-theme-' ) !== false ) {
-							$content_string = preg_replace( 
-								'/is-style-nfd-theme-(white|dark|primary|secondary|tertiary|quaternary)/', 
+							$content_string = preg_replace(
+								'/is-style-nfd-theme-(white|dark|primary|secondary|tertiary|quaternary)/',
 								'is-style-nfd-theme-' . $target_slug,
 								$content_string
 							);

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <ruleset name="WP-Module-AI-Page-Designer">
     <rule ref="Newfold"/>
-    <config name="testVersion" value="7.3-"/>
+    <config name="testVersion" value="7.0-"/>
     <config name="minimum_supported_wp_version" value="6.3"/>
     <exclude-pattern>/build</exclude-pattern>
     <exclude-pattern>/node_modules</exclude-pattern>
