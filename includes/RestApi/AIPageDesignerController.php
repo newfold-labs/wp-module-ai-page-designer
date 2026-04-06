@@ -276,12 +276,12 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 
 			$response_data = array(
-				'content'             => $final_html,
-				'title'               => $title_data['title'],
-				'excerpt'             => $title_data['excerpt'] ?? '',
-				'featured_image_url'  => $featured_image_url,
-				'response_id'         => $response_id,
-				'conversation_key'    => $conversation_key,
+				'content'            => $final_html,
+				'title'              => $title_data['title'],
+				'excerpt'            => $title_data['excerpt'] ?? '',
+				'featured_image_url' => $featured_image_url,
+				'response_id'        => $response_id,
+				'conversation_key'   => $conversation_key,
 			);
 
 			if ( ! empty( $conversation_id ) ) {
@@ -404,15 +404,15 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 		// Map common keywords to pattern categories
 		$intent_mapping = array(
-			'contact'     => array( 'hero', 'contact' ),
-			'about'       => array( 'hero', 'about', 'team' ),
-			'services'    => array( 'hero', 'services', 'call-to-action' ),
-			'product'     => array( 'hero', 'gallery', 'call-to-action' ),
-			'store'       => array( 'hero', 'gallery', 'call-to-action' ),
-			'portfolio'   => array( 'hero', 'portfolio', 'contact' ),
-			'blog'        => array( 'hero', 'text' ),
-			'post'        => array( 'hero', 'text' ),
-			'landing'     => array( 'hero', 'features', 'call-to-action' ),
+			'contact'   => array( 'hero', 'contact' ),
+			'about'     => array( 'hero', 'about', 'team' ),
+			'services'  => array( 'hero', 'services', 'call-to-action' ),
+			'product'   => array( 'hero', 'gallery', 'call-to-action' ),
+			'store'     => array( 'hero', 'gallery', 'call-to-action' ),
+			'portfolio' => array( 'hero', 'portfolio', 'contact' ),
+			'blog'      => array( 'hero', 'text' ),
+			'post'      => array( 'hero', 'text' ),
+			'landing'   => array( 'hero', 'features', 'call-to-action' ),
 		);
 
 		// Default to a standard homepage layout if no specific intent is found
@@ -592,18 +592,20 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @return string Sanitized block markup.
 	 */
 	private function sanitize_block_content( $content ) {
-		/* 1. Remove any incomplete HTML comment that was never closed.
-		 *    The regex matches "<!--" followed by anything that does NOT contain "-->"
-		 *    which means the comment was truncated before its closing delimiter.
+		/**
+		 * Remove any incomplete HTML comment that was never closed.
+		 * The regex matches "<!--" followed by anything that does NOT contain "-->"
+		 * which means the comment was truncated before its closing delimiter.
 		 */
 		$content = preg_replace( '/<!--(?![\s\S]*?-->)[\s\S]*$/u', '', $content );
 		$content = trim( $content );
 
-		/* 2. Walk every Gutenberg block comment and track nesting with a stack.
-		 *    Pattern captures:
-		 *      group 1 — "/" for closing tags
-		 *      group 2 — block name (e.g. "columns", "wp:group/inner" etc.)
-		 *      group 3 — "/" at the end for self-closing tags
+		/**
+		 * Walk every Gutenberg block comment and track nesting with a stack.
+		 * Pattern captures:
+		 *  group 1 — "/" for closing tags
+		 *  group 2 — block name (e.g. "columns", "wp:group/inner" etc.)
+		 *  group 3 — "/" at the end for self-closing tags
 		 */
 		preg_match_all(
 			'/<!--\s*(\/?)wp:([\w\/-]+)(?:\s[^-]*)?\s*(\/?)-->/i',
@@ -762,7 +764,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$hiive_base_url = defined( 'NFD_HIIVE_BASE_URL' ) ? NFD_HIIVE_BASE_URL : 'https://hiive.cloud';
 		$endpoint       = '/workers/unsplash/search/photos';
 
-		/* Clean up query: remove common conversational words to get better image results.
+		/**
+		 * Clean up query: remove common conversational words to get better image results.
 		 * Also remove site/brand name tokens to avoid skewed image results.
 		 */
 		$stopwords = array('create', 'a', 'an', 'the', 'page', 'post', 'about', 'for', 'with', 'design', 'make', 'website', 'site', 'my', 'new', 'add', 'some', 'images', 'image', 'picture', 'photos', 'photo', 'update', 'modify', 'change', 'landing', 'home', 'homepage', 'contact', 'services', 'portfolio');
@@ -830,7 +833,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$total_images = count( $unsplash_images );
 		$url_map = array();
 
-		// 1. Replace URLs inside Gutenberg block comments safely using parse_blocks
+		// Replace URLs inside Gutenberg block comments safely using parse_blocks
 		$blocks = parse_blocks( $html );
 		
 		// We only need to process if there are actual blocks
@@ -844,7 +847,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 		}
 
-		/* 2. Replace <img> src attributes safely using WP_HTML_Tag_Processor
+		/**
+		 * Replace <img> src attributes safely using WP_HTML_Tag_Processor
 		 * Doing this AFTER parse_blocks/serialize_blocks to catch any stragglers 
 		 * that weren't inside a core/image or core/cover block's specific attrs
 		 */
