@@ -717,8 +717,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$headers['X-Newfold-Brand'] = $brand;
 		}
 
-		$test_token = "test-ai-sitegen";
-		
+		$test_token = 'test-ai-sitegen';
+
 		$response = wp_remote_post(
 			'https://cf-worker-newfold-services-jwt.bluehost.workers.dev/',
 			array(
@@ -733,7 +733,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		);
 
 		$response_code = wp_remote_retrieve_response_code( $response );
-		
+
 		if ( 200 !== $response_code ) {
 			return new \WP_Error(
 				'jwt_generation_error',
@@ -743,7 +743,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		}
 
 		$result = json_decode( wp_remote_retrieve_body( $response ), true );
-		
+
 		if ( ! isset( $result['jwt'] ) ) {
 			return new \WP_Error(
 				'jwt_generation_error',
@@ -768,14 +768,14 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		 * Clean up query: remove common conversational words to get better image results.
 		 * Also remove site/brand name tokens to avoid skewed image results.
 		 */
-		$stopwords = array('create', 'a', 'an', 'the', 'page', 'post', 'about', 'for', 'with', 'design', 'make', 'website', 'site', 'my', 'new', 'add', 'some', 'images', 'image', 'picture', 'photos', 'photo', 'update', 'modify', 'change', 'landing', 'home', 'homepage', 'contact', 'services', 'portfolio');
+		$stopwords = array( 'create', 'a', 'an', 'the', 'page', 'post', 'about', 'for', 'with', 'design', 'make', 'website', 'site', 'my', 'new', 'add', 'some', 'images', 'image', 'picture', 'photos', 'photo', 'update', 'modify', 'change', 'landing', 'home', 'homepage', 'contact', 'services', 'portfolio' );
 		$site_name = get_bloginfo( 'name' );
 		if ( $site_name ) {
 			$site_words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $site_name ) ) );
 			$stopwords  = array_merge( $stopwords, array_filter( $site_words ) );
 		}
-		$words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $query ) ) );
-		$keywords = array_diff( $words, $stopwords );
+		$words        = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $query ) ) );
+		$keywords     = array_diff( $words, $stopwords );
 		$search_query = implode( ' ', array_slice( $keywords, 0, 4 ) );
 
 		if ( empty( trim( $search_query ) ) ) {
@@ -796,7 +796,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$request_url = $hiive_base_url . $endpoint . '?' . http_build_query( $args );
 
 		$response = wp_remote_get( $request_url, array( 'timeout' => 10 ) );
-		$images = array();
+		$images   = array();
 
 		if ( ! is_wp_error( $response ) && 200 === wp_remote_retrieve_response_code( $response ) ) {
 			$body = json_decode( wp_remote_retrieve_body( $response ), true );
@@ -829,27 +829,27 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			return $html;
 		}
 
-		$image_index = 0;
+		$image_index  = 0;
 		$total_images = count( $unsplash_images );
-		$url_map = array();
+		$url_map      = array();
 
 		// Replace URLs inside Gutenberg block comments safely using parse_blocks
 		$blocks = parse_blocks( $html );
-		
+
 		// We only need to process if there are actual blocks
 		if ( ! empty( $blocks ) ) {
 			$this->update_block_images_recursive( $blocks, $url_map, $unsplash_images, $image_index, $total_images );
-			
+	
 			// Rebuild HTML from blocks
 			$html = '';
 			foreach ( $blocks as $block ) {
-				$html .= serialize_blocks( array($block) );
+				$html .= serialize_blocks( array( $block ) );
 			}
 		}
 
 		/**
 		 * Replace <img> src attributes safely using WP_HTML_Tag_Processor
-		 * Doing this AFTER parse_blocks/serialize_blocks to catch any stragglers 
+		 * Doing this AFTER parse_blocks/serialize_blocks to catch any stragglers
 		 * that weren't inside a core/image or core/cover block's specific attrs
 		 */
 		if ( class_exists( 'WP_HTML_Tag_Processor' ) ) {
@@ -857,7 +857,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			while ( $tags->next_tag( 'img' ) ) {
 				$orig_url = $tags->get_attribute( 'src' );
 				if ( $orig_url ) {
-					$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
+					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 						$image_index++;
@@ -866,8 +866,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 					if ( isset( $url_map[ $orig_url ] ) ) {
 						$new_url = $url_map[ $orig_url ];
-						if ( strpos($new_url, 'cb=') === false ) {
-							$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
+						if ( strpos( $new_url, 'cb=' ) === false ) {
+							$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 						}
 						$tags->set_attribute( 'src', $new_url );
 					}
@@ -878,10 +878,10 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$html = $tags->get_updated_html();
 
 			// Also replace inline styles for background images
-			$html = preg_replace_callback('/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i', function($matches) use (&$image_index, &$url_map, $unsplash_images, $total_images) {
+			$html = preg_replace_callback( '/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i', function( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images ) {
 				$orig_url = $matches[1];
 
-				$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
+				$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 				if ( ! isset( $url_map[ $base_orig_url ] ) ) {
 					$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 					$image_index++;
@@ -889,17 +889,17 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
 				$new_url = $url_map[ $orig_url ];
-				if ( strpos($new_url, 'cb=') === false ) {
-					$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
+				if ( strpos( $new_url, 'cb=' ) === false ) {
+					$new_url .= ( strpos( $new_url, '?') !== false ? '&' : '?') . 'cb=' . wp_rand( 1000, 9999 );
 				}
 				return 'background-image: url(' . $new_url . ')';
-			}, $html);
+			}, $html );
 		} else {
 			// Fallback if WP_HTML_Tag_Processor doesn't exist (older WP versions)
 			$html = preg_replace_callback( '/<img[^>]+src=["\']([^"\']+)["\']/i', function( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images ) {
 				$orig_url = $matches[1];
 
-				$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
+				$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 				if ( ! isset( $url_map[ $base_orig_url ] ) ) {
 					$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 					$image_index++;
@@ -907,8 +907,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
 				$new_url = $url_map[ $orig_url ];
-				if ( strpos($new_url, 'cb=') === false ) {
-					$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
+				if ( strpos( $new_url, 'cb=' ) === false ) {
+					$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 				}
 				return str_replace( $orig_url, $new_url, $matches[0] );
 			}, $html );
@@ -920,7 +920,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$html = preg_replace_callback( '/(<img[^>]+src=["\'])([^"\']+)["\']/', function( $matches ) use ( &$url_map, $unsplash_images, &$image_index, $total_images ) {
 			$orig_url = $matches[2];
 
-			$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
+			$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 			if ( ! isset( $url_map[ $base_orig_url ] ) ) {
 				$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 				$image_index++;
@@ -928,16 +928,16 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
 
 			$new_url = $url_map[ $orig_url ];
-			if ( strpos($new_url, 'cb=') === false ) {
-				$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
+			if ( strpos( $new_url, 'cb=' ) === false ) {
+				$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 			}
 			return $matches[1] . $new_url . '"';
 		}, $html );
 
 		// Remove all srcset attributes to prevent old images from showing
-		$html = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $html);
+		$html = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $html );
 
-		return trim($html);
+		return trim( $html );
 	}
 
 	/**
@@ -962,7 +962,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					$orig_url = $block['attrs']['url'];
 				} else {
 					// Sometimes the URL is only in the innerHTML, extract it
-					if ( preg_match('/src=["\']([^"\']+)["\']/i', $block['innerHTML'], $m) ) {
+					if ( preg_match( '/src=["\']([^"\']+)["\']/i', $block['innerHTML'], $m ) ) {
 						$orig_url = $m[1];
 					} else {
 						$orig_url = '';
@@ -971,8 +971,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 				// Make sure we have a URL to map
 				if ( ! empty( $orig_url ) ) {
-					$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
-					
+					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
+
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
 						$image_index++;
@@ -988,31 +988,31 @@ class AIPageDesignerController extends \WP_REST_Controller {
 						if ( ! empty( $block['innerHTML'] ) ) {
 							$new_url = $url_map[ $orig_url ];
 							// Add a random cache buster so images look "new" even if URL is same
-							if ( strpos($new_url, 'cb=') === false ) {
-								$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
+							if ( strpos( $new_url, 'cb=' ) === false ) {
+								$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 							}
-							$block['innerHTML'] = preg_replace_callback('/(src=["\'])([^"\']+)(["\'])/i', function($matches) use ($new_url) {
+							$block['innerHTML'] = preg_replace_callback( '/(src=["\'])([^"\']+)(["\'])/i', function( $matches ) use ( $new_url ) {
 								return $matches[1] . $new_url . $matches[3];
-							}, $block['innerHTML']);
+							}, $block['innerHTML'] );
 							// Check for img src inside srcset as well
-							$block['innerHTML'] = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $block['innerHTML']);
+							$block['innerHTML'] = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $block['innerHTML'] );
 						}
 						if ( ! empty( $block['innerContent'] ) ) {
 							foreach ( $block['innerContent'] as &$content_string ) {
 								if ( is_string( $content_string ) ) {
 									$new_url = $url_map[ $orig_url ];
-									if ( strpos($new_url, 'cb=') === false ) {
-										$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
+									if ( strpos( $new_url, 'cb=' ) === false ) {
+										$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 									}
 									// Update to correctly replace inside Gutenberg comments and image tags in innerContent
-									$content_string = preg_replace_callback('/(src=["\'])([^"\']+)(["\'])/i', function($matches) use ($new_url) {
+									$content_string = preg_replace_callback( '/(src=["\'])([^"\']+)(["\'])/i', function( $matches ) use ( $new_url ) {
 										return $matches[1] . $new_url . $matches[3];
-									}, $content_string);
+									}, $content_string );
 									// Catch innerContent comments that store the raw image block before parsing
-									$content_string = preg_replace_callback('/"url":"([^"]+)"/i', function($matches) use ($new_url) {
+									$content_string = preg_replace_callback( '/"url":"([^"]+)"/i', function( $matches ) use ( $new_url ) {
 										return '"url":"' . $new_url . '"';
-									}, $content_string);
-									$content_string = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $content_string);
+									}, $content_string );
+									$content_string = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $content_string );
 								}
 							}
 						}
@@ -1029,7 +1029,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				}
 
 				if ( ! empty( $orig_url ) ) {
-					$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
+					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
 
 					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
 						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
@@ -1045,34 +1045,34 @@ class AIPageDesignerController extends \WP_REST_Controller {
 						// Also update HTML content strings inside the block array
 						if ( ! empty( $block['innerHTML'] ) ) {
 							$new_url = $url_map[ $orig_url ];
-							if ( strpos($new_url, 'cb=') === false ) {
-								$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
+							if ( strpos( $new_url, 'cb=' ) === false ) {
+								$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 							}
-							$block['innerHTML'] = preg_replace_callback('/url\([\'"]?([^\'"]+)[\'"]?\)/i', function($matches) use ($new_url) {
+							$block['innerHTML'] = preg_replace_callback( '/url\([\'"]?([^\'"]+)[\'"]?\)/i', function( $matches ) use ( $new_url ) {
 								return 'url(' . $new_url . ')';
-							}, $block['innerHTML']);
-							$block['innerHTML'] = preg_replace_callback('/(src=["\'])([^"\']+)(["\'])/i', function($matches) use ($new_url) {
+							}, $block['innerHTML'] );
+							$block['innerHTML'] = preg_replace_callback( '/(src=["\'])([^"\']+)(["\'])/i', function( $matches ) use ( $new_url ) {
 								return $matches[1] . $new_url . $matches[3];
-							}, $block['innerHTML']);
-							$block['innerHTML'] = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $block['innerHTML']);
+							}, $block['innerHTML'] );
+							$block['innerHTML'] = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $block['innerHTML'] );
 						}
 						if ( ! empty( $block['innerContent'] ) ) {
 							foreach ( $block['innerContent'] as &$content_string ) {
 								if ( is_string( $content_string ) ) {
 									$new_url = $url_map[ $orig_url ];
-									if ( strpos($new_url, 'cb=') === false ) {
-										$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
+									if ( strpos( $new_url, 'cb=' ) === false ) {
+										$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 									}
-									$content_string = preg_replace_callback('/url\([\'"]?([^\'"]+)[\'"]?\)/i', function($matches) use ($new_url) {
+									$content_string = preg_replace_callback( '/url\([\'"]?([^\'"]+)[\'"]?\)/i', function( $matches ) use ( $new_url ) {
 										return 'url(' . $new_url . ')';
-									}, $content_string);
-									$content_string = preg_replace_callback('/(src=["\'])([^"\']+)(["\'])/i', function($matches) use ($new_url) {
+									}, $content_string ) ;
+									$content_string = preg_replace_callback( '/(src=["\'])([^"\']+)(["\'])/i', function( $matches ) use ( $new_url ) {
 										return $matches[1] . $new_url . $matches[3];
-									}, $content_string);
-									$content_string = preg_replace_callback('/"url":"([^"]+)"/i', function($matches) use ($new_url) {
+									}, $content_string );
+									$content_string = preg_replace_callback( '/"url":"([^"]+)"/i', function( $matches ) use ( $new_url ) {
 										return '"url":"' . $new_url . '"';
-									}, $content_string);
-									$content_string = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $content_string);
+									}, $content_string );
+									$content_string = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $content_string );
 								}
 							}
 						}
