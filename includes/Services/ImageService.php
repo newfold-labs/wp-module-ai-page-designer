@@ -286,12 +286,12 @@ class ImageService {
 	/**
 	 * Recursively update image URLs in parsed Gutenberg blocks.
 	 *
-	 * @param array &$blocks           Parsed blocks array.
-	 * @param array &$url_map          Map of original to new URLs.
-	 * @param array $unsplash_images   Array of available Unsplash URLs.
-	 * @param int  &$image_index       Current index in the Unsplash array.
-	 * @param int  $total_images       Total number of Unsplash images.
-	 * @param bool $placeholders_only  When true, only replace placehold.co URLs.
+	 * @param array &$blocks            Parsed blocks array.
+	 * @param array &$url_map           Map of original to new URLs.
+	 * @param array $unsplash_images    Array of available Unsplash URLs.
+	 * @param int   &$image_index       Current index in the Unsplash array.
+	 * @param int   $total_images       Total number of Unsplash images.
+	 * @param bool  $placeholders_only  When true, only replace placehold.co URLs.
 	 * @return void
 	 */
 	private function update_block_images_recursive( &$blocks, &$url_map, $unsplash_images, &$image_index, $total_images, $placeholders_only = false ) {
@@ -305,13 +305,11 @@ class ImageService {
 			if ( 'core/image' === $block['blockName'] ) {
 				if ( isset( $block['attrs']['url'] ) ) {
 					$orig_url = $block['attrs']['url'];
-				} else {
+				} elseif ( preg_match( '/src=["\']([^"\']+)["\']/i', $block['innerHTML'], $m ) ) {
 					// Sometimes the URL is only in the innerHTML, extract it.
-					if ( preg_match( '/src=["\']([^"\']+)["\']/i', $block['innerHTML'], $m ) ) {
-						$orig_url = $m[1];
-					} else {
-						$orig_url = '';
-					}
+					$orig_url = $m[1];
+				} else {
+					$orig_url = '';
 				}
 
 				if ( ! empty( $orig_url ) && ( ! $placeholders_only || $this->is_placeholder_url( $orig_url ) ) ) {
