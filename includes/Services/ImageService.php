@@ -11,6 +11,98 @@ namespace NewfoldLabs\WP\Module\AIPageDesigner\Services;
  * Fetches Unsplash imagery and rewrites image URLs in HTML/block markup.
  */
 class ImageService {
+	/**
+	 * Default Hiive base URL.
+	 *
+	 * @var string
+	 */
+	private const DEFAULT_HIIVE_BASE_URL = 'https://hiive.cloud';
+
+	/**
+	 * Unsplash search endpoint path.
+	 *
+	 * @var string
+	 */
+	private const UNSPLASH_ENDPOINT      = '/workers/unsplash/search/photos';
+
+	/**
+	 * Number of images to fetch per Unsplash request.
+	 *
+	 * @var int
+	 */
+	private const UNSPLASH_PER_PAGE      = 15;
+
+	/**
+	 * Unsplash request timeout in seconds.
+	 *
+	 * @var int
+	 */
+	private const UNSPLASH_TIMEOUT       = 10;
+
+	/**
+	 * Fallback query when no keywords remain.
+	 *
+	 * @var string
+	 */
+	private const FALLBACK_QUERY         = 'nature';
+
+	/**
+	 * Placeholder host used by templates.
+	 *
+	 * @var string
+	 */
+	private const PLACEHOLDER_HOST       = 'placehold.co';
+
+	/**
+	 * Cache-buster minimum value.
+	 *
+	 * @var int
+	 */
+	private const CACHE_BUSTER_MIN       = 1000;
+
+	/**
+	 * Cache-buster maximum value.
+	 *
+	 * @var int
+	 */
+	private const CACHE_BUSTER_MAX       = 9999;
+
+	// phpcs:disable WordPress.Arrays.ArrayDeclarationSpacing.ArrayItemNoNewLine
+	/**
+	 * Common stopwords removed from user queries.
+	 *
+	 * @var string[]
+	 */
+	private const DEFAULT_STOPWORDS = array(
+		// Articles / pronouns / prepositions.
+		'a', 'an', 'the', 'this', 'that', 'these', 'those',
+		'i', 'me', 'my', 'we', 'our', 'you', 'your', 'it', 'its',
+		'he', 'she', 'him', 'her', 'they', 'them', 'their',
+		'to', 'of', 'in', 'on', 'at', 'by', 'as', 'is', 'be',
+		'are', 'was', 'were', 'do', 'does', 'did', 'have', 'has',
+		'had', 'will', 'would', 'could', 'should', 'from', 'into',
+		'with', 'about', 'for', 'and', 'or', 'but', 'so', 'yet',
+		// Action words / verbs / gerunds common in chat prompts.
+		'create', 'make', 'add', 'update', 'modify', 'change',
+		'replace', 'swap', 'use', 'show', 'put', 'set', 'get',
+		'turn', 'keep', 'give', 'look', 'want', 'like',
+		'creating', 'making', 'adding', 'updating', 'modifying',
+		'replacing', 'swapping', 'using', 'showing', 'putting',
+		'getting', 'turning', 'keeping', 'giving', 'looking',
+		'doing', 'going', 'having', 'being', 'trying', 'taking',
+		'featuring', 'including', 'showing', 'displaying',
+		// Image-related words.
+		'image', 'images', 'picture', 'pictures', 'photo', 'photos',
+		'pic', 'pics', 'background', 'backgrounds', 'icon', 'icons',
+		// Generic people words — too broad for image search.
+		'person', 'people', 'man', 'woman', 'girl', 'boy',
+		'someone', 'anyone', 'everyone', 'somebody',
+		// Content/page words.
+		'page', 'post', 'site', 'website', 'design', 'layout',
+		'new', 'some', 'same', 'good', 'great', 'nice', 'better',
+		'landing', 'home', 'homepage', 'contact', 'services', 'portfolio',
+	);
+	// phpcs:enable WordPress.Arrays.ArrayDeclarationSpacing.ArrayItemNoNewLine
 
 	/**
 	 * Fetch images from Unsplash based on a query.
@@ -19,42 +111,12 @@ class ImageService {
 	 * @return array Array of image URLs.
 	 */
 	public function get_unsplash_images( $query ) {
-		$hiive_base_url = defined( 'NFD_HIIVE_BASE_URL' ) ? NFD_HIIVE_BASE_URL : 'https://hiive.cloud';
-		$endpoint       = '/workers/unsplash/search/photos';
+		$hiive_base_url = defined( 'NFD_HIIVE_BASE_URL' ) ? NFD_HIIVE_BASE_URL : self::DEFAULT_HIIVE_BASE_URL;
+		$endpoint       = self::UNSPLASH_ENDPOINT;
 
 		// Clean up query: remove common conversational words to get better image results.
 		// Also remove site/brand name tokens to avoid skewing results.
-		// phpcs:disable WordPress.Arrays.ArrayDeclarationSpacing.ArrayItemNoNewLine
-		$stopwords = array(
-			// Articles / pronouns / prepositions.
-			'a', 'an', 'the', 'this', 'that', 'these', 'those',
-			'i', 'me', 'my', 'we', 'our', 'you', 'your', 'it', 'its',
-			'he', 'she', 'him', 'her', 'they', 'them', 'their',
-			'to', 'of', 'in', 'on', 'at', 'by', 'as', 'is', 'be',
-			'are', 'was', 'were', 'do', 'does', 'did', 'have', 'has',
-			'had', 'will', 'would', 'could', 'should', 'from', 'into',
-			'with', 'about', 'for', 'and', 'or', 'but', 'so', 'yet',
-			// Action words / verbs / gerunds common in chat prompts.
-			'create', 'make', 'add', 'update', 'modify', 'change',
-			'replace', 'swap', 'use', 'show', 'put', 'set', 'get',
-			'turn', 'keep', 'give', 'look', 'want', 'like',
-			'creating', 'making', 'adding', 'updating', 'modifying',
-			'replacing', 'swapping', 'using', 'showing', 'putting',
-			'getting', 'turning', 'keeping', 'giving', 'looking',
-			'doing', 'going', 'having', 'being', 'trying', 'taking',
-			'featuring', 'including', 'showing', 'displaying',
-			// Image-related words.
-			'image', 'images', 'picture', 'pictures', 'photo', 'photos',
-			'pic', 'pics', 'background', 'backgrounds', 'icon', 'icons',
-			// Generic people words — too broad for image search.
-			'person', 'people', 'man', 'woman', 'girl', 'boy',
-			'someone', 'anyone', 'everyone', 'somebody',
-			// Content/page words.
-			'page', 'post', 'site', 'website', 'design', 'layout',
-			'new', 'some', 'same', 'good', 'great', 'nice', 'better',
-			'landing', 'home', 'homepage', 'contact', 'services', 'portfolio',
-		);
-		// phpcs:enable WordPress.Arrays.ArrayDeclarationSpacing.ArrayItemNoNewLine
+		$stopwords = self::DEFAULT_STOPWORDS;
 		$site_name = get_bloginfo( 'name' );
 		if ( $site_name ) {
 			$site_words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $site_name ) ) );
@@ -73,7 +135,7 @@ class ImageService {
 		} elseif ( ! empty( $keywords ) ) {
 			$candidate_queries[] = $keywords[0];
 		}
-		$candidate_queries[] = 'nature'; // Final fallback.
+		$candidate_queries[] = self::FALLBACK_QUERY; // Final fallback.
 
 		foreach ( $candidate_queries as $search_query ) {
 			$search_query = trim( $search_query );
@@ -90,10 +152,10 @@ class ImageService {
 
 			$args        = array(
 				'query'    => $search_query,
-				'per_page' => 8,
+				'per_page' => self::UNSPLASH_PER_PAGE,
 			);
 			$request_url = $hiive_base_url . $endpoint . '?' . http_build_query( $args );
-			$response    = wp_remote_get( $request_url, array( 'timeout' => 10 ) );
+			$response    = wp_remote_get( $request_url, array( 'timeout' => self::UNSPLASH_TIMEOUT ) );
 			$images      = array();
 
 			if ( ! is_wp_error( $response ) && 200 === wp_remote_retrieve_response_code( $response ) ) {
@@ -126,7 +188,96 @@ class ImageService {
 	 * @return bool
 	 */
 	private function is_placeholder_url( $url ) {
-		return ! empty( $url ) && strpos( $url, 'placehold.co' ) !== false;
+		return ! empty( $url ) && strpos( $url, self::PLACEHOLDER_HOST ) !== false;
+	}
+
+	/**
+	 * Resolve a replacement URL for a given original image URL.
+	 *
+	 * Checks $placeholders_only and is_placeholder_url(), strips any existing cb= param,
+	 * consults/updates $url_map, advances $image_index as needed, and appends a fresh
+	 * cb= cache buster to the resolved URL.
+	 *
+	 * @param array  &$url_map         Map of original (base) URLs to replacement URLs.
+	 * @param array  $unsplash_images  Array of available Unsplash image URLs.
+	 * @param int    &$image_index     Current position in the Unsplash array (advanced in place).
+	 * @param int    $total_images     Total number of available Unsplash images.
+	 * @param string $orig_url         The original image URL found in the markup.
+	 * @param bool   $placeholders_only When true, only placehold.co URLs are replaced.
+	 * @return string|null The new URL with cache buster, or null if the URL should not be replaced.
+	 */
+	private function resolve_replacement_url( &$url_map, $unsplash_images, &$image_index, $total_images, $orig_url, $placeholders_only ) {
+		if ( empty( $orig_url ) ) {
+			return null;
+		}
+
+		if ( $placeholders_only && ! $this->is_placeholder_url( $orig_url ) ) {
+			return null;
+		}
+
+		$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
+
+		// Placeholder URLs are all identical — always advance index so each gets a unique image.
+		if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
+			$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
+			++$image_index;
+		}
+
+		// Map both with and without cb= to the same new base image.
+		$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
+
+		$new_url = $url_map[ $orig_url ];
+
+		// Add a random cache buster so images look "new" even if the URL is the same.
+		if ( strpos( $new_url, 'cb=' ) === false ) {
+			$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( self::CACHE_BUSTER_MIN, self::CACHE_BUSTER_MAX );
+		}
+
+		return $new_url;
+	}
+
+	/**
+	 * Apply common URL replacement patterns to a single HTML/content string.
+	 *
+	 * Rewrites src=, url(), and "url":"..." occurrences to $new_url, and strips srcset.
+	 * For core/cover blocks the url() pattern is needed; for core/image it is not harmful.
+	 *
+	 * @param string $html_string The HTML or content string to update.
+	 * @param string $new_url     The replacement image URL (with cache buster already appended).
+	 * @return string The updated string.
+	 */
+	private function replace_urls_in_block_html( $html_string, $new_url ) {
+		// Replace src= attribute values.
+		$html_string = preg_replace_callback(
+			'/(src=["\'])([^"\']+)(["\'])/i',
+			function ( $matches ) use ( $new_url ) {
+				return $matches[1] . $new_url . $matches[3];
+			},
+			$html_string
+		);
+
+		// Replace CSS url() values (used by core/cover).
+		$html_string = preg_replace_callback(
+			'/url\([\'"]?([^\'"]+)[\'"]?\)/i',
+			function ( $matches ) use ( $new_url ) {
+				return 'url(' . $new_url . ')';
+			},
+			$html_string
+		);
+
+		// Replace JSON "url":"..." values.
+		$html_string = preg_replace_callback(
+			'/"url":"([^"]+)"/i',
+			function ( $matches ) use ( $new_url ) {
+				return '"url":"' . $new_url . '"';
+			},
+			$html_string
+		);
+
+		// Strip srcset so the browser always uses our new src.
+		$html_string = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $html_string );
+
+		return $html_string;
 	}
 
 	/**
@@ -146,7 +297,7 @@ class ImageService {
 		}
 
 		// When only replacing placeholders, skip entirely if none are present.
-		if ( $placeholders_only && strpos( $html, 'placehold.co' ) === false ) {
+		if ( $placeholders_only && strpos( $html, self::PLACEHOLDER_HOST ) === false ) {
 			return $html;
 		}
 
@@ -173,19 +324,8 @@ class ImageService {
 			$tags = new \WP_HTML_Tag_Processor( $html );
 			while ( $tags->next_tag( 'img' ) ) {
 				$orig_url = $tags->get_attribute( 'src' );
-				if ( $orig_url && ( ! $placeholders_only || $this->is_placeholder_url( $orig_url ) ) ) {
-					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
-					// Placeholder URLs are all identical — always advance index so each gets a unique image.
-					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
-						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						++$image_index;
-					}
-					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-
-					$new_url = $url_map[ $orig_url ];
-					if ( strpos( $new_url, 'cb=' ) === false ) {
-						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
-					}
+				$new_url  = $this->resolve_replacement_url( $url_map, $unsplash_images, $image_index, $total_images, $orig_url, $placeholders_only );
+				if ( null !== $new_url ) {
 					$tags->set_attribute( 'src', $new_url );
 				}
 				// Remove srcset if it exists so browser falls back to src.
@@ -197,23 +337,9 @@ class ImageService {
 			$html = preg_replace_callback(
 				'/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i',
 				function ( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images, $placeholders_only ) {
-					$orig_url = $matches[1];
-
-					if ( $placeholders_only && ! $this->is_placeholder_url( $orig_url ) ) {
+					$new_url = $this->resolve_replacement_url( $url_map, $unsplash_images, $image_index, $total_images, $matches[1], $placeholders_only );
+					if ( null === $new_url ) {
 						return $matches[0];
-					}
-
-					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
-					// Placeholder URLs are all identical — always advance index so each gets a unique image.
-					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
-						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						++$image_index;
-					}
-					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-
-					$new_url = $url_map[ $orig_url ];
-					if ( strpos( $new_url, 'cb=' ) === false ) {
-						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 					}
 					return 'background-image: url(' . $new_url . ')';
 				},
@@ -224,25 +350,11 @@ class ImageService {
 			$html = preg_replace_callback(
 				'/<img[^>]+src=["\']([^"\']+)["\']/i',
 				function ( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images, $placeholders_only ) {
-					$orig_url = $matches[1];
-
-					if ( $placeholders_only && ! $this->is_placeholder_url( $orig_url ) ) {
+					$new_url = $this->resolve_replacement_url( $url_map, $unsplash_images, $image_index, $total_images, $matches[1], $placeholders_only );
+					if ( null === $new_url ) {
 						return $matches[0];
 					}
-
-					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
-					// Placeholder URLs are all identical — always advance index so each gets a unique image.
-					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
-						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						++$image_index;
-					}
-					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-
-					$new_url = $url_map[ $orig_url ];
-					if ( strpos( $new_url, 'cb=' ) === false ) {
-						$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
-					}
-					return str_replace( $orig_url, $new_url, $matches[0] );
+					return str_replace( $matches[1], $new_url, $matches[0] );
 				},
 				$html
 			);
@@ -254,23 +366,9 @@ class ImageService {
 		$html = preg_replace_callback(
 			'/(<img[^>]+src=["\'])([^"\']+)["\']/',
 			function ( $matches ) use ( &$url_map, $unsplash_images, &$image_index, $total_images, $placeholders_only ) {
-				$orig_url = $matches[2];
-
-				if ( $placeholders_only && ! $this->is_placeholder_url( $orig_url ) ) {
+				$new_url = $this->resolve_replacement_url( $url_map, $unsplash_images, $image_index, $total_images, $matches[2], $placeholders_only );
+				if ( null === $new_url ) {
 					return $matches[0];
-				}
-
-				$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
-				// Placeholder URLs are all identical — always advance index so each gets a unique image.
-				if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
-					$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-					++$image_index;
-				}
-				$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-
-				$new_url = $url_map[ $orig_url ];
-				if ( strpos( $new_url, 'cb=' ) === false ) {
-					$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
 				}
 				return $matches[1] . $new_url . '"';
 			},
@@ -301,152 +399,32 @@ class ImageService {
 				$block['attrs'] = array();
 			}
 
-			// Update wp:image block URL attribute.
-			if ( 'core/image' === $block['blockName'] ) {
+			// Handle core/image and core/cover blocks — they share the same replacement
+			// logic; only the URL extraction differs (image also falls back to innerHTML).
+			if ( 'core/image' === $block['blockName'] || 'core/cover' === $block['blockName'] ) {
 				if ( isset( $block['attrs']['url'] ) ) {
 					$orig_url = $block['attrs']['url'];
-				} elseif ( preg_match( '/src=["\']([^"\']+)["\']/i', $block['innerHTML'], $m ) ) {
-					// Sometimes the URL is only in the innerHTML, extract it.
+				} elseif ( 'core/image' === $block['blockName'] && preg_match( '/src=["\']([^"\']+)["\']/i', $block['innerHTML'], $m ) ) {
+					// Sometimes the URL is only in the innerHTML for image blocks — extract it.
 					$orig_url = $m[1];
 				} else {
 					$orig_url = '';
 				}
 
-				if ( ! empty( $orig_url ) && ( ! $placeholders_only || $this->is_placeholder_url( $orig_url ) ) ) {
-					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
+				$new_url = $this->resolve_replacement_url( $url_map, $unsplash_images, $image_index, $total_images, $orig_url, $placeholders_only );
 
-					// Placeholder URLs are all identical — always advance index so each gets a unique image.
-					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
-						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						++$image_index;
+				if ( null !== $new_url ) {
+					$block['attrs']['url'] = $url_map[ $orig_url ];
+					$block['attrs']['id']  = null;
+
+					// Also update HTML content strings inside the block array.
+					if ( ! empty( $block['innerHTML'] ) ) {
+						$block['innerHTML'] = $this->replace_urls_in_block_html( $block['innerHTML'], $new_url );
 					}
-					// Map both with and without cb to the same new base image.
-					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-
-					if ( isset( $url_map[ $orig_url ] ) ) {
-						$block['attrs']['url'] = $url_map[ $orig_url ];
-						$block['attrs']['id']  = null;
-
-						// Also update HTML content strings inside the block array.
-						if ( ! empty( $block['innerHTML'] ) ) {
-							$new_url = $url_map[ $orig_url ];
-							// Add a random cache buster so images look "new" even if URL is same.
-							if ( strpos( $new_url, 'cb=' ) === false ) {
-								$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
-							}
-							$block['innerHTML'] = preg_replace_callback(
-								'/(src=["\'])([^"\']+)(["\'])/i',
-								function ( $matches ) use ( $new_url ) {
-									return $matches[1] . $new_url . $matches[3];
-								},
-								$block['innerHTML']
-							);
-							$block['innerHTML'] = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $block['innerHTML'] );
-						}
-						if ( ! empty( $block['innerContent'] ) ) {
-							foreach ( $block['innerContent'] as &$content_string ) {
-								if ( is_string( $content_string ) ) {
-									$new_url = $url_map[ $orig_url ];
-									if ( strpos( $new_url, 'cb=' ) === false ) {
-										$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
-									}
-									$content_string = preg_replace_callback(
-										'/(src=["\'])([^"\']+)(["\'])/i',
-										function ( $matches ) use ( $new_url ) {
-											return $matches[1] . $new_url . $matches[3];
-										},
-										$content_string
-									);
-									$content_string = preg_replace_callback(
-										'/"url":"([^"]+)"/i',
-										function ( $matches ) use ( $new_url ) {
-											return '"url":"' . $new_url . '"';
-										},
-										$content_string
-									);
-									$content_string = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $content_string );
-								}
-							}
-						}
-					}
-				}
-			}
-
-			// Update wp:cover block URL attribute.
-			if ( 'core/cover' === $block['blockName'] ) {
-				if ( isset( $block['attrs']['url'] ) ) {
-					$orig_url = $block['attrs']['url'];
-				} else {
-					$orig_url = '';
-				}
-
-				if ( ! empty( $orig_url ) && ( ! $placeholders_only || $this->is_placeholder_url( $orig_url ) ) ) {
-					$base_orig_url = preg_replace( '/[?&]cb=\d+/', '', $orig_url );
-
-					// Placeholder URLs are all identical — always advance index so each gets a unique image.
-					if ( $this->is_placeholder_url( $orig_url ) || ! isset( $url_map[ $base_orig_url ] ) ) {
-						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						++$image_index;
-					}
-					// Map both with and without cb to the same new base image.
-					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-
-					if ( isset( $url_map[ $orig_url ] ) ) {
-						$block['attrs']['url'] = $url_map[ $orig_url ];
-						$block['attrs']['id']  = null;
-
-						// Also update HTML content strings inside the block array.
-						if ( ! empty( $block['innerHTML'] ) ) {
-							$new_url = $url_map[ $orig_url ];
-							if ( strpos( $new_url, 'cb=' ) === false ) {
-								$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
-							}
-							$block['innerHTML'] = preg_replace_callback(
-								'/url\([\'"]?([^\'"]+)[\'"]?\)/i',
-								function ( $matches ) use ( $new_url ) {
-									return 'url(' . $new_url . ')';
-								},
-								$block['innerHTML']
-							);
-							$block['innerHTML'] = preg_replace_callback(
-								'/(src=["\'])([^"\']+)(["\'])/i',
-								function ( $matches ) use ( $new_url ) {
-									return $matches[1] . $new_url . $matches[3];
-								},
-								$block['innerHTML']
-							);
-							$block['innerHTML'] = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $block['innerHTML'] );
-						}
-						if ( ! empty( $block['innerContent'] ) ) {
-							foreach ( $block['innerContent'] as &$content_string ) {
-								if ( is_string( $content_string ) ) {
-									$new_url = $url_map[ $orig_url ];
-									if ( strpos( $new_url, 'cb=' ) === false ) {
-										$new_url .= ( strpos( $new_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1000, 9999 );
-									}
-									$content_string = preg_replace_callback(
-										'/url\([\'"]?([^\'"]+)[\'"]?\)/i',
-										function ( $matches ) use ( $new_url ) {
-											return 'url(' . $new_url . ')';
-										},
-										$content_string
-									);
-									$content_string = preg_replace_callback(
-										'/(src=["\'])([^"\']+)(["\'])/i',
-										function ( $matches ) use ( $new_url ) {
-											return $matches[1] . $new_url . $matches[3];
-										},
-										$content_string
-									);
-									$content_string = preg_replace_callback(
-										'/"url":"([^"]+)"/i',
-										function ( $matches ) use ( $new_url ) {
-											return '"url":"' . $new_url . '"';
-										},
-										$content_string
-									);
-									$content_string = preg_replace( '/srcset=["\'][^"\']+["\']/i', '', $content_string );
-								}
+					if ( ! empty( $block['innerContent'] ) ) {
+						foreach ( $block['innerContent'] as &$content_string ) {
+							if ( is_string( $content_string ) ) {
+								$content_string = $this->replace_urls_in_block_html( $content_string, $new_url );
 							}
 						}
 					}
