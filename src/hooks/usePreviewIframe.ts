@@ -12,15 +12,17 @@ type UsePreviewIframeResult = {
 
 export const usePreviewIframe = (
   previewHtml: string | null,
-  siteUrl: string,
+  previewUrl: string,
   previewStylesheets?: PreviewStylesheets
 ): UsePreviewIframeResult => {
   const iframeRef = useRef<HTMLIFrameElement>( null );
   const [ frontendStyles, setFrontendStyles ] = useState( '' );
+  const [ frontendBodyClass, setFrontendBodyClass ] = useState( '' );
+  const [ frontendShellHtml, setFrontendShellHtml ] = useState( '' );
 
   useEffect( () => {
     // Fetch frontend styles once so the preview matches the actual site.
-    fetch( siteUrl )
+    fetch( previewUrl )
       .then( ( res ) => res.text() )
       .then( ( html ) => {
         const parser = new DOMParser();
@@ -30,9 +32,39 @@ export const usePreviewIframe = (
           .map( ( el ) => el.outerHTML )
           .join( '\n' );
         setFrontendStyles( styles );
+        const bodyClass = doc.body?.getAttribute( 'class' ) || '';
+        const cleanedBodyClass = bodyClass
+          .split( /\s+/ )
+          .filter( ( className ) => className && className !== 'admin-bar' )
+          .join( ' ' );
+        setFrontendBodyClass( cleanedBodyClass );
+
+        const selectors = [
+          '.wp-site-blocks',
+          '.entry-content',
+          '.wp-block-post-content',
+          'main',
+          '#primary',
+          '#content',
+        ];
+        const slot = doc.querySelector( selectors.join( ',' ) );
+        const adminBar = doc.getElementById( 'wpadminbar' );
+        if ( adminBar ) {
+          adminBar.remove();
+        }
+
+        if ( slot ) {
+          slot.setAttribute( 'id', 'nfd-preview-root' );
+          slot.setAttribute( 'data-nfd-preview-slot', 'true' );
+          slot.innerHTML = '';
+          doc.querySelectorAll( 'script' ).forEach( ( script ) => script.remove() );
+          setFrontendShellHtml( doc.body?.innerHTML || '' );
+        } else {
+          setFrontendShellHtml( '' );
+        }
       } )
       .catch( ( err ) => console.error( 'Failed to fetch frontend styles for preview', err ) );
-  }, [ siteUrl ] );
+  }, [ previewUrl ] );
 
   useEffect( () => {
     if ( iframeRef.current && previewHtml ) {
@@ -54,6 +86,8 @@ export const usePreviewIframe = (
 
         const headStyles = frontendStyles ? frontendStyles : fallbackLinkTags;
 
+        const shouldInjectPreview = ! previewHtml.includes( '<html' );
+        const safePreviewHtml = JSON.stringify( previewHtml );
         const script = `
           <style>
             body { margin: 0; padding: 0; }
@@ -68,6 +102,9 @@ export const usePreviewIframe = (
             document.addEventListener('DOMContentLoaded', () => {
               const root = document.getElementById('nfd-preview-root');
               if (!root) return;
+              if (${ shouldInjectPreview } && ${ safePreviewHtml }) {
+                root.innerHTML = ${ safePreviewHtml };
+              }
 
               const wrapTextNodes = (container) => {
                 Array.from(container.childNodes).forEach(node => {
@@ -165,15 +202,33 @@ export const usePreviewIframe = (
         `;
 
         doc.open();
-        const fullHtml = previewHtml.includes( '<html' )
-          ? previewHtml.replace( '</head>', `${ headStyles }${ script }</head>` ).replace( '<body', '<body id="nfd-preview-root"' )
-          : `<!DOCTYPE html><html><head><meta charset="utf-8">${ headStyles }${ script }</head><body><div id="nfd-preview-root">${ previewHtml }</div></body></html>`;
+        const useShell = Boolean( frontendShellHtml ) && ! previewHtml.includes( '<html' );
+        const fullHtml = useShell
+          ? `<!DOCTYPE html><html><head><meta charset="utf-8">${ headStyles }${ script }</head><body${ frontendBodyClass ? ` class="${ frontendBodyClass }"` : '' }>${ frontendShellHtml }</body></html>`
+          : previewHtml.includes( '<html' )
+              ? previewHtml
+                  .replace( '</head>', `${ headStyles }${ script }</head>` )
+                  .replace( /<body([^>]*)>/i, ( match, attrs ) => {
+                    if ( frontendBodyClass ) {
+                      if ( /class=/.test( attrs ) ) {
+                    const updatedAttrs = attrs.replace(
+                      /class=(['"])([^'"]*)\1/i,
+                      ( match: string, quote: string, classes: string ) =>
+                        `class=${ quote }${ classes } ${ frontendBodyClass }${ quote }`
+                    );
+                        return `<body id="nfd-preview-root"${ updatedAttrs }>`;
+                      }
+                      return `<body id="nfd-preview-root" class="${ frontendBodyClass }"${ attrs }>`;
+                    }
+                    return `<body id="nfd-preview-root"${ attrs }>`;
+                  } )
+              : `<!DOCTYPE html><html><head><meta charset="utf-8">${ headStyles }${ script }</head><body${ frontendBodyClass ? ` class="${ frontendBodyClass }"` : '' }><div id="nfd-preview-root">${ previewHtml }</div></body></html>`;
 
         doc.write( fullHtml );
         doc.close();
       }
     }
-  }, [ frontendStyles, previewHtml, previewStylesheets ] );
+  }, [ frontendBodyClass, frontendShellHtml, frontendStyles, previewHtml, previewStylesheets ] );
 
   return { iframeRef };
 };

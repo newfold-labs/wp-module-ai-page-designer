@@ -60,9 +60,10 @@ const App = () => {
     nfdAIPageDesigner.apiUrl,
     'dashboard' === view
   );
+  const previewUrl = selectedItem?.link || nfdAIPageDesigner.siteUrl;
   const { iframeRef } = usePreviewIframe(
     previewHtml,
-    nfdAIPageDesigner.siteUrl,
+    previewUrl,
     nfdAIPageDesigner.previewStylesheets
   );
   const { selectedBlockIndex, selectedBlockHtml, clearSelection } = useBlockSelection();
