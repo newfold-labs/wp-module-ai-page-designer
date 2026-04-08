@@ -35,6 +35,9 @@ const ChatPanel = ( {
   onRevertTo,
   onPublish,
 }: Props ) => {
+  const isBlockMarkup = ( content?: string ) =>
+    Boolean( content?.includes( '<!-- wp:' ) || content?.includes( '<!-- /wp:' ) );
+
   return (
     <div className="ai-chat-panel">
       <div className="chat-header">
@@ -50,25 +53,50 @@ const ChatPanel = ( {
             <p>The AI will generate content you can publish directly to WordPress.</p>
           </div>
         ) }
-        { messages.map( ( msg, i ) => (
-          <div key={ i } className={ `chat-message ${ msg.role }-message` }>
-            <div className="message-bubble">
-              { msg.content.substring( 0, 500 ) }
-              { msg.content.length > 500 && '...' }
-              { msg.link && (
-                <a
-                  href={ msg.link }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="message-preview-link"
-                >
-                  <ArrowTopRightOnSquareIcon className="icon-xs" />
-                  View published page
-                </a>
-              ) }
+        { messages.map( ( msg, i ) => {
+          const showCode = msg.role === 'assistant' && isBlockMarkup( msg.code );
+          return (
+            <div key={ i } className={ `chat-message ${ msg.role }-message` }>
+              <div className="message-bubble">
+                { msg.role === 'assistant' && showCode ? (
+                  <>
+                    <p>{ msg.summary || msg.content }</p>
+                    <details className="message-code-toggle" style={ { marginTop: '8px' } }>
+                      <summary style={ { cursor: 'pointer' } }>View generated code</summary>
+                      <pre
+                        className="message-code"
+                        style={ {
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          maxHeight: '240px',
+                          overflow: 'auto',
+                        } }
+                      >
+                        { msg.code }
+                      </pre>
+                    </details>
+                  </>
+                ) : (
+                  <>
+                    { msg.content.substring( 0, 500 ) }
+                    { msg.content.length > 500 && '...' }
+                  </>
+                ) }
+                { msg.link && (
+                  <a
+                    href={ msg.link }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="message-preview-link"
+                  >
+                    <ArrowTopRightOnSquareIcon className="icon-xs" />
+                    View published page
+                  </a>
+                ) }
+              </div>
             </div>
-          </div>
-        ) ) }
+          );
+        } ) }
         { isLoading && (
           <div className="chat-message assistant-message">
             <div className="message-loading-bubble">

@@ -272,17 +272,17 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 			$search_context .= $all_prompts;
 
-			// Only fetch images if we actually found placeholders that need replacing.
-			$has_image_placeholders = (
-				preg_match( '/<img[^>]+src=["\']([^"\']+)["\']/i', $final_html ) ||
-				preg_match( '/<!-- wp:(image|cover)/i', $final_html ) ||
-				preg_match( '/background-image:\s*url\(/i', $final_html ) ||
-				preg_match( '/https?:\/\/images\.unsplash\.com\//i', $final_html ) ||
-				preg_match( '/https?:\/\/(www\.)?unsplash\.com\//i', $final_html ) ||
-				preg_match( '/https?:\/\/placehold\.co\//i', $final_html )
-			);
-			$featured_image_url     = '';
-			if ( $has_image_placeholders ) {
+			// Replace images only when the user explicitly asks for it.
+			$has_images_in_markup = false;
+			$blocks               = parse_blocks( $final_html );
+			if ( ! empty( $blocks ) ) {
+				$has_images_in_markup = $this->has_image_blocks( $blocks );
+			}
+			$featured_image_url = '';
+			$wants_images       = (bool) preg_match( '/\b(image|images|photo|photos|picture|pictures|gallery|replace image|replace images|swap image|swap images|change image|change images)\b/i', $last_user_prompt );
+			if ( ! $wants_images && ! empty( $current_markup ) ) {
+				$final_html = $this->restore_image_urls( $final_html, $current_markup );
+			} elseif ( $wants_images && $has_images_in_markup ) {
 				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
 				if ( ! empty( $unsplash_images ) ) {
 					$featured_image_url = $unsplash_images[0];
@@ -307,6 +307,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				'content'            => $final_html,
 				'title'              => $title_data['title'],
 				'excerpt'            => $title_data['excerpt'] ?? '',
+				'summary'            => $title_data['summary'] ?? '',
 				'featured_image_url' => $featured_image_url,
 				'response_id'        => $response_id,
 				'conversation_key'   => $conversation_key,
@@ -489,6 +490,130 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$this->update_block_theme_recursive( $block['innerBlocks'], $theme_mode );
 			}
 		}
+	}
+
+	/**
+	 * Detect whether parsed blocks contain image/cover usage.
+	 *
+	 * @param array $blocks Parsed blocks array.
+	 * @return bool
+	 */
+	private function has_image_blocks( array $blocks ) {
+		foreach ( $blocks as $block ) {
+			$block_name = $block['blockName'] ?? '';
+			if ( in_array( $block_name, array( 'core/image', 'core/cover', 'core/gallery', 'core/media-text' ), true ) ) {
+				if ( ! empty( $block['attrs']['url'] ) ) {
+					return true;
+				}
+				if ( ! empty( $block['innerHTML'] ) && preg_match( '/<img[^>]+src=["\']([^"\']+)["\']/i', $block['innerHTML'] ) ) {
+					return true;
+				}
+				if ( ! empty( $block['innerHTML'] ) && preg_match( '/background-image:\s*url\(/i', $block['innerHTML'] ) ) {
+					return true;
+				}
+				if ( ! empty( $block['innerContent'] ) ) {
+					foreach ( $block['innerContent'] as $content_string ) {
+						if ( is_string( $content_string ) && preg_match( '/(src=["\']|background-image:\s*url\()/i', $content_string ) ) {
+							return true;
+						}
+					}
+				}
+			}
+
+			if ( ! empty( $block['innerBlocks'] ) && $this->has_image_blocks( $block['innerBlocks'] ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Restore original image URLs when the user did not request image changes.
+	 *
+	 * @param string $final_html Updated markup from the AI.
+	 * @param string $current_markup Original markup before edits.
+	 * @return string
+	 */
+	private function restore_image_urls( $final_html, $current_markup ) {
+		$original_urls = $this->extract_image_urls( $current_markup );
+		$updated_urls  = $this->extract_image_urls( $final_html );
+
+		if ( empty( $original_urls ) || empty( $updated_urls ) ) {
+			return $final_html;
+		}
+
+		$max = min( count( $original_urls ), count( $updated_urls ) );
+		for ( $i = 0; $i < $max; $i++ ) {
+			if ( $original_urls[ $i ] !== $updated_urls[ $i ] ) {
+				$final_html = str_replace( $updated_urls[ $i ], $original_urls[ $i ], $final_html );
+			}
+		}
+
+		return $final_html;
+	}
+
+	/**
+	 * Extract image URLs from block markup in document order.
+	 *
+	 * @param string $markup Gutenberg block markup.
+	 * @return string[]
+	 */
+	private function extract_image_urls( $markup ) {
+		$urls   = array();
+		$blocks = parse_blocks( $markup );
+
+		if ( empty( $blocks ) ) {
+			return $urls;
+		}
+
+		$stack = $blocks;
+		while ( ! empty( $stack ) ) {
+			$block = array_shift( $stack );
+			$block_name = $block['blockName'] ?? '';
+
+			if ( in_array( $block_name, array( 'core/image', 'core/cover', 'core/gallery', 'core/media-text' ), true ) ) {
+				if ( ! empty( $block['attrs']['url'] ) ) {
+					$urls[] = $block['attrs']['url'];
+				}
+				if ( ! empty( $block['innerHTML'] ) ) {
+					if ( preg_match_all( '/<img[^>]+src=["\']([^"\']+)["\']/i', $block['innerHTML'], $matches ) ) {
+						foreach ( $matches[1] as $url ) {
+							$urls[] = $url;
+						}
+					}
+					if ( preg_match_all( '/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i', $block['innerHTML'], $matches ) ) {
+						foreach ( $matches[1] as $url ) {
+							$urls[] = $url;
+						}
+					}
+				}
+				if ( ! empty( $block['innerContent'] ) ) {
+					foreach ( $block['innerContent'] as $content_string ) {
+						if ( is_string( $content_string ) ) {
+							if ( preg_match_all( '/<img[^>]+src=["\']([^"\']+)["\']/i', $content_string, $matches ) ) {
+								foreach ( $matches[1] as $url ) {
+									$urls[] = $url;
+								}
+							}
+							if ( preg_match_all( '/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i', $content_string, $matches ) ) {
+								foreach ( $matches[1] as $url ) {
+									$urls[] = $url;
+								}
+							}
+						}
+					}
+				}
+			}
+
+			if ( ! empty( $block['innerBlocks'] ) ) {
+				foreach ( $block['innerBlocks'] as $inner ) {
+					$stack[] = $inner;
+				}
+			}
+		}
+
+		return $urls;
 	}
 	/**
 	 * Check permissions for routes.

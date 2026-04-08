@@ -28,6 +28,7 @@ Rules:
 - CRITICAL: Do NOT wrap your output in `<!DOCTYPE>`, `<html>`, `<head>`, or `<body>` tags. Do not use markdown code fences. Output ONLY the raw Gutenberg block markup.
 - Do NOT generate `<header>`, `<nav>`, `<footer>`, or navigation menus. You are only editing the page BODY CONTENT.
 - If the user provides existing HTML/block content and asks for specific changes, modify ONLY what they asked for. Preserve all existing sections, styles, and text that the user did not ask to change.
+- STYLE-ONLY REQUESTS: If the user asks only for styling changes (colors, fonts, spacing, sizing), do NOT change any text, layout, images, title, excerpt, or metadata. Update ONLY the relevant block JSON attributes and matching classes so Gutenberg can recognize the style change.
 - COLOR AND STYLE CHANGES: Always apply colors through Gutenberg\'s native JSON block attributes and matching CSS classes. CRITICAL rules for color changes:
    1. Define colors in the block comment\'s JSON attributes using the `style.color` object. For text colors use `"color":{"text":"#hexvalue"}` and for backgrounds use `"color":{"background":"#hexvalue"}`. Example: `<!-- wp:heading {"style":{"color":{"text":"#ffffff"}}} -->`.
    2. On the corresponding HTML element, add the matching utility class: `has-text-color` for text colors and `has-background` for background colors. These classes signal to Gutenberg that the block has custom color values.
@@ -37,11 +38,12 @@ Rules:
    6. Never respond with standalone CSS rules — all changes must be expressed as block markup so they persist when the page is published.
 - When asked to create a new page, you will be provided with a "BASE LAYOUT" of Gutenberg blocks. Use this structure as the foundation and modify its text and styling attributes to match the user\'s request.
 - Keep text content readable and well-structured for search engines. Use descriptive alt attributes for images.
-- IMAGE PLACEHOLDERS: When adding NEW image blocks that did not exist in the current markup, use `https://placehold.co/WIDTHxHEIGHT` with dimensions appropriate for the context (e.g. 1200x600 for hero/cover blocks, 800x600 for inline images). A real image service will replace these URLs automatically. CRITICAL: When modifying existing markup, ALWAYS preserve every existing image URL exactly as-is — never replace, rewrite, or substitute real image URLs with placehold.co or any other URL.
+- DO NOT REPLACE IMAGES (CRITICAL): You MUST NOT add, remove, or modify any image blocks, image URLs, or background images. Preserve all existing image blocks and URLs exactly as provided.
 
-Every response MUST start with these two comment lines in this exact order:
+Every response MUST start with these three comment lines in this exact order:
 `<!-- PAGE_TITLE: <SEO-optimized title under 60 characters> -->`
 `<!-- PAGE_EXCERPT: <1-2 sentence SEO-friendly summary under 160 characters> -->`
+`<!-- RESPONSE_SUMMARY: <1 sentence, user-facing summary of the update or generated page> -->`
 Followed immediately by the modified Gutenberg block markup.';
 
 		/**

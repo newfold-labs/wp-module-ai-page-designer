@@ -21,6 +21,7 @@ export type GenerateContentResponse = {
     content: string;
     title?: string;
     excerpt?: string;
+    summary?: string;
     featured_image_url?: string;
     message?: string;
     response_id?: string;

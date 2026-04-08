@@ -101,6 +101,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
   const handleSend = useCallback( async ( overrideText?: string ) => {
     const text = ( overrideText !== undefined ? overrideText : input ).trim();
+    const wantsExcerpt = /excerpt/i.test( text );
+    const wantsFeaturedImage = /(featured image|feature image|featured-image|featured-img)/i.test( text );
+    const wantsTitle = /(title|headline|page title|post title|rename)/i.test( text );
     if ( ! text || isLoading ) {
       return;
     }
@@ -190,6 +193,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       const response = await generateContent( apiUrl, newMessages, context );
 
       const rawContent = response?.data?.content ?? '';
+      const responseSummary = response?.data?.summary ?? '';
       const serverMessage = response?.data?.message ?? '';
 
       // Message-only response: fast path signalled an error (e.g. Unsplash unavailable).
@@ -211,7 +215,6 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         return;
       }
 
-      let assistantContent = rawContent;
       const title = response?.data?.title || '';
 
       if ( ! selectedItem && response?.data?.conversation_id ) {
@@ -222,9 +225,18 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         setResponseId( response.data.response_id );
       }
 
-      setMessages( [ ...newMessages, { role: 'assistant', content: assistantContent } ] );
+      const fallbackSummary = selectedItem ? 'Update ready.' : 'New page ready.';
+      setMessages( [
+        ...newMessages,
+        {
+          role: 'assistant',
+          content: responseSummary || fallbackSummary,
+          summary: responseSummary || undefined,
+          code: rawContent || undefined,
+        },
+      ] );
 
-      let finalHtml = assistantContent.trim();
+      let finalHtml = rawContent.trim();
       finalHtml = finalHtml.replace( /<!--(?![\s\S]*?-->)[\s\S]*$/u, '' );
 
       const stack: string[] = [];
@@ -326,17 +338,21 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           addHistoryEntry( html );
         }
         setHasAIGenerated( true );
-        if ( title ) {
+        if ( title && ( ! selectedItem || wantsTitle ) ) {
           setPublishTitle( title );
           setMetaTitle( title );
         }
-        const excerpt = response?.data?.excerpt || '';
-        if ( excerpt ) {
-          setMetaExcerpt( excerpt );
+        if ( ! selectedItem || wantsExcerpt ) {
+          const excerpt = response?.data?.excerpt || '';
+          if ( excerpt ) {
+            setMetaExcerpt( excerpt );
+          }
         }
-        const featuredImageUrl = response?.data?.featured_image_url || null;
-        if ( featuredImageUrl ) {
-          setMetaFeaturedImageUrl( featuredImageUrl );
+        if ( ! selectedItem || wantsFeaturedImage ) {
+          const featuredImageUrl = response?.data?.featured_image_url || null;
+          if ( featuredImageUrl ) {
+            setMetaFeaturedImageUrl( featuredImageUrl );
+          }
         }
       }
     } catch ( error: any ) {

@@ -1,6 +1,8 @@
 export type Message = {
     role: 'user' | 'assistant';
     content: string;
+    summary?: string;
+    code?: string;
     link?: string;
 };
 export type WPItem = {

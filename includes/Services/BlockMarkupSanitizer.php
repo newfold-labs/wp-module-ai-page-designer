@@ -16,11 +16,12 @@ class BlockMarkupSanitizer {
 	 * Extract the PAGE_TITLE comment embedded in every AI HTML response.
 	 *
 	 * @param string $content Raw AI response content.
-	 * @return array{title:string,html:string}
+	 * @return array{title:string,excerpt:string,summary:string,html:string}
 	 */
 	public function extract_page_title( $content ) {
 		$title   = '';
 		$excerpt = '';
+		$summary = '';
 		$html    = $content;
 
 		if ( preg_match( '/<!--\s*PAGE_TITLE:\s*(.+?)\s*-->/i', $html, $m ) ) {
@@ -33,9 +34,15 @@ class BlockMarkupSanitizer {
 			$html    = preg_replace( '/<!--\s*PAGE_EXCERPT:\s*.+?\s*-->\s*/i', '', $html, 1 );
 		}
 
+		if ( preg_match( '/<!--\s*RESPONSE_SUMMARY:\s*(.+?)\s*-->/i', $html, $m ) ) {
+			$summary = trim( $m[1] );
+			$html    = preg_replace( '/<!--\s*RESPONSE_SUMMARY:\s*.+?\s*-->\s*/i', '', $html, 1 );
+		}
+
 		return array(
 			'title'   => $title,
 			'excerpt' => $excerpt,
+			'summary' => $summary,
 			'html'    => $this->sanitize_block_content( trim( $html ) ),
 		);
 	}
