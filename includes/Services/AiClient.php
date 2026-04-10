@@ -180,7 +180,9 @@ class AiClient {
 		$curl_handle = curl_init( 'https://api-gw.builderservices.io/ai-api/v1/response/stream' );
 
 		curl_setopt( $curl_handle, CURLOPT_POST, true );
-		curl_setopt( $curl_handle, CURLOPT_HTTPHEADER,
+		curl_setopt(
+			$curl_handle,
+			CURLOPT_HTTPHEADER,
 			array(
 				'Content-Type: application/json',
 				'Authorization: Bearer ' . $jwt_token,
@@ -188,7 +190,9 @@ class AiClient {
 		);
 		curl_setopt( $curl_handle, CURLOPT_POSTFIELDS, $request_body );
 		curl_setopt( $curl_handle, CURLOPT_TIMEOUT, 0 );
-		curl_setopt( $curl_handle, CURLOPT_WRITEFUNCTION,
+		curl_setopt(
+			$curl_handle,
+			CURLOPT_WRITEFUNCTION,
 			function ( $ch, $chunk ) use ( &$buffer, &$response_id, $on_event ) {
 				$buffer .= $chunk;
 
@@ -224,18 +228,33 @@ class AiClient {
 					if ( is_array( $payload ) ) {
 						$delta = $this->extract_stream_delta( $payload );
 						if ( '' !== $delta ) {
-							$on_event( array( 'type' => 'delta', 'text' => $delta ) );
+							$on_event(
+								array(
+									'type' => 'delta',
+									'text' => $delta
+								)
+							);
 						} else {
 							$snapshot = $this->extract_stream_snapshot( $payload );
 							if ( '' !== $snapshot ) {
-								$on_event( array( 'type' => 'snapshot', 'text' => $snapshot ) );
+								$on_event(
+									array(
+										'type' => 'snapshot',
+										'text' => $snapshot
+									)
+								);
 							}
 						}
 
 						$maybe_response_id = $this->extract_response_id( $payload );
 						if ( $maybe_response_id ) {
 							$response_id = $maybe_response_id;
-							$on_event( array( 'type' => 'meta', 'response_id' => $response_id ) );
+							$on_event(
+								array(
+									'type' => 'meta',
+									'response_id' => $response_id
+								)
+							);
 						}
 					}
 				}
