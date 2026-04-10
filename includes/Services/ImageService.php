@@ -23,49 +23,49 @@ class ImageService {
 	 *
 	 * @var string
 	 */
-	private const UNSPLASH_ENDPOINT      = '/workers/unsplash/search/photos';
+	private const UNSPLASH_ENDPOINT = '/workers/unsplash/search/photos';
 
 	/**
 	 * Number of images to fetch per Unsplash request.
 	 *
 	 * @var int
 	 */
-	private const UNSPLASH_PER_PAGE      = 15;
+	private const UNSPLASH_PER_PAGE = 15;
 
 	/**
 	 * Unsplash request timeout in seconds.
 	 *
 	 * @var int
 	 */
-	private const UNSPLASH_TIMEOUT       = 10;
+	private const UNSPLASH_TIMEOUT = 10;
 
 	/**
 	 * Fallback query when no keywords remain.
 	 *
 	 * @var string
 	 */
-	private const FALLBACK_QUERY         = 'nature';
+	private const FALLBACK_QUERY = 'nature';
 
 	/**
 	 * Placeholder host used by templates.
 	 *
 	 * @var string
 	 */
-	private const PLACEHOLDER_HOST       = 'placehold.co';
+	private const PLACEHOLDER_HOST = 'placehold.co';
 
 	/**
 	 * Cache-buster minimum value.
 	 *
 	 * @var int
 	 */
-	private const CACHE_BUSTER_MIN       = 1000;
+	private const CACHE_BUSTER_MIN = 1000;
 
 	/**
 	 * Cache-buster maximum value.
 	 *
 	 * @var int
 	 */
-	private const CACHE_BUSTER_MAX       = 9999;
+	private const CACHE_BUSTER_MAX = 9999;
 
 	// phpcs:disable WordPress.Arrays.ArrayDeclarationSpacing.ArrayItemNoNewLine
 	/**
@@ -116,9 +116,9 @@ class ImageService {
 
 		// Clean up query: remove common conversational words to get better image results.
 		// Include site title/tagline to improve relevance when available.
-		$stopwords = self::DEFAULT_STOPWORDS;
-		$site_name = get_bloginfo( 'name' );
-		$tagline   = get_bloginfo( 'description' );
+		$stopwords     = self::DEFAULT_STOPWORDS;
+		$site_name     = get_bloginfo( 'name' );
+		$tagline       = get_bloginfo( 'description' );
 		$context_query = trim( $query );
 		$context_site  = trim( $site_name . ' ' . $tagline );
 
@@ -136,7 +136,7 @@ class ImageService {
 		}
 		// Add site context as a fallback query to avoid overpowering the user intent.
 		if ( $context_site ) {
-			$site_words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z\s]/', '', $context_site ) ) );
+			$site_words    = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z\s]/', '', $context_site ) ) );
 			$site_keywords = array_values( array_diff( $site_words, $stopwords ) );
 			if ( ! empty( $site_keywords ) ) {
 				$candidate_queries[] = implode( ' ', array_slice( $site_keywords, 0, 6 ) );

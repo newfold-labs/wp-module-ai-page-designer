@@ -38,9 +38,9 @@ class AiClient {
 		}
 
 		$input_payload = array(
-			'input' => $ai_messages,
-			'model' => 'gpt-5.4-mini',
-			'store' => true,
+			'input'             => $ai_messages,
+			'model'             => 'gpt-5.4-mini',
+			'store'             => true,
 			'max_output_tokens' => 5000,
 		);
 
@@ -50,8 +50,8 @@ class AiClient {
 
 		$request_body = wp_json_encode(
 			array(
-				'promptId'      => '4d5d7866-cbaf-4274-ad72-f789e358965d',
-				'inputPayload'  => $input_payload,
+				'promptId'     => '4d5d7866-cbaf-4274-ad72-f789e358965d',
+				'inputPayload' => $input_payload,
 			)
 		);
 
@@ -81,6 +81,7 @@ class AiClient {
 			return new \WP_Error(
 				'ai_service_timeout',
 				sprintf(
+					// translators: %s is the error message from the AI service.
 					__( 'AI service request failed: %s', 'wp-module-ai-page-designer' ),
 					$response->get_error_message()
 				),
@@ -179,83 +180,68 @@ class AiClient {
 		$curl_handle = curl_init( 'https://api-gw.builderservices.io/ai-api/v1/response/stream' );
 
 		curl_setopt( $curl_handle, CURLOPT_POST, true );
-		curl_setopt( $curl_handle, CURLOPT_HTTPHEADER, array(
-			'Content-Type: application/json',
-			'Authorization: Bearer ' . $jwt_token,
-		) );
+		curl_setopt( $curl_handle, CURLOPT_HTTPHEADER,
+			array(
+				'Content-Type: application/json',
+				'Authorization: Bearer ' . $jwt_token,
+			)
+		);
 		curl_setopt( $curl_handle, CURLOPT_POSTFIELDS, $request_body );
 		curl_setopt( $curl_handle, CURLOPT_TIMEOUT, 0 );
-		curl_setopt( $curl_handle, CURLOPT_WRITEFUNCTION, function ( $ch, $chunk ) use ( &$buffer, &$response_id, $on_event ) {
-			$buffer .= $chunk;
+		curl_setopt( $curl_handle, CURLOPT_WRITEFUNCTION,
+			function ( $ch, $chunk ) use ( &$buffer, &$response_id, $on_event ) {
+				$buffer .= $chunk;
 
-			while ( false !== ( $pos = strpos( $buffer, "\n\n" ) ) ) {
-				$event_block = substr( $buffer, 0, $pos );
-				$buffer      = substr( $buffer, $pos + 2 );
+				while ( false !== ( $pos = strpos( $buffer, "\n\n" ) ) ) {
+					$event_block = substr( $buffer, 0, $pos );
+					$buffer      = substr( $buffer, $pos + 2 );
 
-				$lines     = preg_split( "/\r?\n/", trim( $event_block ) );
-				$event     = 'message';
-				$data_lines = array();
+					$lines     = preg_split( "/\r?\n/", trim( $event_block ) );
+					$event     = 'message';
+					$data_lines = array();
 
-				foreach ( $lines as $line ) {
-					if ( 0 === strpos( $line, 'event:' ) ) {
-						$event = trim( substr( $line, 6 ) );
-						continue;
-					}
-					if ( 0 === strpos( $line, 'data:' ) ) {
-						$data_lines[] = trim( substr( $line, 5 ) );
-					}
-				}
-
-				if ( empty( $data_lines ) ) {
-					continue;
-				}
-
-				$data = implode( "\n", $data_lines );
-				if ( '[DONE]' === $data ) {
-					$on_event( array( 'type' => 'done' ) );
-					continue;
-				}
-
-				$payload = json_decode( $data, true );
-				if ( is_array( $payload ) ) {
-					// Debug: log stream event type and delta length.
-					$event_type = isset( $payload['type'] ) ? $payload['type'] : 'unknown';
-					$event_delta = '';
-					if ( isset( $payload['delta'] ) && is_string( $payload['delta'] ) ) {
-						$event_delta = $payload['delta'];
-					} elseif ( isset( $payload['Delta'] ) && is_string( $payload['Delta'] ) ) {
-						$event_delta = $payload['Delta'];
-					} elseif ( isset( $payload['Text'] ) && is_string( $payload['Text'] ) ) {
-						$event_delta = $payload['Text'];
-					} elseif ( isset( $payload['Part']['Text'] ) && is_string( $payload['Part']['Text'] ) ) {
-						$event_delta = $payload['Part']['Text'];
-					}
-					error_log( sprintf( '[AI stream] type=%s delta_len=%d', $event_type, strlen( $event_delta ) ) );
-					if ( 'unknown' === $event_type ) {
-						$raw_preview = isset( $data ) ? substr( $data, 0, 500 ) : '';
-						error_log( sprintf( '[AI stream] raw=%s', $raw_preview ) );
-					}
-
-					$delta = $this->extract_stream_delta( $payload );
-					if ( '' !== $delta ) {
-						$on_event( array( 'type' => 'delta', 'text' => $delta ) );
-					} else {
-						$snapshot = $this->extract_stream_snapshot( $payload );
-						if ( '' !== $snapshot ) {
-							$on_event( array( 'type' => 'snapshot', 'text' => $snapshot ) );
+					foreach ( $lines as $line ) {
+						if ( 0 === strpos( $line, 'event:' ) ) {
+							$event = trim( substr( $line, 6 ) );
+							continue;
+						}
+						if ( 0 === strpos( $line, 'data:' ) ) {
+							$data_lines[] = trim( substr( $line, 5 ) );
 						}
 					}
 
-					$maybe_response_id = $this->extract_response_id( $payload );
-					if ( $maybe_response_id ) {
-						$response_id = $maybe_response_id;
-						$on_event( array( 'type' => 'meta', 'response_id' => $response_id ) );
+					if ( empty( $data_lines ) ) {
+						continue;
+					}
+
+					$data = implode( "\n", $data_lines );
+					if ( '[DONE]' === $data ) {
+						$on_event( array( 'type' => 'done' ) );
+						continue;
+					}
+
+					$payload = json_decode( $data, true );
+					if ( is_array( $payload ) ) {
+						$delta = $this->extract_stream_delta( $payload );
+						if ( '' !== $delta ) {
+							$on_event( array( 'type' => 'delta', 'text' => $delta ) );
+						} else {
+							$snapshot = $this->extract_stream_snapshot( $payload );
+							if ( '' !== $snapshot ) {
+								$on_event( array( 'type' => 'snapshot', 'text' => $snapshot ) );
+							}
+						}
+
+						$maybe_response_id = $this->extract_response_id( $payload );
+						if ( $maybe_response_id ) {
+							$response_id = $maybe_response_id;
+							$on_event( array( 'type' => 'meta', 'response_id' => $response_id ) );
+						}
 					}
 				}
+				return strlen( $chunk );
 			}
-
-			return strlen( $chunk );
-		} );
+		);
 
 		$ok = curl_exec( $curl_handle );
 		if ( false === $ok ) {
@@ -263,6 +249,7 @@ class AiClient {
 			curl_close( $curl_handle );
 			return new \WP_Error(
 				'ai_stream_error',
+				// translators: %s is the error message from the AI service.
 				sprintf( __( 'AI streaming request failed: %s', 'wp-module-ai-page-designer' ), $error_message ),
 				array( 'status' => 500 )
 			);
@@ -274,7 +261,8 @@ class AiClient {
 		if ( $response_code && $response_code >= 400 ) {
 			return new \WP_Error(
 				'ai_stream_error',
-				__( 'AI streaming request failed.', 'wp-module-ai-page-designer' ),
+				// translators: %s is the error code from the AI service.
+				sprintf( __( 'AI streaming request failed: %s', 'wp-module-ai-page-designer' ), $response_code ),
 				array( 'status' => $response_code )
 			);
 		}
