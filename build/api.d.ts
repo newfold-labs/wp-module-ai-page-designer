@@ -20,7 +20,21 @@ export type GenerateContentResponse = {
         conversation_key?: string;
     };
 };
+export type StreamEvent = {
+    type: 'delta';
+    text: string;
+} | {
+    type: 'snapshot';
+    text: string;
+} | {
+    type: 'result';
+    data: GenerateContentResponse['data'];
+} | {
+    type: 'error';
+    message: string;
+};
 export declare const generateContent: (apiUrl: string, messages: Message[], context: GenerateContentContext) => Promise<GenerateContentResponse>;
+export declare const generateContentStream: (apiUrl: string, messages: Message[], context: GenerateContentContext, onEvent: (event: StreamEvent) => void) => Promise<void>;
 export declare const publishNewContent: (type: "new_post" | "new_page", title: string, content: string) => Promise<any>;
 type UpdateExistingMeta = {
     title?: string;

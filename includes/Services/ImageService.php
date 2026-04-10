@@ -115,15 +115,14 @@ class ImageService {
 		$endpoint       = self::UNSPLASH_ENDPOINT;
 
 		// Clean up query: remove common conversational words to get better image results.
-		// Also remove site/brand name tokens to avoid skewing results.
+		// Include site title/tagline to improve relevance when available.
 		$stopwords = self::DEFAULT_STOPWORDS;
 		$site_name = get_bloginfo( 'name' );
-		if ( $site_name ) {
-			$site_words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $site_name ) ) );
-			$stopwords  = array_merge( $stopwords, array_filter( $site_words ) );
-		}
+		$tagline   = get_bloginfo( 'description' );
+		$context_query = trim( $query );
+		$context_site  = trim( $site_name . ' ' . $tagline );
 
-		$words    = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z\s]/', '', $query ) ) );
+		$words    = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z\s]/', '', $context_query ) ) );
 		$keywords = array_values( array_diff( $words, $stopwords ) );
 
 		// Build a list of candidate queries to try, from most specific to broadest.
@@ -135,6 +134,15 @@ class ImageService {
 		} elseif ( ! empty( $keywords ) ) {
 			$candidate_queries[] = $keywords[0];
 		}
+		// Add site context as a fallback query to avoid overpowering the user intent.
+		if ( $context_site ) {
+			$site_words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z\s]/', '', $context_site ) ) );
+			$site_keywords = array_values( array_diff( $site_words, $stopwords ) );
+			if ( ! empty( $site_keywords ) ) {
+				$candidate_queries[] = implode( ' ', array_slice( $site_keywords, 0, 6 ) );
+			}
+		}
+
 		$candidate_queries[] = self::FALLBACK_QUERY; // Final fallback.
 
 		foreach ( $candidate_queries as $search_query ) {

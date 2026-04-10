@@ -41,6 +41,7 @@ class AiClient {
 			'input' => $ai_messages,
 			'model' => 'gpt-5.4-mini',
 			'store' => true,
+			'max_output_tokens' => 5000,
 		);
 
 		if ( ! empty( $options['previous_response_id'] ) && is_string( $options['previous_response_id'] ) ) {
@@ -143,6 +144,145 @@ class AiClient {
 	}
 
 	/**
+	 * Stream generated content from the AI service.
+	 *
+	 * @param array    $ai_messages Message payload for the AI service.
+	 * @param array    $options Optional settings (previous_response_id).
+	 * @param callable $on_event Callback for stream events.
+	 * @return string|\WP_Error Response ID or WP_Error on failure.
+	 */
+	public function stream_content( array $ai_messages, array $options, callable $on_event ) {
+		$hiive_token = HiiveConnection::get_auth_token();
+
+		if ( ! $hiive_token ) {
+			return new \WP_Error(
+				'rest_forbidden',
+				__( 'You are not authorized to make this call. Hiive authentication failed.', 'wp-module-ai-page-designer' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		$jwt_token = $this->get_jwt_token( $hiive_token );
+		if ( is_wp_error( $jwt_token ) ) {
+			return $jwt_token;
+		}
+
+		$request_body = wp_json_encode(
+			array(
+				'promptId'     => '4d5d7866-cbaf-4274-ad72-f789e358965d',
+				'inputPayload' => $this->build_stream_input_payload( $ai_messages, $options ),
+			)
+		);
+
+		$buffer      = '';
+		$response_id = null;
+		$curl_handle = curl_init( 'https://api-gw.builderservices.io/ai-api/v1/response/stream' );
+
+		curl_setopt( $curl_handle, CURLOPT_POST, true );
+		curl_setopt( $curl_handle, CURLOPT_HTTPHEADER, array(
+			'Content-Type: application/json',
+			'Authorization: Bearer ' . $jwt_token,
+		) );
+		curl_setopt( $curl_handle, CURLOPT_POSTFIELDS, $request_body );
+		curl_setopt( $curl_handle, CURLOPT_TIMEOUT, 0 );
+		curl_setopt( $curl_handle, CURLOPT_WRITEFUNCTION, function ( $ch, $chunk ) use ( &$buffer, &$response_id, $on_event ) {
+			$buffer .= $chunk;
+
+			while ( false !== ( $pos = strpos( $buffer, "\n\n" ) ) ) {
+				$event_block = substr( $buffer, 0, $pos );
+				$buffer      = substr( $buffer, $pos + 2 );
+
+				$lines     = preg_split( "/\r?\n/", trim( $event_block ) );
+				$event     = 'message';
+				$data_lines = array();
+
+				foreach ( $lines as $line ) {
+					if ( 0 === strpos( $line, 'event:' ) ) {
+						$event = trim( substr( $line, 6 ) );
+						continue;
+					}
+					if ( 0 === strpos( $line, 'data:' ) ) {
+						$data_lines[] = trim( substr( $line, 5 ) );
+					}
+				}
+
+				if ( empty( $data_lines ) ) {
+					continue;
+				}
+
+				$data = implode( "\n", $data_lines );
+				if ( '[DONE]' === $data ) {
+					$on_event( array( 'type' => 'done' ) );
+					continue;
+				}
+
+				$payload = json_decode( $data, true );
+				if ( is_array( $payload ) ) {
+					// Debug: log stream event type and delta length.
+					$event_type = isset( $payload['type'] ) ? $payload['type'] : 'unknown';
+					$event_delta = '';
+					if ( isset( $payload['delta'] ) && is_string( $payload['delta'] ) ) {
+						$event_delta = $payload['delta'];
+					} elseif ( isset( $payload['Delta'] ) && is_string( $payload['Delta'] ) ) {
+						$event_delta = $payload['Delta'];
+					} elseif ( isset( $payload['Text'] ) && is_string( $payload['Text'] ) ) {
+						$event_delta = $payload['Text'];
+					} elseif ( isset( $payload['Part']['Text'] ) && is_string( $payload['Part']['Text'] ) ) {
+						$event_delta = $payload['Part']['Text'];
+					}
+					error_log( sprintf( '[AI stream] type=%s delta_len=%d', $event_type, strlen( $event_delta ) ) );
+					if ( 'unknown' === $event_type ) {
+						$raw_preview = isset( $data ) ? substr( $data, 0, 500 ) : '';
+						error_log( sprintf( '[AI stream] raw=%s', $raw_preview ) );
+					}
+
+					$delta = $this->extract_stream_delta( $payload );
+					if ( '' !== $delta ) {
+						$on_event( array( 'type' => 'delta', 'text' => $delta ) );
+					} else {
+						$snapshot = $this->extract_stream_snapshot( $payload );
+						if ( '' !== $snapshot ) {
+							$on_event( array( 'type' => 'snapshot', 'text' => $snapshot ) );
+						}
+					}
+
+					$maybe_response_id = $this->extract_response_id( $payload );
+					if ( $maybe_response_id ) {
+						$response_id = $maybe_response_id;
+						$on_event( array( 'type' => 'meta', 'response_id' => $response_id ) );
+					}
+				}
+			}
+
+			return strlen( $chunk );
+		} );
+
+		$ok = curl_exec( $curl_handle );
+		if ( false === $ok ) {
+			$error_message = curl_error( $curl_handle );
+			curl_close( $curl_handle );
+			return new \WP_Error(
+				'ai_stream_error',
+				sprintf( __( 'AI streaming request failed: %s', 'wp-module-ai-page-designer' ), $error_message ),
+				array( 'status' => 500 )
+			);
+		}
+
+		$response_code = curl_getinfo( $curl_handle, CURLINFO_RESPONSE_CODE );
+		curl_close( $curl_handle );
+
+		if ( $response_code && $response_code >= 400 ) {
+			return new \WP_Error(
+				'ai_stream_error',
+				__( 'AI streaming request failed.', 'wp-module-ai-page-designer' ),
+				array( 'status' => $response_code )
+			);
+		}
+
+		return $response_id;
+	}
+
+	/**
 	 * Exchange Hiive token for JWT token from JWT worker.
 	 *
 	 * @param string $hiive_token The Hiive authentication token.
@@ -242,6 +382,21 @@ class AiClient {
 	 * @return string|null
 	 */
 	private function extract_response_id( array $result ) {
+		if ( isset( $result['type'], $result['response_id'] ) && 'completed' === $result['type'] ) {
+			return (string) $result['response_id'];
+		}
+
+		if ( isset( $result['type'], $result['response']['id'] ) ) {
+			if ( 'response.created' === $result['type'] || 'response.done' === $result['type'] ) {
+				return (string) $result['response']['id'];
+			}
+		}
+		if ( isset( $result['type'], $result['response']['id'] ) ) {
+			if ( 'response.created' === $result['type'] || 'response.done' === $result['type'] ) {
+				return (string) $result['response']['id'];
+			}
+		}
+
 		if ( isset( $result['responseMetadata']['response_id'] ) && is_string( $result['responseMetadata']['response_id'] ) ) {
 			return $result['responseMetadata']['response_id'];
 		}
@@ -251,5 +406,124 @@ class AiClient {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Build the input payload for the AI service.
+	 *
+	 * @param array $ai_messages Message payload.
+	 * @param array $options Optional settings.
+	 * @return array
+	 */
+	private function build_input_payload( array $ai_messages, array $options ) {
+		$input_payload = array(
+			'input' => $ai_messages,
+			'model' => 'gpt-5.4-mini',
+			'store' => true,
+		);
+
+		if ( ! empty( $options['previous_response_id'] ) && is_string( $options['previous_response_id'] ) ) {
+			$input_payload['previous_response_id'] = $options['previous_response_id'];
+		}
+
+		return $input_payload;
+	}
+
+	/**
+	 * Build the input payload for the streaming AI service.
+	 *
+	 * @param array $ai_messages Message payload.
+	 * @param array $options Optional settings.
+	 * @return array
+	 */
+	private function build_stream_input_payload( array $ai_messages, array $options ) {
+		$input_payload = array(
+			'model' => 'gpt-5.4-mini',
+			'input' => wp_json_encode( $ai_messages ),
+			'store' => true,
+			'max_output_tokens' => 5000,
+		);
+
+		if ( ! empty( $options['previous_response_id'] ) && is_string( $options['previous_response_id'] ) ) {
+			$input_payload['previous_response_id'] = $options['previous_response_id'];
+		}
+
+		return $input_payload;
+	}
+
+	/**
+	 * Extract streaming text deltas from a stream payload.
+	 *
+	 * @param array $payload Stream payload.
+	 * @return string
+	 */
+	private function extract_stream_delta( array $payload ) {
+		if ( isset( $payload['Delta'] ) && is_string( $payload['Delta'] ) ) {
+			return $payload['Delta'];
+		}
+
+		if ( isset( $payload['type'] ) && 'response.output.text.delta' === $payload['type'] && isset( $payload['delta'] ) ) {
+			return (string) $payload['delta'];
+		}
+
+		if ( isset( $payload['type'], $payload['delta'] ) && is_string( $payload['delta'] ) ) {
+			if ( substr( $payload['type'], -6 ) === '.delta' ) {
+				return $payload['delta'];
+			}
+		}
+
+		if ( isset( $payload['delta'] ) && is_string( $payload['delta'] ) ) {
+			return $payload['delta'];
+		}
+
+		if ( isset( $payload['delta']['content'] ) ) {
+			return (string) $payload['delta']['content'];
+		}
+
+		if ( isset( $payload['choices'][0]['delta']['content'] ) ) {
+			return (string) $payload['choices'][0]['delta']['content'];
+		}
+
+		if ( isset( $payload['outputPayload']['output'] ) && is_array( $payload['outputPayload']['output'] ) ) {
+			$text = '';
+			foreach ( $payload['outputPayload']['output'] as $output_item ) {
+				if ( isset( $output_item['type'] ) && 'message' === $output_item['type'] && isset( $output_item['content'] ) ) {
+					foreach ( (array) $output_item['content'] as $content_item ) {
+						if ( isset( $content_item['type'] ) && 'output_text' === $content_item['type'] && isset( $content_item['text'] ) ) {
+							$text .= $content_item['text'];
+						}
+					}
+				}
+			}
+			return $text;
+		}
+
+		if ( isset( $payload['content'] ) ) {
+			return (string) $payload['content'];
+		}
+
+		if ( isset( $payload['text'] ) ) {
+			return (string) $payload['text'];
+		}
+
+		return '';
+	}
+
+	/**
+	 * Extract snapshot text from a stream payload.
+	 *
+	 * @param array $payload Stream payload.
+	 * @return string
+	 */
+	private function extract_stream_snapshot( array $payload ) {
+		if ( isset( $payload['Text'] ) && is_string( $payload['Text'] ) ) {
+			return $payload['Text'];
+		}
+
+		if ( isset( $payload['Part']['Text'] ) && is_string( $payload['Part']['Text'] ) ) {
+			return $payload['Part']['Text'];
+		}
+
+		return '';
 	}
 }

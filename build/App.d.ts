@@ -9,6 +9,7 @@ declare global {
             canAccessAI: boolean;
             currentUserId: number;
             ajaxUrl: string;
+            enableStreaming?: boolean;
             previewStylesheets?: {
                 blockLibrary: string;
                 themeUrl: string;

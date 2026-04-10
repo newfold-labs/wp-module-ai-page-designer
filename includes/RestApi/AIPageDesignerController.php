@@ -104,6 +104,11 @@ class AIPageDesignerController extends \WP_REST_Controller {
 							'description'       => __( 'Additional context like current markup', 'wp-module-ai-page-designer' ),
 							'validate_callback' => array( $this, 'validate_context' ),
 						),
+						'stream'   => array(
+							'required'    => false,
+							'type'        => 'boolean',
+							'description' => __( 'Stream AI response as SSE', 'wp-module-ai-page-designer' ),
+						),
 					),
 					'permission_callback' => array( $this, 'check_permission' ),
 				),
@@ -211,14 +216,71 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				}
 			}
 
+			$stream = (bool) $request->get_param( 'stream' );
+
 			$fast_path_response = $this->fast_path_handler->maybe_handle_fast_path( $current_markup, $last_user_prompt );
 			if ( $fast_path_response ) {
+				if ( $stream ) {
+					$this->init_streaming_response();
+					$fast_path_data = $fast_path_response->get_data();
+					$this->send_stream_event( 'result', $fast_path_data['data'] ?? $fast_path_data );
+					$this->send_stream_event( 'done', array() );
+					exit;
+				}
 				return $fast_path_response;
 			}
 
 			$ai_messages          = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type );
 			$previous_response_id = $this->load_previous_response_id( $conversation_key );
-			$ai_result            = $this->ai_client->generate_content(
+
+			if ( $stream ) {
+				$this->init_streaming_response();
+				$raw_content      = '';
+				$stream_response  = null;
+
+				$stream_result = $this->ai_client->stream_content(
+					$ai_messages,
+					array(
+						'previous_response_id' => $previous_response_id,
+					),
+					function ( $event ) use ( &$raw_content, &$stream_response ) {
+						if ( 'delta' === $event['type'] && ! empty( $event['text'] ) ) {
+							$raw_content .= $event['text'];
+							$this->send_stream_event( 'delta', array( 'text' => $event['text'] ) );
+						}
+						if ( 'meta' === $event['type'] && ! empty( $event['response_id'] ) ) {
+							$stream_response = $event['response_id'];
+						}
+					}
+				);
+
+				if ( is_wp_error( $stream_result ) ) {
+					$this->send_stream_event( 'error', array( 'message' => $stream_result->get_error_message() ) );
+					exit;
+				}
+
+				$response_id = is_string( $stream_result ) && $stream_result ? $stream_result : $stream_response;
+				$response_data = $this->build_response_payload(
+					$raw_content,
+					$response_id,
+					$messages,
+					$context,
+					$conversation_context,
+					$last_user_prompt,
+					true
+				);
+
+				if ( is_wp_error( $response_data ) ) {
+					$this->send_stream_event( 'error', array( 'message' => $response_data->get_error_message() ) );
+					exit;
+				}
+
+				$this->send_stream_event( 'result', $response_data );
+				$this->send_stream_event( 'done', array() );
+				exit;
+			}
+
+			$ai_result = $this->ai_client->generate_content(
 				$ai_messages,
 				array(
 					'previous_response_id' => $previous_response_id,
@@ -241,80 +303,17 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$content     = $ai_result['content'] ?? '';
 			$response_id = $ai_result['response_id'] ?? '';
 
-			if ( empty( $response_id ) ) {
-				return new \WP_Error(
-					'ai_generation_error',
-					__( 'AI response missing response_id', 'wp-module-ai-page-designer' ),
-					array( 'status' => 500 )
-				);
-			}
-
-			$this->store_response_id( $conversation_key, $response_id );
-
-			$title_data = $this->block_markup_sanitizer->extract_page_title( $content );
-			$final_html = $title_data['html'];
-
-			// We didn't fetch images beforehand. Let's try doing it after using the AI's title and all prompts.
-			$all_prompts = '';
-			foreach ( $messages as $msg ) {
-				if ( 'user' === ( $msg['role'] ?? '' ) ) {
-					// Don't include the base layout markup we append in the system prompt.
-					$clean_msg    = explode( '--- BASE LAYOUT ---', $msg['content'] )[0];
-					$clean_msg    = explode( '--- CURRENT TARGET LAYOUT ---', $clean_msg )[0];
-					$all_prompts .= ' ' . trim( $clean_msg );
-				}
-			}
-
-			// Combine the AI-generated title and prompts to get a richer context for image search.
-			$search_context = '';
-			if ( ! empty( $title_data['title'] ) ) {
-				$search_context .= rtrim( $title_data['title'], ' -|' ) . ' ';
-			}
-			$search_context .= $all_prompts;
-
-			// Replace images only when the user explicitly asks for it.
-			$has_images_in_markup = false;
-			$blocks               = parse_blocks( $final_html );
-			if ( ! empty( $blocks ) ) {
-				$has_images_in_markup = $this->has_image_blocks( $blocks );
-			}
-			$featured_image_url = '';
-			$wants_images       = (bool) preg_match( '/\b(image|images|photo|photos|picture|pictures|gallery|replace image|replace images|swap image|swap images|change image|change images)\b/i', $last_user_prompt );
-			if ( ! $wants_images && ! empty( $current_markup ) ) {
-				$final_html = $this->restore_image_urls( $final_html, $current_markup );
-			} elseif ( $wants_images && $has_images_in_markup ) {
-				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
-				if ( ! empty( $unsplash_images ) ) {
-					$featured_image_url = $unsplash_images[0];
-					shuffle( $unsplash_images );
-					$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images, true );
-				}
-			}
-
-			$theme_mode = isset( $context['theme_mode'] ) ? sanitize_key( $context['theme_mode'] ) : '';
-			if ( $theme_mode ) {
-				$blocks = parse_blocks( $final_html );
-				if ( ! empty( $blocks ) ) {
-					$this->update_block_theme_recursive( $blocks, $theme_mode );
-					$final_html = '';
-					foreach ( $blocks as $block ) {
-						$final_html .= serialize_blocks( array( $block ) );
-					}
-				}
-			}
-
-			$response_data = array(
-				'content'            => $final_html,
-				'title'              => $title_data['title'],
-				'excerpt'            => $title_data['excerpt'] ?? '',
-				'summary'            => $title_data['summary'] ?? '',
-				'featured_image_url' => $featured_image_url,
-				'response_id'        => $response_id,
-				'conversation_key'   => $conversation_key,
+			$response_data = $this->build_response_payload(
+				$content,
+				$response_id,
+				$messages,
+				$context,
+				$conversation_context,
+				$last_user_prompt
 			);
 
-			if ( ! empty( $conversation_id ) ) {
-				$response_data['conversation_id'] = $conversation_id;
+			if ( is_wp_error( $response_data ) ) {
+				return $response_data;
 			}
 
 			return new \WP_REST_Response(
@@ -490,6 +489,148 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$this->update_block_theme_recursive( $block['innerBlocks'], $theme_mode );
 			}
 		}
+	}
+
+	/**
+	 * Build the response payload from AI content.
+	 *
+	 * @param string $content Raw AI response content.
+	 * @param string $response_id AI response ID.
+	 * @param array  $messages Original messages array.
+	 * @param array  $context Request context.
+	 * @param array  $conversation_context Conversation key/id.
+	 * @param string $last_user_prompt Latest user prompt.
+	 * @return array|\WP_Error
+	 */
+	private function build_response_payload( $content, $response_id, array $messages, array $context, array $conversation_context, $last_user_prompt, $allow_missing_response_id = false ) {
+		if ( empty( $response_id ) && ! $allow_missing_response_id ) {
+			return new \WP_Error(
+				'ai_generation_error',
+				__( 'AI response missing response_id', 'wp-module-ai-page-designer' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		$conversation_key = $conversation_context['conversation_key'];
+		$conversation_id  = $conversation_context['conversation_id'];
+
+		if ( ! empty( $response_id ) ) {
+			$this->store_response_id( $conversation_key, $response_id );
+		}
+
+		$title_data = $this->block_markup_sanitizer->extract_page_title( $content );
+		$final_html = $title_data['html'];
+
+		// We didn't fetch images beforehand. Let's try doing it after using the AI's title and all prompts.
+		$all_prompts = '';
+		foreach ( $messages as $msg ) {
+			if ( 'user' === ( $msg['role'] ?? '' ) ) {
+				// Don't include the base layout markup we append in the system prompt.
+				$clean_msg    = explode( '--- BASE LAYOUT ---', $msg['content'] )[0];
+				$clean_msg    = explode( '--- CURRENT TARGET LAYOUT ---', $clean_msg )[0];
+				$all_prompts .= ' ' . trim( $clean_msg );
+			}
+		}
+
+		// Combine the AI-generated title and prompts to get a richer context for image search.
+		$search_context = '';
+		if ( ! empty( $title_data['title'] ) ) {
+			$search_context .= rtrim( $title_data['title'], ' -|' ) . ' ';
+		}
+		$search_context .= $all_prompts;
+
+		// Replace images for new pages with placeholders, or when the user explicitly asks for it.
+		$has_images_in_markup = false;
+		$blocks               = parse_blocks( $final_html );
+		if ( ! empty( $blocks ) ) {
+			$has_images_in_markup = $this->has_image_blocks( $blocks );
+		}
+		$featured_image_url = '';
+		$wants_images       = (bool) preg_match( '/\b(image|images|photo|photos|picture|pictures|gallery|replace image|replace images|swap image|swap images|change image|change images)\b/i', $last_user_prompt );
+		$current_markup     = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
+		$is_new_request      = empty( $context['post_id'] );
+		$has_placeholders    = strpos( $final_html, 'placehold.co' ) !== false;
+
+		if ( $is_new_request && $has_images_in_markup ) {
+			$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
+			if ( ! empty( $unsplash_images ) ) {
+				$featured_image_url = $unsplash_images[0];
+				shuffle( $unsplash_images );
+				$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images, ! $has_placeholders ? false : true );
+			}
+		} elseif ( ! $wants_images && ! empty( $current_markup ) ) {
+			$final_html = $this->restore_image_urls( $final_html, $current_markup );
+		} elseif ( $wants_images && $has_images_in_markup ) {
+			$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
+			if ( ! empty( $unsplash_images ) ) {
+				$featured_image_url = $unsplash_images[0];
+				shuffle( $unsplash_images );
+				$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images, true );
+			}
+		}
+
+		$theme_mode = isset( $context['theme_mode'] ) ? sanitize_key( $context['theme_mode'] ) : '';
+		if ( $theme_mode ) {
+			$blocks = parse_blocks( $final_html );
+			if ( ! empty( $blocks ) ) {
+				$this->update_block_theme_recursive( $blocks, $theme_mode );
+				$final_html = '';
+				foreach ( $blocks as $block ) {
+					$final_html .= serialize_blocks( array( $block ) );
+				}
+			}
+		}
+
+		$response_data = array(
+			'content'            => $final_html,
+			'title'              => $title_data['title'],
+			'excerpt'            => $title_data['excerpt'] ?? '',
+			'summary'            => $title_data['summary'] ?? '',
+			'featured_image_url' => $featured_image_url,
+			'conversation_key'   => $conversation_key,
+		);
+		if ( ! empty( $response_id ) ) {
+			$response_data['response_id'] = $response_id;
+		}
+
+		if ( ! empty( $conversation_id ) ) {
+			$response_data['conversation_id'] = $conversation_id;
+		}
+
+		return $response_data;
+	}
+
+	/**
+	 * Initialize SSE streaming response.
+	 *
+	 * @return void
+	 */
+	private function init_streaming_response() {
+		@ini_set( 'output_buffering', 'off' );
+		@ini_set( 'zlib.output_compression', '0' );
+		header( 'Content-Type: text/event-stream' );
+		header( 'Cache-Control: no-cache' );
+		header( 'X-Accel-Buffering: no' );
+		header( 'Connection: keep-alive' );
+
+		while ( ob_get_level() > 0 ) {
+			ob_end_flush();
+		}
+
+		flush();
+	}
+
+	/**
+	 * Send an SSE event.
+	 *
+	 * @param string $event Event name.
+	 * @param array  $data Event payload.
+	 * @return void
+	 */
+	private function send_stream_event( $event, array $data ) {
+		echo 'event: ' . $event . "\n";
+		echo 'data: ' . wp_json_encode( $data ) . "\n\n";
+		flush();
 	}
 
 	/**

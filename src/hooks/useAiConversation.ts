@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { HistoryEntry, Message, WPItem } from '../types';
-import { generateContent } from '../api';
+import { generateContent, generateContentStream } from '../api';
 import { extractHtml } from '../util/aiDesignerHelpers';
 
 type UseAiConversationOptions = {
@@ -87,6 +87,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
   const [ conversationId, setConversationId ] = useState<string | null>( null );
   const [ responseId, setResponseId ] = useState<string | null>( null );
   const chatMessagesRef = useRef<HTMLDivElement>( null );
+  const streamEnabled = ( window as any )?.nfdAIPageDesigner?.enableStreaming !== false;
 
   useEffect( () => {
     if ( ! chatMessagesRef.current ) {
@@ -113,119 +114,11 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     const newMessages = [ ...messages, userMsg ];
     setMessages( newMessages );
 
-    try {
-      setIsLoading( true );
-
-      // Shared helper: remove the selected block from the live iframe DOM and sync state.
-      const removeSelectedBlock = () => {
-        const doc = iframeRef.current?.contentDocument;
-        if ( ! doc ) {
-          return;
-        }
-        const wrapper = doc.querySelector( `.nfd-block-wrapper[data-block-index="${ selectedBlockIndex }"]` );
-        if ( ! wrapper ) {
-          return;
-        }
-        wrapper.remove();
-
-        const root = doc.getElementById( 'nfd-preview-root' );
-        let newHtml = '';
-
-        if ( root ) {
-          const clone = root.cloneNode( true ) as HTMLElement;
-
-          clone.querySelectorAll( '.nfd-block-wrapper' ).forEach( ( w ) => {
-            while ( w.firstChild ) {
-              w.parentNode?.insertBefore( w.firstChild, w );
-            }
-            w.parentNode?.removeChild( w );
-          } );
-
-          clone.querySelectorAll( 'span' ).forEach( ( s ) => {
-            if ( s.attributes.length === 0 ) {
-              while ( s.firstChild ) {
-                s.parentNode?.insertBefore( s.firstChild, s );
-              }
-              s.parentNode?.removeChild( s );
-            }
-          } );
-
-          newHtml = clone.innerHTML;
-        } else {
-          newHtml = Array.from( doc.querySelectorAll( '.nfd-block-wrapper' ) )
-            .map( ( w ) => w.innerHTML )
-            .join( '\n\n' );
-        }
-
-        if ( newHtml ) {
-          const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
-          const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
-          if ( newHtml !== previewHtml ) {
-            setHistoryEntries( ( prev ) => [ ...prev, {
-              id: historyId,
-              html: newHtml,
-              label: `Removed: ${ text.substring( 0, 60 ) }`,
-              timestamp,
-              publishTitle,
-            } ] );
-          }
-          setPreviewHtml( newHtml );
-          setHasAIGenerated( true );
-        }
-      };
-
-      // Fast path: remove selected block without an AI round-trip.
-      if ( selectedBlockIndex !== null && selectedBlockHtml !== null && isRemovalIntent( text ) ) {
-        removeSelectedBlock();
-        setMessages( [ ...newMessages, { role: 'assistant', content: 'Section removed.' } ] );
-        clearSelection( iframeRef );
-        return;
-      }
-
-      const contextMarkup = selectedBlockHtml || previewHtml || '';
-      const context = {
-        current_markup: contextMarkup,
-        post_id: selectedItem?.id,
-        conversation_id: selectedItem ? undefined : conversationId || undefined,
-        content_type: ( selectedItem?.type ?? 'page' ) as 'page' | 'post',
-      };
-
-      const response = await generateContent( apiUrl, newMessages, context );
-
-      const rawContent = response?.data?.content ?? '';
-      const responseSummary = response?.data?.summary ?? '';
-      const serverMessage = response?.data?.message ?? '';
-
-      // Message-only response: fast path signalled an error (e.g. Unsplash unavailable).
-      // Show the message in chat without touching the preview.
-      if ( ! rawContent && serverMessage ) {
-        setMessages( [ ...newMessages, { role: 'assistant', content: serverMessage } ] );
-        return;
-      }
-
-      if ( ! rawContent ) {
-        // AI returned nothing for a removal-intent prompt — treat it as intentional removal.
-        if ( selectedBlockIndex !== null && selectedBlockHtml !== null && hasRemovalKeyword( text ) ) {
-          removeSelectedBlock();
-          setMessages( [ ...newMessages, { role: 'assistant', content: 'Section removed.' } ] );
-          clearSelection( iframeRef );
-        } else {
-          setMessages( [ ...newMessages, { role: 'assistant', content: 'No response was generated. Please try again.' } ] );
-        }
-        return;
-      }
-
-      const title = response?.data?.title || '';
-
-      if ( ! selectedItem && response?.data?.conversation_id ) {
-        setConversationId( response.data.conversation_id );
-      }
-
-      if ( response?.data?.response_id ) {
-        setResponseId( response.data.response_id );
-      }
-
+    const applyFinalResponse = ( rawContent: string, responseData: any ) => {
+      const responseSummary = responseData?.summary ?? '';
+      const title = responseData?.title || '';
       const fallbackSummary = selectedItem ? 'Update ready.' : 'New page ready.';
+
       setMessages( [
         ...newMessages,
         {
@@ -235,6 +128,14 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           code: rawContent || undefined,
         },
       ] );
+
+      if ( ! selectedItem && responseData?.conversation_id ) {
+        setConversationId( responseData.conversation_id );
+      }
+
+      if ( responseData?.response_id ) {
+        setResponseId( responseData.response_id );
+      }
 
       let finalHtml = rawContent.trim();
       finalHtml = finalHtml.replace( /<!--(?![\s\S]*?-->)[\s\S]*$/u, '' );
@@ -342,19 +243,168 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           setPublishTitle( title );
           setMetaTitle( title );
         }
-        if ( ! selectedItem || wantsExcerpt ) {
-          const excerpt = response?.data?.excerpt || '';
+        if ( wantsExcerpt ) {
+          const excerpt = responseData?.excerpt || '';
           if ( excerpt ) {
             setMetaExcerpt( excerpt );
           }
         }
         if ( ! selectedItem || wantsFeaturedImage ) {
-          const featuredImageUrl = response?.data?.featured_image_url || null;
+          const featuredImageUrl = responseData?.featured_image_url || null;
           if ( featuredImageUrl ) {
             setMetaFeaturedImageUrl( featuredImageUrl );
           }
         }
       }
+    };
+
+    try {
+      setIsLoading( true );
+
+      // Shared helper: remove the selected block from the live iframe DOM and sync state.
+      const removeSelectedBlock = () => {
+        const doc = iframeRef.current?.contentDocument;
+        if ( ! doc ) {
+          return;
+        }
+        const wrapper = doc.querySelector( `.nfd-block-wrapper[data-block-index="${ selectedBlockIndex }"]` );
+        if ( ! wrapper ) {
+          return;
+        }
+        wrapper.remove();
+
+        const root = doc.getElementById( 'nfd-preview-root' );
+        let newHtml = '';
+
+        if ( root ) {
+          const clone = root.cloneNode( true ) as HTMLElement;
+
+          clone.querySelectorAll( '.nfd-block-wrapper' ).forEach( ( w ) => {
+            while ( w.firstChild ) {
+              w.parentNode?.insertBefore( w.firstChild, w );
+            }
+            w.parentNode?.removeChild( w );
+          } );
+
+          clone.querySelectorAll( 'span' ).forEach( ( s ) => {
+            if ( s.attributes.length === 0 ) {
+              while ( s.firstChild ) {
+                s.parentNode?.insertBefore( s.firstChild, s );
+              }
+              s.parentNode?.removeChild( s );
+            }
+          } );
+
+          newHtml = clone.innerHTML;
+        } else {
+          newHtml = Array.from( doc.querySelectorAll( '.nfd-block-wrapper' ) )
+            .map( ( w ) => w.innerHTML )
+            .join( '\n\n' );
+        }
+
+        if ( newHtml ) {
+          const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+          const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+          if ( newHtml !== previewHtml ) {
+            setHistoryEntries( ( prev ) => [ ...prev, {
+              id: historyId,
+              html: newHtml,
+              label: `Removed: ${ text.substring( 0, 60 ) }`,
+              timestamp,
+              publishTitle,
+            } ] );
+          }
+          setPreviewHtml( newHtml );
+          setHasAIGenerated( true );
+        }
+      };
+
+      // Fast path: remove selected block without an AI round-trip.
+      if ( selectedBlockIndex !== null && selectedBlockHtml !== null && isRemovalIntent( text ) ) {
+        removeSelectedBlock();
+        setMessages( [ ...newMessages, { role: 'assistant', content: 'Section removed.' } ] );
+        clearSelection( iframeRef );
+        return;
+      }
+
+      const contextMarkup = selectedBlockHtml || previewHtml || '';
+      const context = {
+        current_markup: contextMarkup,
+        post_id: selectedItem?.id,
+        conversation_id: selectedItem ? undefined : conversationId || undefined,
+        content_type: ( selectedItem?.type ?? 'page' ) as 'page' | 'post',
+      };
+
+      const shouldStream =
+        streamEnabled &&
+        ! selectedItem &&
+        ! hasAIGenerated;
+
+      if ( shouldStream ) {
+        let streamBuffer = '';
+        let finalData: any = null;
+        let streamError: string | null = null;
+
+        await generateContentStream( apiUrl, newMessages, context, ( event ) => {
+          if ( event.type === 'delta' ) {
+            streamBuffer += event.text;
+            setPreviewHtml( streamBuffer );
+          }
+          if ( event.type === 'snapshot' ) {
+            streamBuffer = event.text;
+            setPreviewHtml( streamBuffer );
+          }
+          if ( event.type === 'result' ) {
+            finalData = event.data;
+            if ( finalData?.content ) {
+              // Refresh preview with finalized markup (includes post-processing + images).
+              setPreviewHtml( finalData.content );
+            }
+          }
+          if ( event.type === 'error' ) {
+            streamError = event.message;
+          }
+        } );
+
+        if ( streamError ) {
+          setMessages( [ ...newMessages, { role: 'assistant', content: streamError } ] );
+          return;
+        }
+
+        if ( ! finalData ) {
+          setMessages( [ ...newMessages, { role: 'assistant', content: 'No response was generated. Please try again.' } ] );
+          return;
+        }
+
+        applyFinalResponse( finalData.content || streamBuffer, finalData );
+        return;
+      }
+
+      const response = await generateContent( apiUrl, newMessages, context );
+
+      const rawContent = response?.data?.content ?? '';
+      const serverMessage = response?.data?.message ?? '';
+
+      // Message-only response: fast path signalled an error (e.g. Unsplash unavailable).
+      // Show the message in chat without touching the preview.
+      if ( ! rawContent && serverMessage ) {
+        setMessages( [ ...newMessages, { role: 'assistant', content: serverMessage } ] );
+        return;
+      }
+
+      if ( ! rawContent ) {
+        // AI returned nothing for a removal-intent prompt — treat it as intentional removal.
+        if ( selectedBlockIndex !== null && selectedBlockHtml !== null && hasRemovalKeyword( text ) ) {
+          removeSelectedBlock();
+          setMessages( [ ...newMessages, { role: 'assistant', content: 'Section removed.' } ] );
+          clearSelection( iframeRef );
+        } else {
+          setMessages( [ ...newMessages, { role: 'assistant', content: 'No response was generated. Please try again.' } ] );
+        }
+        return;
+      }
+
+      applyFinalResponse( rawContent, response?.data );
     } catch ( error: any ) {
       console.error( 'AI generation error:', error );
       setMessages( [
