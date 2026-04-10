@@ -200,8 +200,8 @@ class AiClient {
 					$event_block = substr( $buffer, 0, $pos );
 					$buffer      = substr( $buffer, $pos + 2 );
 
-					$lines     = preg_split( "/\r?\n/", trim( $event_block ) );
-					$event     = 'message';
+					$lines      = preg_split( "/\r?\n/", trim( $event_block ) );
+					$event      = 'message';
 					$data_lines = array();
 
 					foreach ( $lines as $line ) {
@@ -231,7 +231,7 @@ class AiClient {
 							$on_event(
 								array(
 									'type' => 'delta',
-									'text' => $delta
+									'text' => $delta,
 								)
 							);
 						} else {
@@ -240,7 +240,7 @@ class AiClient {
 								$on_event(
 									array(
 										'type' => 'snapshot',
-										'text' => $snapshot
+										'text' => $snapshot,
 									)
 								);
 							}
@@ -251,8 +251,8 @@ class AiClient {
 							$response_id = $maybe_response_id;
 							$on_event(
 								array(
-									'type' => 'meta',
-									'response_id' => $response_id
+									'type'        => 'meta',
+									'response_id' => $response_id,
 								)
 							);
 						}
@@ -445,9 +445,9 @@ class AiClient {
 	 */
 	private function build_stream_input_payload( array $ai_messages, array $options ) {
 		$input_payload = array(
-			'model' => 'gpt-5.4-mini',
-			'input' => wp_json_encode( $ai_messages ),
-			'store' => true,
+			'model'             => 'gpt-5.4-mini',
+			'input'             => wp_json_encode( $ai_messages ),
+			'store'             => true,
 			'max_output_tokens' => 5000,
 		);
 
