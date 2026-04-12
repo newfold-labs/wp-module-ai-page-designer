@@ -223,12 +223,12 @@ class PromptBuilder {
 
 			if ( ! empty( $palette ) ) {
 				$lines[] = '';
-				$lines[] = 'Active theme color palette — use these slugs in Gutenberg block backgroundColor/textColor attributes to match the site\'s brand. Do NOT use arbitrary hex values for backgrounds or text; use the slugs below:';
+				$lines[] = 'Active theme color palette — use these slugs in Gutenberg block backgroundColor/textColor attributes to match the site\'s brand. In block comment JSON, escape every `--` sequence as `\u002d\u002d`; in rendered HTML styles, keep normal CSS syntax. Do NOT use arbitrary hex values for backgrounds or text; use the slugs below:';
 				foreach ( $palette as $swatch ) {
 					$lines[] = sprintf( '  - slug: "%s" | name: %s | hex: %s', $swatch['slug'], $swatch['name'], $swatch['color'] );
 				}
-				$lines[] = 'Example: <!-- wp:button {"backgroundColor":"primary","textColor":"base"} -->';
-				$lines[] = 'Example: <!-- wp:group {"align":"full","style":{"color":{"background":"var(--wp--preset--color--contrast)"}}} -->';
+				$lines[] = 'Example block comment JSON: <!-- wp:paragraph {"style":{"color":{"text":"var(\u002d\u002dwp\u002d\u002dpreset\u002d\u002dcolor\u002d\u002dcontrast_midtone)"},"typography":{"fontFamily":"system-font"}}} -->';
+				$lines[] = 'Example rendered HTML: <p class="wp-block-paragraph has-text-color" style="color:var(--wp--preset--color--contrast_midtone);font-family:system-font">Stop</p>';
 			}
 		}
 

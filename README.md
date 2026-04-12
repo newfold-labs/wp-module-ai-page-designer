@@ -44,7 +44,7 @@ The PHP code is located in the `includes/` directory:
 | `Services/ImageService.php` | Unsplash search and image URL replacement |
 | `Services/BlueprintService.php` | Base layout blueprints for new pages |
 | `Services/BlockMarkupSanitizer.php` | Sanitises and extracts title from AI output |
-| `Data/SystemPrompts.php` | AI system prompts including CSS-only and image placeholder rules |
+| `Data/SystemPrompts.php` | AI system prompts including Gutenberg serialization and image placeholder rules |
 
 ```bash
 composer install   # Install PHP dependencies
@@ -68,7 +68,9 @@ The AI is instructed to:
 - Return only raw Gutenberg block markup (no `<html>`/`<body>` wrappers)
 - Embed the page title as `<!-- PAGE_TITLE: Title Here -->`
 - Use `https://placehold.co/WIDTHxHEIGHT` for all image URLs (replaced automatically by Unsplash)
-- Apply color, background, and font changes via Gutenberg block attributes (`style.color.text`, `style.color.background`, etc.) — never as standalone CSS
+- Use escaped `\u002d\u002d` sequences inside Gutenberg block comment JSON whenever a CSS custom property appears there
+- Keep rendered HTML `style` attributes in normal CSS syntax, for example `style="color:var(--wp--preset--color--contrast_midtone);font-family:system-font"`
+- Apply color, background, and font changes via Gutenberg block attributes plus the corresponding rendered HTML style when needed — never as standalone CSS
 
 ## REST API Endpoints
 
