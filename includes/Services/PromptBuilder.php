@@ -36,8 +36,8 @@ class PromptBuilder {
 	 * @param BlueprintService|null      $blueprint_service       Blueprint service.
 	 */
 	public function __construct( ?PatternLayoutProvider $pattern_layout_provider = null, ?BlueprintService $blueprint_service = null ) {
-		$this->pattern_layout_provider = $pattern_layout_provider ?: new PatternLayoutProvider();
-		$this->blueprint_service       = $blueprint_service ?: new BlueprintService();
+		$this->pattern_layout_provider = $pattern_layout_provider ?? new PatternLayoutProvider();
+		$this->blueprint_service       = $blueprint_service ?? new BlueprintService();
 	}
 
 	/**
@@ -175,7 +175,7 @@ class PromptBuilder {
 		);
 
 		$prompt_lower = strtolower( trim( $prompt ) );
-		
+
 		foreach ( $metadata_keywords as $keyword ) {
 			if ( str_contains( $prompt_lower, $keyword ) ) {
 				return true;
@@ -206,6 +206,8 @@ class PromptBuilder {
 	 * @param array  $messages       Message payload from the request.
 	 * @param string $current_markup Current block markup, if any.
 	 * @param string $content_type   'page' or 'post'.
+	 * @param array  $context        Contextual data.
+	 * @param string $previous_response_id Previous response ID.
 	 * @return array
 	 */
 	public function build_user_messages( array $messages, $current_markup = '', $content_type = 'page', array $context = array(), $previous_response_id = null ) {
@@ -225,13 +227,13 @@ class PromptBuilder {
 
 		// Check if this is a metadata-only request (excerpt, title, summary only)
 		$is_metadata_only = $this->is_metadata_only_request( $last_user_prompt );
-		
+
 		$is_redesign   = $this->is_redesign_request( $last_user_prompt );
 		$use_blueprint = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
 			|| ( $is_redesign && 'post' !== $content_type );
 
 		$content = $last_user_prompt;
-		
+
 		// For metadata-only requests, don't send any markup context
 		if ( $is_metadata_only ) {
 			$content .= "\n\nPlease return only the requested metadata (title, excerpt, or summary) using the appropriate comment format. Do not generate any Gutenberg block markup.";
@@ -242,22 +244,22 @@ class PromptBuilder {
 			// For chained conversations, check if we have a selected block
 			if ( ! empty( $context['selected_block_markup'] ) ) {
 				$selected_markup = trim( $context['selected_block_markup'] );
-				$content .= "\n\n--- SELECTED BLOCK ---\nPlease modify only this selected block according to the request above. Return the complete modified block with all content preserved.\n\n" . $selected_markup;
+				$content        .= "\n\n--- SELECTED BLOCK ---\nPlease modify only this selected block according to the request above. Return the complete modified block with all content preserved.\n\n" . $selected_markup;
 			}
 			// If no selected block, just send the prompt - let conversation memory handle the context
 		} elseif ( ! $is_metadata_only && $use_blueprint ) {
 			// Use configured pattern provider for base layout
 			$base_layout = $this->get_base_layout_by_provider( $last_user_prompt );
-			
+
 			if ( ! empty( $base_layout ) ) {
 				// Strip images from layout and replace with placeholders
 				$base_layout = $this->replace_blueprint_images_with_placeholders( $base_layout );
-				$content .= "\n\n--- BASE LAYOUT ---\nPlease use this Gutenberg block structure as the foundation and modify its text and styling attributes to match the user's request. Preserve all block comment delimiters.\n\n" . $base_layout;
+				$content    .= "\n\n--- BASE LAYOUT ---\nPlease use this Gutenberg block structure as the foundation and modify its text and styling attributes to match the user's request. Preserve all block comment delimiters.\n\n" . $base_layout;
 			}
 		} elseif ( ! $is_metadata_only && ! empty( $current_markup ) ) {
 			if ( strlen( $current_markup ) > self::MAX_MARKUP_LENGTH ) {
 				$current_markup = $this->skeletonise_markup( $current_markup );
-				$content .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\nThe page markup was too large to send in full. The following is the block structure skeleton only. Please regenerate the full page content based on this structure and the user's request above. Preserve all block comment delimiters.\n\n" . $current_markup;
+				$content       .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\nThe page markup was too large to send in full. The following is the block structure skeleton only. Please regenerate the full page content based on this structure and the user's request above. Preserve all block comment delimiters.\n\n" . $current_markup;
 			} else {
 				$content .= "\n\n--- CURRENT TARGET LAYOUT ---\nPlease modify the following existing Gutenberg block markup according to the request above. Preserve all block comment delimiters.\n\n" . $current_markup;
 			}
@@ -277,6 +279,8 @@ class PromptBuilder {
 	 * @param array  $messages       Message payload from the request.
 	 * @param string $current_markup Current block markup, if any.
 	 * @param string $content_type   'page' or 'post'.
+	 * @param array  $context        Contextual data.
+	 * @param string $previous_response_id Previous response ID.
 	 * @return array
 	 */
 	public function build_ai_messages( array $messages, $current_markup = '', $content_type = 'page', array $context = array(), $previous_response_id = null ) {

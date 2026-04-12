@@ -19,7 +19,7 @@ class AIPageDesigner {
 
 	/**
 	 * Pattern provider configuration.
-	 * 
+	 *
 	 * Determines which layout provider to use for new page generation:
 	 * - 'wonderblocks': Use WonderBlocks patterns with intent-based selection (recommended)
 	 * - 'blueprints': Use random blueprints from Hiive API
@@ -135,13 +135,13 @@ class AIPageDesigner {
 			'nfd-ai-page-designer',
 			'nfdAIPageDesigner',
 			array(
-				'apiUrl'           => 'newfold-ai-page-designer/v1',
-				'apiRoot'          => esc_url_raw( rest_url() ),
-				'nonce'            => wp_create_nonce( 'wp_rest' ),
-				'siteUrl'          => get_site_url(),
-				'canAccessAI'      => CapabilityGate::has_ai_site_gen(),
-				'currentUserId'    => get_current_user_id(),
-				'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
+				'apiUrl'             => 'newfold-ai-page-designer/v1',
+				'apiRoot'            => esc_url_raw( rest_url() ),
+				'nonce'              => wp_create_nonce( 'wp_rest' ),
+				'siteUrl'            => get_site_url(),
+				'canAccessAI'        => CapabilityGate::has_ai_site_gen(),
+				'currentUserId'      => get_current_user_id(),
+				'ajaxUrl'            => admin_url( 'admin-ajax.php' ),
 				'previewStylesheets' => array(
 					'blockLibrary' => $block_library_url,
 					'themeUrl'     => get_stylesheet_directory_uri() . '/style.css',

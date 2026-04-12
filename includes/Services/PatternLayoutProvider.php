@@ -26,38 +26,38 @@ class PatternLayoutProvider {
 		// Map intent keywords to pattern categories with multiple keyword variations
 		$intent_mapping = array(
 			// Contact pages
-			'contact' => array(
-				'keywords' => array( 'contact', 'reach', 'get in touch', 'contact us', 'reach out' ),
+			'contact'   => array(
+				'keywords'   => array( 'contact', 'reach', 'get in touch', 'contact us', 'reach out' ),
 				'categories' => array( 'hero', 'contact', 'call-to-action' ),
 			),
 			// About pages
-			'about' => array(
-				'keywords' => array( 'about', 'about us', 'our story', 'who we are', 'our team', 'company' ),
+			'about'     => array(
+				'keywords'   => array( 'about', 'about us', 'our story', 'who we are', 'our team', 'company' ),
 				'categories' => array( 'hero', 'about', 'team', 'call-to-action' ),
 			),
 			// Services pages
-			'services' => array(
-				'keywords' => array( 'services', 'what we do', 'offerings', 'solutions', 'expertise' ),
+			'services'  => array(
+				'keywords'   => array( 'services', 'what we do', 'offerings', 'solutions', 'expertise' ),
 				'categories' => array( 'hero', 'services', 'features', 'call-to-action' ),
 			),
 			// Product pages
-			'product' => array(
-				'keywords' => array( 'product', 'products', 'catalog', 'shop', 'store', 'ecommerce', 'buy' ),
+			'product'   => array(
+				'keywords'   => array( 'product', 'products', 'catalog', 'shop', 'store', 'ecommerce', 'buy' ),
 				'categories' => array( 'hero', 'gallery', 'features', 'call-to-action' ),
 			),
 			// Portfolio pages
 			'portfolio' => array(
-				'keywords' => array( 'portfolio', 'work', 'projects', 'showcase', 'gallery', 'examples' ),
+				'keywords'   => array( 'portfolio', 'work', 'projects', 'showcase', 'gallery', 'examples' ),
 				'categories' => array( 'hero', 'portfolio', 'gallery', 'contact' ),
 			),
 			// Blog/content pages
-			'blog' => array(
-				'keywords' => array( 'blog', 'news', 'articles', 'posts', 'content', 'updates' ),
+			'blog'      => array(
+				'keywords'   => array( 'blog', 'news', 'articles', 'posts', 'content', 'updates' ),
 				'categories' => array( 'hero', 'text', 'call-to-action' ),
 			),
 			// Landing/homepage (comprehensive)
-			'homepage' => array(
-				'keywords' => array( 'homepage', 'home page', 'landing', 'main page', 'website', 'site', 'business' ),
+			'homepage'  => array(
+				'keywords'   => array( 'homepage', 'home page', 'landing', 'main page', 'website', 'site', 'business' ),
 				'categories' => array( 'hero', 'about', 'features', 'services', 'testimonials', 'call-to-action' ),
 			),
 		);
@@ -77,7 +77,7 @@ class PatternLayoutProvider {
 					$score += strlen( $keyword );
 				}
 			}
-			
+
 			if ( $score > $best_score ) {
 				$best_score = $score;
 				$best_match = $intent;

@@ -241,8 +241,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 			if ( $stream ) {
 				$this->init_streaming_response();
-				$raw_content      = '';
-				$stream_response  = null;
+				$raw_content     = '';
+				$stream_response = null;
 
 				$stream_result = $this->ai_client->stream_content(
 					$ai_messages,
@@ -265,7 +265,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					exit;
 				}
 
-				$response_id = is_string( $stream_result ) && $stream_result ? $stream_result : $stream_response;
+				$response_id   = is_string( $stream_result ) && $stream_result ? $stream_result : $stream_response;
 				$response_data = $this->build_response_payload(
 					$raw_content,
 					$response_id,
@@ -506,6 +506,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @param array  $context Request context.
 	 * @param array  $conversation_context Conversation key/id.
 	 * @param string $last_user_prompt Latest user prompt.
+	 * @param bool   $allow_missing_response_id Allow missing response ID.
 	 * @return array|\WP_Error
 	 */
 	private function build_response_payload( $content, $response_id, array $messages, array $context, array $conversation_context, $last_user_prompt, $allow_missing_response_id = false ) {
@@ -540,7 +541,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 		// Build a focused search context for image search using page-specific content.
 		$search_context_parts = array();
-		
+
 		// 1. Add existing post/page title when editing existing content
 		if ( ! empty( $context['post_id'] ) ) {
 			$post_title = get_the_title( (int) $context['post_id'] );
@@ -548,22 +549,22 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$search_context_parts[] = $post_title;
 			}
 		}
-		
+
 		// 2. Add AI-generated title if available
 		if ( ! empty( $title_data['title'] ) ) {
 			$search_context_parts[] = rtrim( $title_data['title'], ' -|' );
 		}
-		
+
 		// 3. Add AI-generated excerpt if available
 		if ( ! empty( $title_data['excerpt'] ) ) {
 			$search_context_parts[] = $title_data['excerpt'];
 		}
-		
+
 		// 4. Add user prompts
 		if ( ! empty( $all_prompts ) ) {
 			$search_context_parts[] = trim( $all_prompts );
 		}
-		
+
 		$search_context = implode( ' ', $search_context_parts );
 
 		// Replace images for new pages with placeholders, or when the user explicitly asks for it.
@@ -572,18 +573,17 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		if ( ! empty( $blocks ) ) {
 			$has_images_in_markup = $this->has_image_blocks( $blocks );
 		}
-		$featured_image_url = '';
-		$wants_images       = (bool) preg_match( '/\b(image|images|photo|photos|picture|pictures|gallery|replace image|replace images|swap image|swap images|change image|change images)\b/i', $last_user_prompt );
-		$current_markup     = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
+		$featured_image_url  = '';
+		$wants_images        = (bool) preg_match( '/\b(image|images|photo|photos|picture|pictures|gallery|replace image|replace images|swap image|swap images|change image|change images)\b/i', $last_user_prompt );
+		$current_markup      = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
 		$is_new_request      = empty( $context['post_id'] );
 		$has_placeholders    = strpos( $final_html, 'placehold.co' ) !== false;
-		
+
 		// Fallback: if we have placeholders but didn't detect image blocks, 
 		// there might be images in non-standard blocks or malformed markup
 		if ( ! $has_images_in_markup && $has_placeholders ) {
 			$has_images_in_markup = true;
 		}
-
 
 		if ( $is_new_request && $has_images_in_markup ) {
 			$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
@@ -617,7 +617,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 		// Handle metadata-only responses (e.g., when user asks for excerpt generation)
 		$is_metadata_only = empty( $final_html ) && ( ! empty( $title_data['title'] ) || ! empty( $title_data['excerpt'] ) || ! empty( $title_data['summary'] ) );
-		
+
 		$response_data = array(
 			'content'            => $final_html,
 			'title'              => $title_data['title'],
@@ -644,8 +644,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @return void
 	 */
 	private function init_streaming_response() {
-		@ini_set( 'output_buffering', 'off' );
-		@ini_set( 'zlib.output_compression', '0' );
 		header( 'Content-Type: text/event-stream' );
 		header( 'Cache-Control: no-cache' );
 		header( 'X-Accel-Buffering: no' );
@@ -666,7 +664,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @return void
 	 */
 	private function send_stream_event( $event, array $data ) {
-		echo 'event: ' . $event . "\n";
+		echo 'event: ' . sanitize_key( $event ) . "\n";
 		echo 'data: ' . wp_json_encode( $data ) . "\n\n";
 		flush();
 	}
@@ -680,13 +678,13 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	private function has_image_blocks( array $blocks ) {
 		foreach ( $blocks as $block ) {
 			$block_name = $block['blockName'] ?? '';
-			
+
 			// Check if this block contains any image URLs regardless of block type
 			$block_html = $block['innerHTML'] ?? '';
 			if ( ! empty( $block_html ) && strpos( $block_html, 'placehold.co' ) !== false ) {
 				return true;
 			}
-			
+
 			if ( in_array( $block_name, array( 'core/image', 'core/cover', 'core/gallery', 'core/media-text' ), true ) ) {
 				if ( ! empty( $block['attrs']['url'] ) ) {
 					return true;
@@ -755,7 +753,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 		$stack = $blocks;
 		while ( ! empty( $stack ) ) {
-			$block = array_shift( $stack );
+			$block      = array_shift( $stack );
 			$block_name = $block['blockName'] ?? '';
 
 			if ( in_array( $block_name, array( 'core/image', 'core/cover', 'core/gallery', 'core/media-text' ), true ) ) {
