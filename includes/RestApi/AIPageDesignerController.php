@@ -573,13 +573,13 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		if ( ! empty( $blocks ) ) {
 			$has_images_in_markup = $this->has_image_blocks( $blocks );
 		}
-		$featured_image_url  = '';
-		$wants_images        = (bool) preg_match( '/\b(image|images|photo|photos|picture|pictures|gallery|replace image|replace images|swap image|swap images|change image|change images)\b/i', $last_user_prompt );
-		$current_markup      = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
-		$is_new_request      = empty( $context['post_id'] );
-		$has_placeholders    = strpos( $final_html, 'placehold.co' ) !== false;
+		$featured_image_url = '';
+		$wants_images       = (bool) preg_match( '/\b(image|images|photo|photos|picture|pictures|gallery|replace image|replace images|swap image|swap images|change image|change images)\b/i', $last_user_prompt );
+		$current_markup     = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
+		$is_new_request     = empty( $context['post_id'] );
+		$has_placeholders   = strpos( $final_html, 'placehold.co' ) !== false;
 
-		// Fallback: if we have placeholders but didn't detect image blocks, 
+		// Fallback: if we have placeholders but didn't detect image blocks,
 		// there might be images in non-standard blocks or malformed markup
 		if ( ! $has_images_in_markup && $has_placeholders ) {
 			$has_images_in_markup = true;
