@@ -183,6 +183,12 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 		}
 
+		if ( isset( $context['selected_block_markup'] ) ) {
+			if ( ! is_string( $context['selected_block_markup'] ) ) {
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -230,8 +236,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				return $fast_path_response;
 			}
 
-			$ai_messages          = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type );
 			$previous_response_id = $this->load_previous_response_id( $conversation_key );
+			$ai_messages          = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type, $context, $previous_response_id );
 
 			if ( $stream ) {
 				$this->init_streaming_response();

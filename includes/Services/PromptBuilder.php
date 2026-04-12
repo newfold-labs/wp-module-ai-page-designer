@@ -76,6 +76,35 @@ class PromptBuilder {
 	}
 
 	/**
+	 * Replace real image URLs in blueprint markup with placeholder URLs.
+	 *
+	 * This prevents the AI from using specific images from blueprints and ensures
+	 * placeholder images get replaced with relevant Unsplash images later.
+	 *
+	 * @param string $markup Blueprint markup containing real image URLs.
+	 * @return string Markup with placeholder image URLs.
+	 */
+	private function replace_blueprint_images_with_placeholders( $markup ) {
+		// Replace common image URL patterns with placeholders
+		$patterns = array(
+			// Replace src attributes in img tags
+			'/(<img[^>]+src=["\'])([^"\']+)(["\'][^>]*>)/i',
+			// Replace url attributes in block comments
+			'/"url":"([^"]+\.(jpg|jpeg|png|gif|webp|svg)[^"]*)"/',
+			// Replace CSS background-image urls
+			'/background-image:\s*url\([\'"]?([^\'")]+)[\'"]?\)/',
+		);
+
+		$replacements = array(
+			'$1https://placehold.co/800x600$3',
+			'"url":"https://placehold.co/800x600"',
+			'background-image: url(https://placehold.co/800x600)',
+		);
+
+		return preg_replace( $patterns, $replacements, $markup );
+	}
+
+	/**
 	 * Detect whether a prompt is asking for a full redesign or regeneration.
 	 *
 	 * When true, existing markup should be skipped and the blueprint injected instead.
@@ -125,7 +154,7 @@ class PromptBuilder {
 	 * @param string $content_type   'page' or 'post'.
 	 * @return array
 	 */
-	public function build_user_messages( array $messages, $current_markup = '', $content_type = 'page' ) {
+	public function build_user_messages( array $messages, $current_markup = '', $content_type = 'page', array $context = array(), $previous_response_id = null ) {
 		$is_new = count( $messages ) === 1;
 
 		// Extract the last user message only.
@@ -146,13 +175,23 @@ class PromptBuilder {
 
 		$content = $last_user_prompt;
 
-		if ( $use_blueprint ) {
+		// Handle conversation chaining - if we have a previous response, use minimal context
+		if ( ! empty( $previous_response_id ) ) {
+			// For chained conversations, check if we have a selected block
+			if ( ! empty( $context['selected_block_markup'] ) ) {
+				$selected_markup = trim( $context['selected_block_markup'] );
+				$content .= "\n\n--- SELECTED BLOCK ---\nPlease modify only this selected block according to the request above. Return the complete modified block with all content preserved.\n\n" . $selected_markup;
+			}
+			// If no selected block, just send the prompt - let conversation memory handle the context
+		} elseif ( $use_blueprint ) {
 			// Pages: try blueprint first, fall back to patterns.
 			$base_layout = $this->blueprint_service->get_base_layout();
 			if ( empty( $base_layout ) ) {
 				$base_layout = $this->pattern_layout_provider->get_random_pattern_layout( $content );
 			}
 			if ( ! empty( $base_layout ) ) {
+				// Strip images from blueprint and replace with placeholders
+				$base_layout = $this->replace_blueprint_images_with_placeholders( $base_layout );
 				$content .= "\n\n--- BASE LAYOUT ---\nPlease use this Gutenberg block structure as the foundation and modify its text and styling attributes to match the user's request. Preserve all block comment delimiters.\n\n" . $base_layout;
 			}
 		} elseif ( ! empty( $current_markup ) ) {
@@ -180,7 +219,7 @@ class PromptBuilder {
 	 * @param string $content_type   'page' or 'post'.
 	 * @return array
 	 */
-	public function build_ai_messages( array $messages, $current_markup = '', $content_type = 'page' ) {
+	public function build_ai_messages( array $messages, $current_markup = '', $content_type = 'page', array $context = array(), $previous_response_id = null ) {
 		return array_merge(
 			array(
 				array(
@@ -188,7 +227,7 @@ class PromptBuilder {
 					'content' => $this->build_system_prompt(),
 				),
 			),
-			$this->build_user_messages( $messages, $current_markup, $content_type )
+			$this->build_user_messages( $messages, $current_markup, $content_type, $context, $previous_response_id )
 		);
 	}
 
