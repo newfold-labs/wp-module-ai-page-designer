@@ -275,8 +275,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           setPreviewHtml( html );
           addHistoryEntry( html );
         }
+        const isFirstGeneration = ! selectedItem && ! hasAIGenerated;
         setHasAIGenerated( true );
-        if ( title && ( ! selectedItem || wantsTitle ) ) {
+        if ( title && ( isFirstGeneration || wantsTitle ) ) {
           setPublishTitle( title );
           setMetaTitle( title );
         }
@@ -286,7 +287,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
             setMetaExcerpt( excerpt );
           }
         }
-        if ( ! selectedItem || wantsFeaturedImage ) {
+        if ( wantsFeaturedImage ) {
           const featuredImageUrl = responseData?.featured_image_url || null;
           if ( featuredImageUrl ) {
             setMetaFeaturedImageUrl( featuredImageUrl );
