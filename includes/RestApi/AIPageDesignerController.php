@@ -532,12 +532,33 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 		}
 
-		// Combine the AI-generated title and prompts to get a richer context for image search.
-		$search_context = '';
-		if ( ! empty( $title_data['title'] ) ) {
-			$search_context .= rtrim( $title_data['title'], ' -|' ) . ' ';
+		// Build a focused search context for image search using page-specific content.
+		$search_context_parts = array();
+		
+		// 1. Add existing post/page title when editing existing content
+		if ( ! empty( $context['post_id'] ) ) {
+			$post_title = get_the_title( (int) $context['post_id'] );
+			if ( ! empty( $post_title ) ) {
+				$search_context_parts[] = $post_title;
+			}
 		}
-		$search_context .= $all_prompts;
+		
+		// 2. Add AI-generated title if available
+		if ( ! empty( $title_data['title'] ) ) {
+			$search_context_parts[] = rtrim( $title_data['title'], ' -|' );
+		}
+		
+		// 3. Add AI-generated excerpt if available
+		if ( ! empty( $title_data['excerpt'] ) ) {
+			$search_context_parts[] = $title_data['excerpt'];
+		}
+		
+		// 4. Add user prompts
+		if ( ! empty( $all_prompts ) ) {
+			$search_context_parts[] = trim( $all_prompts );
+		}
+		
+		$search_context = implode( ' ', $search_context_parts );
 
 		// Replace images for new pages with placeholders, or when the user explicitly asks for it.
 		$has_images_in_markup = false;
@@ -550,6 +571,13 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$current_markup     = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
 		$is_new_request      = empty( $context['post_id'] );
 		$has_placeholders    = strpos( $final_html, 'placehold.co' ) !== false;
+		
+		// Fallback: if we have placeholders but didn't detect image blocks, 
+		// there might be images in non-standard blocks or malformed markup
+		if ( ! $has_images_in_markup && $has_placeholders ) {
+			$has_images_in_markup = true;
+		}
+
 
 		if ( $is_new_request && $has_images_in_markup ) {
 			$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
@@ -642,6 +670,13 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	private function has_image_blocks( array $blocks ) {
 		foreach ( $blocks as $block ) {
 			$block_name = $block['blockName'] ?? '';
+			
+			// Check if this block contains any image URLs regardless of block type
+			$block_html = $block['innerHTML'] ?? '';
+			if ( ! empty( $block_html ) && strpos( $block_html, 'placehold.co' ) !== false ) {
+				return true;
+			}
+			
 			if ( in_array( $block_name, array( 'core/image', 'core/cover', 'core/gallery', 'core/media-text' ), true ) ) {
 				if ( ! empty( $block['attrs']['url'] ) ) {
 					return true;
