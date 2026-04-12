@@ -7,6 +7,7 @@
 
 namespace NewfoldLabs\WP\Module\AIPageDesigner\Services;
 
+use NewfoldLabs\WP\Module\AIPageDesigner\AIPageDesigner;
 use NewfoldLabs\WP\Module\AIPageDesigner\Data\SystemPrompts;
 
 /**
@@ -140,6 +141,59 @@ class PromptBuilder {
 	}
 
 	/**
+	 * Check if the user prompt is requesting only metadata (title, excerpt, summary).
+	 *
+	 * @param string $prompt The user prompt.
+	 * @return bool
+	 */
+	private function is_metadata_only_request( $prompt ) {
+		$metadata_keywords = array(
+			'create an excerpt',
+			'generate an excerpt',
+			'write an excerpt',
+			'add an excerpt',
+			'create excerpt',
+			'generate excerpt',
+			'write excerpt',
+			'add excerpt',
+			'create a title',
+			'generate a title',
+			'write a title',
+			'add a title',
+			'create title',
+			'generate title',
+			'write title',
+			'add title',
+			'create a summary',
+			'generate a summary',
+			'write a summary',
+			'add a summary',
+			'create summary',
+			'generate summary',
+			'write summary',
+			'add summary',
+		);
+
+		$prompt_lower = strtolower( trim( $prompt ) );
+		
+		foreach ( $metadata_keywords as $keyword ) {
+			if ( str_contains( $prompt_lower, $keyword ) ) {
+				return true;
+			}
+		}
+
+		// Also check for simple one-word requests
+		$simple_metadata_words = array( 'excerpt', 'title', 'summary' );
+		foreach ( $simple_metadata_words as $word ) {
+			if ( $prompt_lower === $word ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Build user messages for the AI request.
 	 *
 	 * Only the latest user message is sent — conversation history is maintained
@@ -169,32 +223,38 @@ class PromptBuilder {
 			return array();
 		}
 
+		// Check if this is a metadata-only request (excerpt, title, summary only)
+		$is_metadata_only = $this->is_metadata_only_request( $last_user_prompt );
+		
 		$is_redesign   = $this->is_redesign_request( $last_user_prompt );
 		$use_blueprint = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
 			|| ( $is_redesign && 'post' !== $content_type );
 
 		$content = $last_user_prompt;
+		
+		// For metadata-only requests, don't send any markup context
+		if ( $is_metadata_only ) {
+			$content .= "\n\nPlease return only the requested metadata (title, excerpt, or summary) using the appropriate comment format. Do not generate any Gutenberg block markup.";
+		}
 
 		// Handle conversation chaining - if we have a previous response, use minimal context
-		if ( ! empty( $previous_response_id ) ) {
+		if ( ! $is_metadata_only && ! empty( $previous_response_id ) ) {
 			// For chained conversations, check if we have a selected block
 			if ( ! empty( $context['selected_block_markup'] ) ) {
 				$selected_markup = trim( $context['selected_block_markup'] );
 				$content .= "\n\n--- SELECTED BLOCK ---\nPlease modify only this selected block according to the request above. Return the complete modified block with all content preserved.\n\n" . $selected_markup;
 			}
 			// If no selected block, just send the prompt - let conversation memory handle the context
-		} elseif ( $use_blueprint ) {
-			// Pages: try blueprint first, fall back to patterns.
-			$base_layout = $this->blueprint_service->get_base_layout();
-			if ( empty( $base_layout ) ) {
-				$base_layout = $this->pattern_layout_provider->get_random_pattern_layout( $content );
-			}
+		} elseif ( ! $is_metadata_only && $use_blueprint ) {
+			// Use configured pattern provider for base layout
+			$base_layout = $this->get_base_layout_by_provider( $last_user_prompt );
+			
 			if ( ! empty( $base_layout ) ) {
-				// Strip images from blueprint and replace with placeholders
+				// Strip images from layout and replace with placeholders
 				$base_layout = $this->replace_blueprint_images_with_placeholders( $base_layout );
 				$content .= "\n\n--- BASE LAYOUT ---\nPlease use this Gutenberg block structure as the foundation and modify its text and styling attributes to match the user's request. Preserve all block comment delimiters.\n\n" . $base_layout;
 			}
-		} elseif ( ! empty( $current_markup ) ) {
+		} elseif ( ! $is_metadata_only && ! empty( $current_markup ) ) {
 			if ( strlen( $current_markup ) > self::MAX_MARKUP_LENGTH ) {
 				$current_markup = $this->skeletonise_markup( $current_markup );
 				$content .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\nThe page markup was too large to send in full. The following is the block structure skeleton only. Please regenerate the full page content based on this structure and the user's request above. Preserve all block comment delimiters.\n\n" . $current_markup;
@@ -293,5 +353,35 @@ class PromptBuilder {
 		}
 
 		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Get base layout using the configured pattern provider.
+	 *
+	 * @param string $user_prompt The user's request for intent detection.
+	 * @return string The base layout markup, or empty string for pure AI generation.
+	 */
+	private function get_base_layout_by_provider( $user_prompt ) {
+		$provider = AIPageDesigner::PATTERN_PROVIDER;
+
+		switch ( $provider ) {
+			case 'wonderblocks':
+				// Use WonderBlocks patterns with intent-based selection
+				$base_layout = $this->pattern_layout_provider->get_random_pattern_layout( $user_prompt );
+				break;
+
+			case 'blueprints':
+				// Use random blueprints from Hiive API
+				$base_layout = $this->blueprint_service->get_base_layout();
+				break;
+
+			case '':
+			default:
+				// Pure AI generation - no layout scaffolding
+				$base_layout = '';
+				break;
+		}
+
+		return $base_layout;
 	}
 }

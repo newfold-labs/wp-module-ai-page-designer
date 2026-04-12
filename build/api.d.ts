@@ -18,6 +18,7 @@ export type GenerateContentResponse = {
         response_id?: string;
         conversation_id?: string;
         conversation_key?: string;
+        is_metadata_only?: boolean;
     };
 };
 export type StreamEvent = {

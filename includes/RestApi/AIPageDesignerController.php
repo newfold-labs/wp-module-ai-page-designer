@@ -615,6 +615,9 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 		}
 
+		// Handle metadata-only responses (e.g., when user asks for excerpt generation)
+		$is_metadata_only = empty( $final_html ) && ( ! empty( $title_data['title'] ) || ! empty( $title_data['excerpt'] ) || ! empty( $title_data['summary'] ) );
+		
 		$response_data = array(
 			'content'            => $final_html,
 			'title'              => $title_data['title'],
@@ -622,6 +625,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			'summary'            => $title_data['summary'] ?? '',
 			'featured_image_url' => $featured_image_url,
 			'conversation_key'   => $conversation_key,
+			'is_metadata_only'   => $is_metadata_only,
 		);
 		if ( ! empty( $response_id ) ) {
 			$response_data['response_id'] = $response_id;

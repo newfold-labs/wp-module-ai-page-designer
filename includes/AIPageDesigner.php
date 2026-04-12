@@ -18,6 +18,18 @@ use NewfoldLabs\WP\ModuleLoader\Container;
 class AIPageDesigner {
 
 	/**
+	 * Pattern provider configuration.
+	 * 
+	 * Determines which layout provider to use for new page generation:
+	 * - 'wonderblocks': Use WonderBlocks patterns with intent-based selection (recommended)
+	 * - 'blueprints': Use random blueprints from Hiive API
+	 * - '': Empty string for pure AI generation without layout scaffolding
+	 *
+	 * @var string
+	 */
+	const PATTERN_PROVIDER = '';
+
+	/**
 	 * Dependency injection container.
 	 *
 	 * @var Container

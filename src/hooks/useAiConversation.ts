@@ -114,6 +114,43 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     const newMessages = [ ...messages, userMsg ];
     setMessages( newMessages );
 
+    const applyMetadataOnlyResponse = ( responseData: any ) => {
+      const title = responseData?.title || '';
+      const excerpt = responseData?.excerpt || '';
+      const summary = responseData?.summary || '';
+
+      const applied: string[] = [];
+      if ( title && ( ! selectedItem || wantsTitle ) ) {
+        setPublishTitle( title );
+        setMetaTitle( title );
+        applied.push( 'title' );
+      }
+      if ( excerpt ) {
+        setMetaExcerpt( excerpt );
+        applied.push( 'excerpt' );
+      }
+
+      const fallback = applied.length
+        ? `Updated ${ applied.join( ' and ' ) }.`
+        : 'No changes were made.';
+
+      setMessages( [
+        ...newMessages,
+        {
+          role: 'assistant',
+          content: summary || fallback,
+          summary: summary || undefined,
+        },
+      ] );
+
+      if ( responseData?.response_id ) {
+        setResponseId( responseData.response_id );
+      }
+      if ( ! selectedItem && responseData?.conversation_id ) {
+        setConversationId( responseData.conversation_id );
+      }
+    };
+
     const applyFinalResponse = ( rawContent: string, responseData: any ) => {
       const responseSummary = responseData?.summary ?? '';
       const title = responseData?.title || '';
@@ -376,6 +413,11 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           return;
         }
 
+        if ( ! finalData.content && ! streamBuffer && ( finalData.is_metadata_only || finalData.excerpt || finalData.title || finalData.summary ) ) {
+          applyMetadataOnlyResponse( finalData );
+          return;
+        }
+
         applyFinalResponse( finalData.content || streamBuffer, finalData );
         return;
       }
@@ -398,9 +440,16 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           removeSelectedBlock();
           setMessages( [ ...newMessages, { role: 'assistant', content: 'Section removed.' } ] );
           clearSelection( iframeRef );
-        } else {
-          setMessages( [ ...newMessages, { role: 'assistant', content: 'No response was generated. Please try again.' } ] );
+          return;
         }
+
+        const data = response?.data;
+        if ( data && ( data.is_metadata_only || data.excerpt || data.title || data.summary ) ) {
+          applyMetadataOnlyResponse( data );
+          return;
+        }
+
+        setMessages( [ ...newMessages, { role: 'assistant', content: 'No response was generated. Please try again.' } ] );
         return;
       }
 

@@ -75,7 +75,7 @@ const MetaStrip = ( {
               <span className="ai-meta-strip__hint">Unavailable</span>
             ) }
           </button>
-          { featuredMediaId ? (
+          { ( featuredImageUrl || ( featuredMediaId && featuredMediaId > 0 ) ) ? (
             <button
               type="button"
               className="ai-meta-strip__remove-link"
