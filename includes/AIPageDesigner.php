@@ -176,7 +176,7 @@ class AIPageDesigner {
 	 * @return array Modified allowed HTML
 	 */
 	public function allow_animation_classes( $allowed_html, $context ) {
-		// Only apply to post content contexts  
+		// Only apply to post content contexts
 		if ( 'post' !== $context ) {
 			return $allowed_html;
 		}
@@ -187,10 +187,10 @@ class AIPageDesigner {
 				$allowed_html[ $tag ]['class'] = true;
 			}
 			// Allow data-aos and data-aos-* attributes for scroll animations
-			$allowed_html[ $tag ]['data-aos'] = true;
+			$allowed_html[ $tag ]['data-aos']          = true;
 			$allowed_html[ $tag ]['data-aos-duration'] = true;
-			$allowed_html[ $tag ]['data-aos-delay'] = true;
-			$allowed_html[ $tag ]['data-aos-offset'] = true;
+			$allowed_html[ $tag ]['data-aos-delay']    = true;
+			$allowed_html[ $tag ]['data-aos-offset']   = true;
 		}
 
 		return $allowed_html;
@@ -241,7 +241,7 @@ class AIPageDesigner {
 			'nfd-ai-page-fonts',
 			'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Raleway:wght@400;600;700&display=swap',
 			array(),
-			null
+			NFD_MODULE_AI_PAGE_DESIGNER_VERSION
 		);
 
 		$content_scope = '.entry-content, .wp-block-post-content';
@@ -267,7 +267,7 @@ class AIPageDesigner {
 
 		wp_add_inline_style( 'wp-block-library', $animation_css );
 
-		wp_register_script( 'nfd-ai-page-animations', false, array(), false, true );
+		wp_register_script( 'nfd-ai-page-animations', false, array(), NFD_MODULE_AI_PAGE_DESIGNER_VERSION, true );
 		wp_enqueue_script( 'nfd-ai-page-animations' );
 		wp_add_inline_script(
 			'nfd-ai-page-animations',
