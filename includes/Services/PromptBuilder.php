@@ -244,7 +244,7 @@ class PromptBuilder {
 			// For chained conversations, check if we have a selected block
 			if ( ! empty( $context['selected_block_markup'] ) ) {
 				$selected_markup = trim( $context['selected_block_markup'] );
-				$content        .= "\n\n--- SELECTED BLOCK ---\nPlease modify only this selected block according to the request above. Return the complete modified block with all content preserved.\n\n" . $selected_markup;
+				$content        .= "\n\n--- SELECTED BLOCK ---\nThe user clicked on this specific block (rendered HTML below). Apply the requested change to this block only, then return the COMPLETE page markup with all other blocks unchanged.\n\n" . $selected_markup;
 			}
 			// If no selected block, just send the prompt - let conversation memory handle the context
 		} elseif ( ! $is_metadata_only && $use_blueprint ) {
@@ -262,6 +262,10 @@ class PromptBuilder {
 				$content       .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\nThe page markup was too large to send in full. The following is the block structure skeleton only. Please regenerate the full page content based on this structure and the user's request above. Preserve all block comment delimiters.\n\n" . $current_markup;
 			} else {
 				$content .= "\n\n--- CURRENT TARGET LAYOUT ---\nPlease modify the following existing Gutenberg block markup according to the request above. Preserve all block comment delimiters.\n\n" . $current_markup;
+			}
+			if ( ! empty( $context['selected_block_markup'] ) ) {
+				$selected_markup = trim( $context['selected_block_markup'] );
+				$content        .= "\n\n--- SELECTED BLOCK ---\nThe user clicked on this specific block (rendered HTML below). Apply the requested change to this block only and return the COMPLETE page markup with all other blocks unchanged.\n\n" . $selected_markup;
 			}
 		}
 

@@ -240,52 +240,58 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         };
 
         if ( selectedBlockIndex !== null && selectedBlockHtml !== null ) {
-          const doc = iframeRef.current?.contentDocument;
-          if ( doc ) {
-            const wrapper = doc.querySelector( `.nfd-block-wrapper[data-block-index="${ selectedBlockIndex }"]` );
-            if ( wrapper ) {
-              wrapper.innerHTML = html;
+          if ( /<!--\s*wp:/.test( html ) ) {
+            // AI returned full Gutenberg block markup — apply as full-page update.
+            setPreviewHtml( html );
+            addHistoryEntry( html );
+            setLastGeneratedHtml( null );
+            clearSelection( iframeRef );
+          } else {
+            // AI returned a raw HTML fragment — patch just the selected block in the DOM.
+            const doc = iframeRef.current?.contentDocument;
+            if ( doc ) {
+              const wrapper = doc.querySelector( `.nfd-block-wrapper[data-block-index="${ selectedBlockIndex }"]` );
+              if ( wrapper ) {
+                wrapper.innerHTML = html;
 
-              const root = doc.getElementById( 'nfd-preview-root' );
-              let newHtml = '';
+                const root = doc.getElementById( 'nfd-preview-root' );
+                let newHtml = '';
 
-              if ( root ) {
-                const clone = root.cloneNode( true ) as HTMLElement;
+                if ( root ) {
+                  const clone = root.cloneNode( true ) as HTMLElement;
 
-                const wrappers = clone.querySelectorAll( '.nfd-block-wrapper' );
-                wrappers.forEach( ( w ) => {
-                  while ( w.firstChild ) {
-                    w.parentNode?.insertBefore( w.firstChild, w );
-                  }
-                  w.parentNode?.removeChild( w );
-                } );
-
-                const spans = clone.querySelectorAll( 'span' );
-                spans.forEach( ( s ) => {
-                  if ( s.attributes.length === 0 ) {
-                    while ( s.firstChild ) {
-                      s.parentNode?.insertBefore( s.firstChild, s );
+                  clone.querySelectorAll( '.nfd-block-wrapper' ).forEach( ( w ) => {
+                    while ( w.firstChild ) {
+                      w.parentNode?.insertBefore( w.firstChild, w );
                     }
-                    s.parentNode?.removeChild( s );
-                  }
-                } );
+                    w.parentNode?.removeChild( w );
+                  } );
 
-                newHtml = clone.innerHTML;
-              } else {
-                newHtml = Array.from( doc.querySelectorAll( '.nfd-block-wrapper' ) )
-                  .map( ( w ) => w.innerHTML )
-                  .join( '\n\n' );
+                  clone.querySelectorAll( 'span' ).forEach( ( s ) => {
+                    if ( s.attributes.length === 0 ) {
+                      while ( s.firstChild ) {
+                        s.parentNode?.insertBefore( s.firstChild, s );
+                      }
+                      s.parentNode?.removeChild( s );
+                    }
+                  } );
+
+                  newHtml = clone.innerHTML;
+                } else {
+                  newHtml = Array.from( doc.querySelectorAll( '.nfd-block-wrapper' ) )
+                    .map( ( w ) => w.innerHTML )
+                    .join( '\n\n' );
+                }
+
+                setPreviewHtml( newHtml );
+                addHistoryEntry( newHtml );
+                setLastGeneratedHtml( html );
+                clearSelection( iframeRef );
               }
-
-              setPreviewHtml( newHtml );
-              addHistoryEntry( newHtml );
-              // rack the HTML we just inserted so a follow-up request can target it
-              setLastGeneratedHtml( html );
+            } else {
+              setPreviewHtml( previewHtml );
               clearSelection( iframeRef );
             }
-          } else {
-            setPreviewHtml( previewHtml );
-            clearSelection( iframeRef );
           }
         } else if ( isFollowUpEdit && lastGeneratedHtml && previewHtml ) {
           // The user made a follow-up request to a targeted edit without re-selecting.
@@ -397,13 +403,18 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       // This allows the AI to continue editing the block(s) it just made without needing
       // the user to manually re-select them, saving tokens and preserving page context.
       const isFollowUpEdit = !isMetadataRequest && selectedBlockIndex === null && lastGeneratedHtml !== null && !!previewHtml?.includes(lastGeneratedHtml);
-      const contextMarkup = selectedBlockHtml || (isFollowUpEdit ? lastGeneratedHtml : (isMetadataRequest ? '' : previewHtml)) || '';
+      // When a block is selected, send the full page as context so the AI can return the complete
+      // modified page. The clicked block's HTML goes in selected_block_markup to annotate the target.
+      const contextMarkup = selectedBlockIndex !== null
+        ? ( previewHtml || '' )
+        : ( isFollowUpEdit ? lastGeneratedHtml : ( isMetadataRequest ? '' : previewHtml ) ) || '';
 
-      const context = {
+      const context: import('../api').GenerateContentContext = {
         current_markup: contextMarkup,
         post_id: selectedItem?.id,
         conversation_id: selectedItem ? undefined : conversationId || undefined,
         content_type: ( selectedItem?.type ?? 'page' ) as 'page' | 'post',
+        ...( selectedBlockIndex !== null && selectedBlockHtml !== null ? { selected_block_markup: selectedBlockHtml } : {} ),
       };
 
       const shouldStream =

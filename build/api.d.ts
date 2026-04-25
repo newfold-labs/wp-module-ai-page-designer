@@ -6,6 +6,7 @@ export type GenerateContentContext = {
     post_id?: number;
     conversation_id?: string;
     content_type?: 'page' | 'post';
+    selected_block_markup?: string;
 };
 export type GenerateContentResponse = {
     data: {

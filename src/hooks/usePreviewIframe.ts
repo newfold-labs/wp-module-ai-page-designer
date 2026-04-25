@@ -89,6 +89,7 @@ export const usePreviewIframe = (
         const shouldInjectPreview = ! previewHtml.includes( '<html' );
         const safePreviewHtml = JSON.stringify( previewHtml );
         const script = `
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Raleway:wght@400;600;700&display=swap">
           <style>
             body { margin: 0; padding: 0; }
             #nfd-preview-root { padding: 10px; }
@@ -97,6 +98,40 @@ export const usePreviewIframe = (
             .nfd-block-wrapper:hover::before { outline-color: #007cba; background: rgba(0, 124, 186, 0.05); }
             .nfd-block-wrapper.nfd-block-selected::before { outline: 3px solid #d63638; outline-offset: -3px; background: rgba(214, 54, 56, 0.05); z-index: 101; }
             .nfd-block-wrapper a, .nfd-block-wrapper button { pointer-events: none; }
+            
+            /* Animation keyframes */
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+            @keyframes bounceIn {
+              0% { opacity: 0; transform: scale(0.3); }
+              50% { opacity: 1; transform: scale(1.05); }
+              70% { transform: scale(0.9); }
+              100% { opacity: 1; transform: scale(1); }
+            }
+            @keyframes scaleIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+            @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+            /* Scoped to content area only — excludes header/footer in the shell */
+            #nfd-preview-root .fade-in { animation: fadeIn 0.8s ease-out forwards; }
+            #nfd-preview-root .slide-up { animation: slideUp 0.8s ease-out forwards; }
+            #nfd-preview-root .bounce-in { animation: bounceIn 0.8s ease-out forwards; }
+            #nfd-preview-root .scale-in { animation: scaleIn 0.8s ease-out forwards; }
+            #nfd-preview-root .fade-in-delay-1 { animation: fadeIn 0.8s ease-out 0.2s forwards; opacity: 0; }
+            #nfd-preview-root .fade-in-delay-2 { animation: fadeIn 0.8s ease-out 0.4s forwards; opacity: 0; }
+            #nfd-preview-root .fade-in-delay-3 { animation: fadeIn 0.8s ease-out 0.6s forwards; opacity: 0; }
+            #nfd-preview-root .pulse-hover { transition: all 0.3s ease; }
+            #nfd-preview-root .pulse-hover:hover { animation: pulse 1s infinite; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
+            #nfd-preview-root .glow-hover { transition: all 0.3s ease; }
+            #nfd-preview-root .glow-hover:hover { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6), 0 0 60px rgba(59, 130, 246, 0.4); }
+            #nfd-preview-root .card-hover-lift { transition: all 0.3s ease; }
+            #nfd-preview-root .card-hover-lift:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+            #nfd-preview-root [data-aos] { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
+            #nfd-preview-root [data-aos].aos-animate { opacity: 1; transform: translateY(0); }
+
+            /* Safety net: reset white text outside cover blocks, then restore it inside */
+            #nfd-preview-root .has-white-color { color: #1e1e1e; }
+            #nfd-preview-root .wp-block-cover .has-white-color,
+            #nfd-preview-root .wp-block-cover__inner-container .has-white-color { color: #fff; }
           </style>
           <script>
             document.addEventListener('DOMContentLoaded', () => {
@@ -196,6 +231,24 @@ export const usePreviewIframe = (
                 if (e.data?.type === 'NFD_CLEAR_SELECTION') {
                   document.querySelectorAll('.nfd-block-wrapper').forEach(el => el.classList.remove('nfd-block-selected'));
                 }
+              });
+
+              // Initialize scroll-triggered animations
+              // threshold:0 + no rootMargin so elements visible in the iframe trigger immediately
+              const animateOnScroll = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                  if (entry.isIntersecting) {
+                    const delay = parseInt(entry.target.getAttribute('data-aos-delay') || '0', 10);
+                    setTimeout(() => {
+                      entry.target.classList.add('aos-animate');
+                    }, delay);
+                    animateOnScroll.unobserve(entry.target);
+                  }
+                });
+              }, { threshold: 0 });
+
+              document.querySelectorAll('#nfd-preview-root [data-aos]').forEach(el => {
+                animateOnScroll.observe(el);
               });
             });
           </script>

@@ -56,6 +56,10 @@ class AIPageDesigner {
 
 		// Load text domain
 		add_action( 'init', array( __CLASS__, 'load_text_domain' ), 100 );
+
+		add_filter( 'wp_kses_allowed_html', array( $this, 'allow_animation_classes' ), 10, 2 );
+		add_filter( 'safe_style_css', array( $this, 'allow_animation_styles' ) );
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_animations' ) );
 	}
 
 	/**
@@ -161,6 +165,124 @@ class AIPageDesigner {
 			'wp-module-ai-page-designer',
 			false,
 			NFD_MODULE_AI_PAGE_DESIGNER_DIR . '/languages'
+		);
+	}
+
+	/**
+	 * Allow animation CSS classes in content
+	 *
+	 * @param array  $allowed_html Allowed HTML tags and attributes
+	 * @param string $context Context for filtering
+	 * @return array Modified allowed HTML
+	 */
+	public function allow_animation_classes( $allowed_html, $context ) {
+		// Only apply to post content contexts  
+		if ( 'post' !== $context ) {
+			return $allowed_html;
+		}
+
+		// Add class attribute to all allowed HTML tags if not already present
+		foreach ( $allowed_html as $tag => $attributes ) {
+			if ( ! isset( $attributes['class'] ) ) {
+				$allowed_html[ $tag ]['class'] = true;
+			}
+			// Allow data-aos and data-aos-* attributes for scroll animations
+			$allowed_html[ $tag ]['data-aos'] = true;
+			$allowed_html[ $tag ]['data-aos-duration'] = true;
+			$allowed_html[ $tag ]['data-aos-delay'] = true;
+			$allowed_html[ $tag ]['data-aos-offset'] = true;
+		}
+
+		return $allowed_html;
+	}
+
+	/**
+	 * Allow animation-related CSS properties
+	 *
+	 * @param array $styles Allowed CSS properties
+	 * @return array Modified allowed CSS properties
+	 */
+	public function allow_animation_styles( $styles ) {
+		$animation_properties = array(
+			'animation',
+			'animation-name',
+			'animation-duration',
+			'animation-timing-function',
+			'animation-delay',
+			'animation-iteration-count',
+			'animation-direction',
+			'animation-fill-mode',
+			'animation-play-state',
+			'transition',
+			'transition-property',
+			'transition-duration',
+			'transition-timing-function',
+			'transition-delay',
+			'transform',
+			'transform-origin',
+			'transform-style',
+			'perspective',
+			'perspective-origin',
+			'backface-visibility',
+		);
+
+		return array_merge( $styles, $animation_properties );
+	}
+
+	/**
+	 * Enqueue frontend animation styles and scripts
+	 */
+	public function enqueue_frontend_animations() {
+		if ( ! is_page() && ! is_single() && ! is_front_page() ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'nfd-ai-page-fonts',
+			'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Raleway:wght@400;600;700&display=swap',
+			array(),
+			null
+		);
+
+		$content_scope = '.entry-content, .wp-block-post-content';
+
+		$animation_css = '
+			@keyframes nfd-fadeIn { from { opacity: 0; } to { opacity: 1; } }
+			@keyframes nfd-slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+			@keyframes nfd-bounceIn { 0% { opacity: 0; transform: scale(0.3); } 50% { opacity: 1; transform: scale(1.05); } 70% { transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
+			@keyframes nfd-scaleIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+			@keyframes nfd-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+			' . $content_scope . ' .fade-in { animation: nfd-fadeIn 0.8s ease-out forwards; }
+			' . $content_scope . ' .slide-up { animation: nfd-slideUp 0.8s ease-out forwards; }
+			' . $content_scope . ' .bounce-in { animation: nfd-bounceIn 0.8s ease-out forwards; }
+			' . $content_scope . ' .scale-in { animation: nfd-scaleIn 0.8s ease-out forwards; }
+			' . $content_scope . ' .fade-in-delay-1 { animation: nfd-fadeIn 0.8s ease-out 0.2s forwards; opacity: 0; }
+			' . $content_scope . ' .fade-in-delay-2 { animation: nfd-fadeIn 0.8s ease-out 0.4s forwards; opacity: 0; }
+			' . $content_scope . ' .fade-in-delay-3 { animation: nfd-fadeIn 0.8s ease-out 0.6s forwards; opacity: 0; }
+			' . $content_scope . ' .card-hover-lift { transition: all 0.3s ease; }
+			' . $content_scope . ' .card-hover-lift:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+			' . $content_scope . ' [data-aos] { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
+			' . $content_scope . ' [data-aos].aos-animate { opacity: 1; transform: translateY(0); }
+		';
+
+		wp_add_inline_style( 'wp-block-library', $animation_css );
+
+		wp_register_script( 'nfd-ai-page-animations', false, array(), false, true );
+		wp_enqueue_script( 'nfd-ai-page-animations' );
+		wp_add_inline_script(
+			'nfd-ai-page-animations',
+			'(function(){
+				var observer = new IntersectionObserver(function(entries){
+					entries.forEach(function(entry){
+						if(entry.isIntersecting){
+							var delay = parseInt(entry.target.getAttribute("data-aos-delay")||"0",10);
+							setTimeout(function(){ entry.target.classList.add("aos-animate"); }, delay);
+							observer.unobserve(entry.target);
+						}
+					});
+				},{threshold:0});
+				document.querySelectorAll(".entry-content [data-aos], .wp-block-post-content [data-aos]").forEach(function(el){ observer.observe(el); });
+			})()'
 		);
 	}
 }
