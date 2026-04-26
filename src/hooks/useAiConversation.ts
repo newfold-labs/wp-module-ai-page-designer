@@ -475,8 +475,12 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       // Metadata requests (excerpt, title, summary) should never send page content as context.
       const isMetadataRequest = /\b(add|create|generate|write)\s+(an?\s+)?(excerpt|title|summary)\b|^(excerpt|title|summary)$/i.test(text);
 
+      // Redesign requests generate a full new page — never treat them as targeted follow-up edits.
+      const REDESIGN_KEYWORDS = [ 'redesign', 'regenerate', 'generate again', 'redo', 'remake', 'rebuild', 'start over', 'start fresh', 'from scratch', 'create new', 'make a new', 'build a new', 'try again', 'new version', 'new design' ];
+      const isRedesignRequest = REDESIGN_KEYWORDS.some( ( kw ) => text.toLowerCase().includes( kw ) );
+
       // Detect if this is a follow-up request to a previously generated block.
-      const isFollowUpEdit = !isMetadataRequest && selectedBlockIndex === null && lastGeneratedHtml !== null && !!previewHtml?.includes(lastGeneratedHtml);
+      const isFollowUpEdit = !isMetadataRequest && !isRedesignRequest && selectedBlockIndex === null && lastGeneratedHtml !== null && !!previewHtml?.includes(lastGeneratedHtml);
 
       // Try to use the block registry for selected-block edits.
       // If wp.blocks is available and we have a populated registry, we can serialize just the

@@ -244,9 +244,15 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 			// Single-block edits return partial markup, not a full page — don't chain them
 			// into the conversation thread or they'd corrupt the next full-page context.
+			// Redesign requests must also start a fresh conversation so the AI isn't biased
+			// by the previous page's context when generating a genuinely new design.
 			$is_single_block_edit = ! empty( $context['single_block_edit'] );
-			$previous_response_id = $is_single_block_edit ? null : $this->load_previous_response_id( $conversation_key );
-			$ai_messages          = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type, $context, $previous_response_id );
+			$is_redesign_request  = $this->prompt_builder->is_redesign_request( $last_user_prompt );
+			if ( $is_redesign_request ) {
+				delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
+			}
+			$previous_response_id = ( $is_single_block_edit || $is_redesign_request ) ? null : $this->load_previous_response_id( $conversation_key );
+			$ai_messages          = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type, $context );
 
 			if ( $stream ) {
 				$this->init_streaming_response();

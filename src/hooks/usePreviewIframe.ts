@@ -68,9 +68,7 @@ export const usePreviewIframe = (
 
   useEffect( () => {
     if ( iframeRef.current && previewHtml ) {
-      const doc = iframeRef.current.contentDocument;
-      if ( doc ) {
-        const fallbackLinkTags = previewStylesheets
+      const fallbackLinkTags = previewStylesheets
           ? [
               previewStylesheets.blockLibrary
                 ? `<link rel="stylesheet" href="${ previewStylesheets.blockLibrary }">`
@@ -136,6 +134,43 @@ export const usePreviewIframe = (
             #nfd-preview-root [class*="-background-color"] .has-white-color,
             #nfd-preview-root [style*="background-color"] .has-white-color,
             #nfd-preview-root [style*="background:"] .has-white-color { color: #fff; }
+            /* Extended safety net: inline white styles override class rules, so !important is required */
+            #nfd-preview-root [style*="color:white"],
+            #nfd-preview-root [style*="color: white"],
+            #nfd-preview-root [style*="color:#fff"],
+            #nfd-preview-root [style*="color: #fff"],
+            #nfd-preview-root [style*="color:#ffffff"],
+            #nfd-preview-root [style*="color: #ffffff"] { color: #1e1e1e !important; }
+            #nfd-preview-root .wp-block-cover [style*="color:white"],
+            #nfd-preview-root .wp-block-cover [style*="color: white"],
+            #nfd-preview-root .wp-block-cover [style*="color:#fff"],
+            #nfd-preview-root .wp-block-cover [style*="color: #fff"],
+            #nfd-preview-root .wp-block-cover [style*="color:#ffffff"],
+            #nfd-preview-root .wp-block-cover [style*="color: #ffffff"],
+            #nfd-preview-root .has-background [style*="color:white"],
+            #nfd-preview-root .has-background [style*="color: white"],
+            #nfd-preview-root .has-background [style*="color:#fff"],
+            #nfd-preview-root .has-background [style*="color: #fff"],
+            #nfd-preview-root .has-background [style*="color:#ffffff"],
+            #nfd-preview-root .has-background [style*="color: #ffffff"],
+            #nfd-preview-root [class*="-background-color"] [style*="color:white"],
+            #nfd-preview-root [class*="-background-color"] [style*="color: white"],
+            #nfd-preview-root [class*="-background-color"] [style*="color:#fff"],
+            #nfd-preview-root [class*="-background-color"] [style*="color: #fff"],
+            #nfd-preview-root [class*="-background-color"] [style*="color:#ffffff"],
+            #nfd-preview-root [class*="-background-color"] [style*="color: #ffffff"],
+            #nfd-preview-root [style*="background-color"] [style*="color:white"],
+            #nfd-preview-root [style*="background-color"] [style*="color: white"],
+            #nfd-preview-root [style*="background-color"] [style*="color:#fff"],
+            #nfd-preview-root [style*="background-color"] [style*="color: #fff"],
+            #nfd-preview-root [style*="background-color"] [style*="color:#ffffff"],
+            #nfd-preview-root [style*="background-color"] [style*="color: #ffffff"],
+            #nfd-preview-root [style*="background:"] [style*="color:white"],
+            #nfd-preview-root [style*="background:"] [style*="color: white"],
+            #nfd-preview-root [style*="background:"] [style*="color:#fff"],
+            #nfd-preview-root [style*="background:"] [style*="color: #fff"],
+            #nfd-preview-root [style*="background:"] [style*="color:#ffffff"],
+            #nfd-preview-root [style*="background:"] [style*="color: #ffffff"] { color: #fff !important; }
           </style>
           <script>
             document.addEventListener('DOMContentLoaded', () => {
@@ -258,13 +293,21 @@ export const usePreviewIframe = (
           </script>
         `;
 
-        doc.open();
         const useShell = Boolean( frontendShellHtml ) && ! previewHtml.includes( '<html' );
+
+        let siteBase = '';
+        try {
+          siteBase = new URL( previewUrl ).origin + '/';
+        } catch {
+          // previewUrl might be relative; skip base tag
+        }
+        const baseTag = siteBase ? `<base href="${ siteBase }">` : '';
+
         const fullHtml = useShell
-          ? `<!DOCTYPE html><html><head><meta charset="utf-8">${ headStyles }${ script }</head><body${ frontendBodyClass ? ` class="${ frontendBodyClass }"` : '' }>${ frontendShellHtml }</body></html>`
+          ? `<!DOCTYPE html><html><head><meta charset="utf-8">${ baseTag }${ headStyles }${ script }</head><body${ frontendBodyClass ? ` class="${ frontendBodyClass }"` : '' }>${ frontendShellHtml }</body></html>`
           : previewHtml.includes( '<html' )
               ? previewHtml
-                  .replace( '</head>', `${ headStyles }${ script }</head>` )
+                  .replace( '</head>', `${ baseTag }${ headStyles }${ script }</head>` )
                   .replace( /<body([^>]*)>/i, ( match, attrs ) => {
                     if ( frontendBodyClass ) {
                       if ( /class=/.test( attrs ) ) {
@@ -279,13 +322,11 @@ export const usePreviewIframe = (
                     }
                     return `<body id="nfd-preview-root"${ attrs }>`;
                   } )
-              : `<!DOCTYPE html><html><head><meta charset="utf-8">${ headStyles }${ script }</head><body${ frontendBodyClass ? ` class="${ frontendBodyClass }"` : '' }><div id="nfd-preview-root">${ previewHtml }</div></body></html>`;
+              : `<!DOCTYPE html><html><head><meta charset="utf-8">${ baseTag }${ headStyles }${ script }</head><body${ frontendBodyClass ? ` class="${ frontendBodyClass }"` : '' }><div id="nfd-preview-root">${ previewHtml }</div></body></html>`;
 
-        doc.write( fullHtml );
-        doc.close();
-      }
+        iframeRef.current.srcdoc = fullHtml;
     }
-  }, [ frontendBodyClass, frontendShellHtml, frontendStyles, previewHtml, previewStylesheets ] );
+  }, [ frontendBodyClass, frontendShellHtml, frontendStyles, previewHtml, previewStylesheets, previewUrl ] );
 
   return { iframeRef };
 };

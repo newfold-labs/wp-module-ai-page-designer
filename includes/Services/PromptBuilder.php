@@ -113,7 +113,7 @@ class PromptBuilder {
 	 * @param string $prompt The user prompt text.
 	 * @return bool
 	 */
-	private function is_redesign_request( $prompt ) {
+	public function is_redesign_request( $prompt ) {
 		$prompt_lower = strtolower( $prompt );
 		$triggers     = array(
 			'redesign',
@@ -196,9 +196,8 @@ class PromptBuilder {
 	/**
 	 * Build user messages for the AI request.
 	 *
-	 * Only the latest user message is sent — conversation history is maintained
-	 * server-side via previous_response_id, so replaying the full history is redundant.
-	 * The message receives the base layout or current markup appendix as needed.
+	 * Only the latest user message is sent — the full current markup is always
+	 * appended so the AI has explicit page state on every request.
 	 *
 	 * For posts, no base layout is injected — the AI generates editorial content freely.
 	 * For pages, the blueprint base layout is preferred; patterns are used as fallback.
@@ -207,10 +206,9 @@ class PromptBuilder {
 	 * @param string $current_markup Current block markup, if any.
 	 * @param string $content_type   'page' or 'post'.
 	 * @param array  $context        Contextual data.
-	 * @param string $previous_response_id Previous response ID.
 	 * @return array
 	 */
-	public function build_user_messages( array $messages, $current_markup = '', $content_type = 'page', array $context = array(), $previous_response_id = null ) {
+	public function build_user_messages( array $messages, $current_markup = '', $content_type = 'page', array $context = array() ) {
 		$is_new = count( $messages ) === 1;
 
 		// Extract the last user message only.
@@ -245,20 +243,25 @@ class PromptBuilder {
 				// The AI returns only the modified block (not the full page).
 				$selected_markup = trim( $context['selected_block_markup'] );
 				$content        .= "\n\n--- SELECTED BLOCK ---\n" . $selected_markup;
-			} elseif ( ! empty( $previous_response_id ) ) {
-				// Chained full-page edit: rely on conversation memory — no markup needed.
 			} elseif ( $use_blueprint ) {
 				// New page or redesign: inject base layout scaffold.
 				$base_layout = $this->get_base_layout_by_provider( $last_user_prompt );
 				if ( ! empty( $base_layout ) ) {
 					$base_layout = $this->replace_blueprint_images_with_placeholders( $base_layout );
 					$content    .= "\n\n--- BASE LAYOUT ---\n" . $base_layout;
+				} elseif ( ! empty( $current_markup ) ) {
+					// No blueprint provider — supply existing content as reference only.
+					if ( strlen( $current_markup ) > self::MAX_MARKUP_LENGTH ) {
+						$content .= "\n\n--- REDESIGN SOURCE ---\n" . $this->skeletonise_markup( $current_markup );
+					} else {
+						$content .= "\n\n--- REDESIGN SOURCE ---\n" . $current_markup;
+					}
 				}
 			} elseif ( ! empty( $current_markup ) ) {
-				// Follow-up edit: send current page markup as editing target.
+				// All follow-up edits: always send the full current markup so the AI
+				// has explicit page state on every request without relying on response chaining.
 				if ( strlen( $current_markup ) > self::MAX_MARKUP_LENGTH ) {
-					$current_markup = $this->skeletonise_markup( $current_markup );
-					$content       .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\n" . $current_markup;
+					$content .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\n" . $this->skeletonise_markup( $current_markup );
 				} else {
 					$content .= "\n\n--- CURRENT TARGET LAYOUT ---\n" . $current_markup;
 				}
@@ -280,10 +283,9 @@ class PromptBuilder {
 	 * @param string $current_markup Current block markup, if any.
 	 * @param string $content_type   'page' or 'post'.
 	 * @param array  $context        Contextual data.
-	 * @param string $previous_response_id Previous response ID.
 	 * @return array
 	 */
-	public function build_ai_messages( array $messages, $current_markup = '', $content_type = 'page', array $context = array(), $previous_response_id = null ) {
+	public function build_ai_messages( array $messages, $current_markup = '', $content_type = 'page', array $context = array() ) {
 		return array_merge(
 			array(
 				array(
@@ -291,7 +293,7 @@ class PromptBuilder {
 					'content' => $this->build_system_prompt(),
 				),
 			),
-			$this->build_user_messages( $messages, $current_markup, $content_type, $context, $previous_response_id )
+			$this->build_user_messages( $messages, $current_markup, $content_type, $context )
 		);
 	}
 
