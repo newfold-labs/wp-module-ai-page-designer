@@ -15,6 +15,46 @@ use NewfoldLabs\WP\Module\Data\HiiveConnection;
 class AiClient {
 
 	/**
+	 * Default AI model to use for content generation.
+	 */
+	const DEFAULT_MODEL = 'gpt-5.4-mini';
+
+	/**
+	 * AI API endpoint for standard requests.
+	 */
+	const AI_API_ENDPOINT = 'https://api-gw.builderservices.io/ai-api/v1/response';
+
+	/**
+	 * AI API endpoint for streaming requests.
+	 */
+	const AI_STREAM_ENDPOINT = 'https://api-gw.builderservices.io/ai-api/v1/response/stream';
+
+	/**
+	 * JWT worker endpoint for token exchange.
+	 */
+	const JWT_WORKER_ENDPOINT = 'https://cf-worker-newfold-services-jwt.bluehost.workers.dev/';
+
+	/**
+	 * Default prompt ID for AI requests.
+	 */
+	const DEFAULT_PROMPT_ID = '4d5d7866-cbaf-4274-ad72-f789e358965d';
+
+	/**
+	 * Default timeout for HTTP requests (in seconds).
+	 */
+	const DEFAULT_TIMEOUT = 120;
+
+	/**
+	 * Default timeout for JWT requests (in seconds).
+	 */
+	const JWT_TIMEOUT = 30;
+
+	/**
+	 * Maximum output tokens for AI generation.
+	 */
+	const MAX_OUTPUT_TOKENS = 5000;
+
+	/**
 	 * Request generated content from the AI service.
 	 *
 	 * @param array $ai_messages Message payload for the AI service.
@@ -39,9 +79,9 @@ class AiClient {
 
 		$input_payload = array(
 			'input'             => $ai_messages,
-			'model'             => 'gpt-5.4-mini',
+			'model'             => self::DEFAULT_MODEL,
 			'store'             => true,
-			'max_output_tokens' => 5000,
+			'max_output_tokens' => self::MAX_OUTPUT_TOKENS,
 		);
 
 		if ( ! empty( $options['previous_response_id'] ) && is_string( $options['previous_response_id'] ) ) {
@@ -50,26 +90,26 @@ class AiClient {
 
 		$request_body = wp_json_encode(
 			array(
-				'promptId'     => '4d5d7866-cbaf-4274-ad72-f789e358965d',
+				'promptId'     => self::DEFAULT_PROMPT_ID,
 				'inputPayload' => $input_payload,
 			)
 		);
 
 		$timeout_filter = static function () {
-			return 120;
+			return self::DEFAULT_TIMEOUT;
 		};
 
 		add_filter( 'http_request_timeout', $timeout_filter, 999 );
 
 		try {
 			$response = wp_remote_post(
-				'https://api-gw.builderservices.io/ai-api/v1/response',
+				self::AI_API_ENDPOINT,
 				array(
 					'headers' => array(
 						'Content-Type'  => 'application/json',
 						'Authorization' => 'Bearer ' . $jwt_token,
 					),
-					'timeout' => 120,
+					'timeout' => self::DEFAULT_TIMEOUT,
 					'body'    => $request_body,
 				)
 			);
@@ -170,14 +210,14 @@ class AiClient {
 
 		$request_body = wp_json_encode(
 			array(
-				'promptId'     => '4d5d7866-cbaf-4274-ad72-f789e358965d',
+				'promptId'     => self::DEFAULT_PROMPT_ID,
 				'inputPayload' => $this->build_stream_input_payload( $ai_messages, $options ),
 			)
 		);
 
 		$buffer      = '';
 		$response_id = null;
-		$curl_handle = curl_init( 'https://api-gw.builderservices.io/ai-api/v1/response/stream' );
+		$curl_handle = curl_init( self::AI_STREAM_ENDPOINT );
 
 		curl_setopt( $curl_handle, CURLOPT_POST, true );
 		curl_setopt(
@@ -310,10 +350,10 @@ class AiClient {
 		}
 
 		$response = wp_remote_post(
-			'https://cf-worker-newfold-services-jwt.bluehost.workers.dev/',
+			self::JWT_WORKER_ENDPOINT,
 			array(
 				'headers' => $headers,
-				'timeout' => 30,
+				'timeout' => self::JWT_TIMEOUT,
 				'body'    => wp_json_encode(
 					array(
 						'hiiveToken' => $hiive_token,
@@ -398,11 +438,6 @@ class AiClient {
 				return (string) $result['response']['id'];
 			}
 		}
-		if ( isset( $result['type'], $result['response']['id'] ) ) {
-			if ( 'response.created' === $result['type'] || 'response.done' === $result['type'] ) {
-				return (string) $result['response']['id'];
-			}
-		}
 
 		if ( isset( $result['responseMetadata']['response_id'] ) && is_string( $result['responseMetadata']['response_id'] ) ) {
 			return $result['responseMetadata']['response_id'];
@@ -425,7 +460,7 @@ class AiClient {
 	private function build_input_payload( array $ai_messages, array $options ) {
 		$input_payload = array(
 			'input' => $ai_messages,
-			'model' => 'gpt-5.4-mini',
+			'model' => self::DEFAULT_MODEL,
 			'store' => true,
 		);
 
@@ -445,10 +480,10 @@ class AiClient {
 	 */
 	private function build_stream_input_payload( array $ai_messages, array $options ) {
 		$input_payload = array(
-			'model'             => 'gpt-5.4-mini',
+			'model'             => self::DEFAULT_MODEL,
 			'input'             => wp_json_encode( $ai_messages ),
 			'store'             => true,
-			'max_output_tokens' => 5000,
+			'max_output_tokens' => self::MAX_OUTPUT_TOKENS,
 		);
 
 		if ( ! empty( $options['previous_response_id'] ) && is_string( $options['previous_response_id'] ) ) {
