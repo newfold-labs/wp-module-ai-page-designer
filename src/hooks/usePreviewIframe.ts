@@ -128,10 +128,14 @@ export const usePreviewIframe = (
             #nfd-preview-root [data-aos] { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
             #nfd-preview-root [data-aos].aos-animate { opacity: 1; transform: translateY(0); }
 
-            /* Safety net: reset white text outside cover blocks, then restore it inside */
+            /* Safety net: reset accidental white text; restore it inside any block that has an explicit background */
             #nfd-preview-root .has-white-color { color: #1e1e1e; }
             #nfd-preview-root .wp-block-cover .has-white-color,
-            #nfd-preview-root .wp-block-cover__inner-container .has-white-color { color: #fff; }
+            #nfd-preview-root .wp-block-cover__inner-container .has-white-color,
+            #nfd-preview-root .has-background .has-white-color,
+            #nfd-preview-root [class*="-background-color"] .has-white-color,
+            #nfd-preview-root [style*="background-color"] .has-white-color,
+            #nfd-preview-root [style*="background:"] .has-white-color { color: #fff; }
           </style>
           <script>
             document.addEventListener('DOMContentLoaded', () => {

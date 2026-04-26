@@ -236,36 +236,32 @@ class PromptBuilder {
 
 		// For metadata-only requests, don't send any markup context
 		if ( $is_metadata_only ) {
-			$content .= "\n\nPlease return only the requested metadata (title, excerpt, or summary) using the appropriate comment format. Do not generate any Gutenberg block markup.";
+			$content .= "\n\n--- METADATA ONLY ---";
 		}
 
-		// Handle conversation chaining - if we have a previous response, use minimal context
-		if ( ! $is_metadata_only && ! empty( $previous_response_id ) ) {
-			// For chained conversations, check if we have a selected block
+		if ( ! $is_metadata_only ) {
 			if ( ! empty( $context['selected_block_markup'] ) ) {
+				// Single-block edit: send only the selected block's Gutenberg markup.
+				// The AI returns only the modified block (not the full page).
 				$selected_markup = trim( $context['selected_block_markup'] );
-				$content        .= "\n\n--- SELECTED BLOCK ---\nThe user clicked on this specific block (rendered HTML below). Apply the requested change to this block only, then return the COMPLETE page markup with all other blocks unchanged.\n\n" . $selected_markup;
-			}
-			// If no selected block, just send the prompt - let conversation memory handle the context
-		} elseif ( ! $is_metadata_only && $use_blueprint ) {
-			// Use configured pattern provider for base layout
-			$base_layout = $this->get_base_layout_by_provider( $last_user_prompt );
-
-			if ( ! empty( $base_layout ) ) {
-				// Strip images from layout and replace with placeholders
-				$base_layout = $this->replace_blueprint_images_with_placeholders( $base_layout );
-				$content    .= "\n\n--- BASE LAYOUT ---\nPlease use this Gutenberg block structure as the foundation and modify its text and styling attributes to match the user's request. Preserve all block comment delimiters.\n\n" . $base_layout;
-			}
-		} elseif ( ! $is_metadata_only && ! empty( $current_markup ) ) {
-			if ( strlen( $current_markup ) > self::MAX_MARKUP_LENGTH ) {
-				$current_markup = $this->skeletonise_markup( $current_markup );
-				$content       .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\nThe page markup was too large to send in full. The following is the block structure skeleton only. Please regenerate the full page content based on this structure and the user's request above. Preserve all block comment delimiters.\n\n" . $current_markup;
-			} else {
-				$content .= "\n\n--- CURRENT TARGET LAYOUT ---\nPlease modify the following existing Gutenberg block markup according to the request above. Preserve all block comment delimiters.\n\n" . $current_markup;
-			}
-			if ( ! empty( $context['selected_block_markup'] ) ) {
-				$selected_markup = trim( $context['selected_block_markup'] );
-				$content        .= "\n\n--- SELECTED BLOCK ---\nThe user clicked on this specific block (rendered HTML below). Apply the requested change to this block only and return the COMPLETE page markup with all other blocks unchanged.\n\n" . $selected_markup;
+				$content        .= "\n\n--- SELECTED BLOCK ---\n" . $selected_markup;
+			} elseif ( ! empty( $previous_response_id ) ) {
+				// Chained full-page edit: rely on conversation memory — no markup needed.
+			} elseif ( $use_blueprint ) {
+				// New page or redesign: inject base layout scaffold.
+				$base_layout = $this->get_base_layout_by_provider( $last_user_prompt );
+				if ( ! empty( $base_layout ) ) {
+					$base_layout = $this->replace_blueprint_images_with_placeholders( $base_layout );
+					$content    .= "\n\n--- BASE LAYOUT ---\n" . $base_layout;
+				}
+			} elseif ( ! empty( $current_markup ) ) {
+				// Follow-up edit: send current page markup as editing target.
+				if ( strlen( $current_markup ) > self::MAX_MARKUP_LENGTH ) {
+					$current_markup = $this->skeletonise_markup( $current_markup );
+					$content       .= "\n\n--- CURRENT TARGET LAYOUT (structure only) ---\n" . $current_markup;
+				} else {
+					$content .= "\n\n--- CURRENT TARGET LAYOUT ---\n" . $current_markup;
+				}
 			}
 		}
 

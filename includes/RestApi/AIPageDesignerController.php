@@ -189,6 +189,12 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 		}
 
+		if ( isset( $context['single_block_edit'] ) ) {
+			if ( ! is_bool( $context['single_block_edit'] ) ) {
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -236,7 +242,10 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				return $fast_path_response;
 			}
 
-			$previous_response_id = $this->load_previous_response_id( $conversation_key );
+			// Single-block edits return partial markup, not a full page — don't chain them
+			// into the conversation thread or they'd corrupt the next full-page context.
+			$is_single_block_edit = ! empty( $context['single_block_edit'] );
+			$previous_response_id = $is_single_block_edit ? null : $this->load_previous_response_id( $conversation_key );
 			$ai_messages          = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type, $context, $previous_response_id );
 
 			if ( $stream ) {
@@ -273,7 +282,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					$context,
 					$conversation_context,
 					$last_user_prompt,
-					true
+					true,
+					$is_single_block_edit
 				);
 
 				if ( is_wp_error( $response_data ) ) {
@@ -315,7 +325,9 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$messages,
 				$context,
 				$conversation_context,
-				$last_user_prompt
+				$last_user_prompt,
+				false,
+				$is_single_block_edit
 			);
 
 			if ( is_wp_error( $response_data ) ) {
@@ -507,9 +519,10 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @param array  $conversation_context Conversation key/id.
 	 * @param string $last_user_prompt Latest user prompt.
 	 * @param bool   $allow_missing_response_id Allow missing response ID.
+	 * @param bool   $is_single_block_edit      Skip persisting response_id for single-block edits.
 	 * @return array|\WP_Error
 	 */
-	private function build_response_payload( $content, $response_id, array $messages, array $context, array $conversation_context, $last_user_prompt, $allow_missing_response_id = false ) {
+	private function build_response_payload( $content, $response_id, array $messages, array $context, array $conversation_context, $last_user_prompt, $allow_missing_response_id = false, $is_single_block_edit = false ) {
 		if ( empty( $response_id ) && ! $allow_missing_response_id ) {
 			return new \WP_Error(
 				'ai_generation_error',
@@ -521,7 +534,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$conversation_key = $conversation_context['conversation_key'];
 		$conversation_id  = $conversation_context['conversation_id'];
 
-		if ( ! empty( $response_id ) ) {
+		if ( ! empty( $response_id ) && ! $is_single_block_edit ) {
 			$this->store_response_id( $conversation_key, $response_id );
 		}
 

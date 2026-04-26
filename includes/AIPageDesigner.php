@@ -99,7 +99,7 @@ class AIPageDesigner {
 		wp_enqueue_script(
 			'nfd-ai-page-designer',
 			NFD_MODULE_AI_PAGE_DESIGNER_URL . 'build/index.js',
-			array( 'react', 'react-dom', 'wp-api-fetch', 'wp-element' ),
+			array( 'react', 'react-dom', 'wp-api-fetch', 'wp-element', 'wp-blocks' ),
 			NFD_MODULE_AI_PAGE_DESIGNER_VERSION,
 			true
 		);
