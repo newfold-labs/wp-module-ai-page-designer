@@ -7,13 +7,14 @@
 
 namespace NewfoldLabs\WP\Module\AIPageDesigner\RestApi;
 
-use NewfoldLabs\WP\Module\AIPageDesigner\Services\AiClient;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\AiClientWorker;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\BlockMarkupSanitizer;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\FastPathHandler;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\ImageService;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PatternLayoutProvider;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PromptBuilder;
+use Web\AIPageDesignerDebug;
 
 /**
  * REST API Controller for AI Page Generation
@@ -44,7 +45,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	/**
 	 * AI client.
 	 *
-	 * @var AiClient
+	 * @var AiClientWorker
 	 */
 	private $ai_client;
 
@@ -74,7 +75,11 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 */
 	public function __construct() {
 		$this->prompt_builder         = new PromptBuilder( new PatternLayoutProvider() );
-		$this->ai_client              = new AiClient();
+		
+		// Always use Worker client for AI Page Designer
+		AIPageDesignerDebug::debug_log( 'Using Worker-based AI client' );
+		$this->ai_client = new AiClientWorker();
+		
 		$this->image_service          = new ImageService();
 		$this->block_markup_sanitizer = new BlockMarkupSanitizer();
 		$this->fast_path_handler      = new FastPathHandler( $this->image_service, $this->ai_client );
@@ -246,12 +251,11 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			// into the conversation thread or they'd corrupt the next full-page context.
 			// Redesign requests must also start a fresh conversation so the AI isn't biased
 			// by the previous page's context when generating a genuinely new design.
-			$is_single_block_edit = ! empty( $context['single_block_edit'] );
-			$is_redesign_request  = $this->prompt_builder->is_redesign_request( $last_user_prompt );
+			$is_redesign_request = $this->prompt_builder->is_redesign_request( $last_user_prompt );
 			if ( $is_redesign_request ) {
 				delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
 			}
-			$previous_response_id = ( $is_single_block_edit || $is_redesign_request ) ? null : $this->load_previous_response_id( $conversation_key );
+			$previous_response_id = $is_redesign_request ? null : $this->load_previous_response_id( $conversation_key );
 			$ai_messages          = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type, $context );
 
 			if ( $stream ) {
@@ -259,11 +263,17 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$raw_content     = '';
 				$stream_response = null;
 
+				// Prepare options for streaming (enhanced for Worker compatibility)
+				$stream_options = array(
+					'previous_response_id' => $previous_response_id,
+					'current_markup' => $current_markup,
+					'content_type' => $content_type,
+					'selected_block_markup' => $context['selected_block_markup'] ?? null,
+				);
+				
 				$stream_result = $this->ai_client->stream_content(
 					$ai_messages,
-					array(
-						'previous_response_id' => $previous_response_id,
-					),
+					$stream_options,
 					function ( $event ) use ( &$raw_content, &$stream_response ) {
 						if ( 'delta' === $event['type'] && ! empty( $event['text'] ) ) {
 							$raw_content .= $event['text'];
@@ -288,8 +298,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					$context,
 					$conversation_context,
 					$last_user_prompt,
-					true,
-					$is_single_block_edit
+					true
 				);
 
 				if ( is_wp_error( $response_data ) ) {
@@ -302,12 +311,15 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				exit;
 			}
 
-			$ai_result = $this->ai_client->generate_content(
-				$ai_messages,
-				array(
-					'previous_response_id' => $previous_response_id,
-				)
+			// Prepare options for AI client (enhanced for Worker compatibility)
+			$ai_options = array(
+				'previous_response_id' => $previous_response_id,
+				'current_markup' => $current_markup,
+				'content_type' => $content_type,
+				'selected_block_markup' => $context['selected_block_markup'] ?? null,
 			);
+			
+			$ai_result = $this->ai_client->generate_content( $ai_messages, $ai_options );
 
 			// If the stored response_id was stale/expired, clear it and retry without it.
 			if ( is_wp_error( $ai_result ) && $previous_response_id ) {
@@ -332,8 +344,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$context,
 				$conversation_context,
 				$last_user_prompt,
-				false,
-				$is_single_block_edit
+				false
 			);
 
 			if ( is_wp_error( $response_data ) ) {
@@ -525,10 +536,9 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @param array  $conversation_context Conversation key/id.
 	 * @param string $last_user_prompt Latest user prompt.
 	 * @param bool   $allow_missing_response_id Allow missing response ID.
-	 * @param bool   $is_single_block_edit      Skip persisting response_id for single-block edits.
 	 * @return array|\WP_Error
 	 */
-	private function build_response_payload( $content, $response_id, array $messages, array $context, array $conversation_context, $last_user_prompt, $allow_missing_response_id = false, $is_single_block_edit = false ) {
+	private function build_response_payload( $content, $response_id, array $messages, array $context, array $conversation_context, $last_user_prompt, $allow_missing_response_id = false ) {
 		if ( empty( $response_id ) && ! $allow_missing_response_id ) {
 			return new \WP_Error(
 				'ai_generation_error',
@@ -540,7 +550,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$conversation_key = $conversation_context['conversation_key'];
 		$conversation_id  = $conversation_context['conversation_id'];
 
-		if ( ! empty( $response_id ) && ! $is_single_block_edit ) {
+		if ( ! empty( $response_id ) ) {
 			$this->store_response_id( $conversation_key, $response_id );
 		}
 

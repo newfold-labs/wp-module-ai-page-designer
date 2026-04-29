@@ -11,6 +11,7 @@ import { useBlockSelection } from './hooks/useBlockSelection';
 import { usePreviewIframe } from './hooks/usePreviewIframe';
 import { usePublishFlow } from './hooks/usePublishFlow';
 import { useSiteContent } from './hooks/useSiteContent';
+import { convertHtmlToGutenberg, hasGutenbergMarkers } from './util/aiDesignerHelpers';
 import type { WPItem } from './types';
 
 declare global {
@@ -136,9 +137,11 @@ const App = () => {
     publishFlow.resetPublishState();
     setSelectedItem( item );
     setView( 'designer' );
-    const cleanTitle = stripHtml( item.title?.rendered || '' );
 
-    const baseHtml = item.content?.raw || item.content?.rendered || '';
+    const rawHtml = item.content?.raw || item.content?.rendered || '';
+    const baseHtml = rawHtml && ! hasGutenbergMarkers( rawHtml )
+      ? convertHtmlToGutenberg( rawHtml )
+      : rawHtml;
     setOriginalPreviewHtml( baseHtml );
     setPreviewHtml( baseHtml );
     const nextTitle = stripHtml( item.title?.rendered || '' );

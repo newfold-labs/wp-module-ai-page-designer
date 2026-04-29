@@ -86,6 +86,42 @@ const wpBlocksSerialize = ( blocks: any[] ): string => {
   }
 };
 
+// Split Gutenberg block markup into an array of top-level block strings.
+// Does not require wp.blocks — works purely on the comment delimiter syntax.
+//
+// Each new top-level block start (opening OR self-closing) begins a fresh segment so
+// that self-closing blocks (<!-- wp:separator /--> + <hr>) stay with their rendered
+// HTML instead of leaking into the next segment and offsetting all subsequent indices.
+const splitTopLevelBlocks = ( markup: string ): string[] => {
+  const segments: string[][] = [ [] ];
+  let segIdx = 0;
+  let depth = 0;
+
+  for ( const line of markup.split( '\n' ) ) {
+    const trimmed = line.trim();
+    const isSelfClosing = /^<!--\s*wp:[^ ].*?\/-->/i.test( trimmed );
+    const isOpening = ! isSelfClosing && /^<!--\s*wp:/i.test( trimmed );
+    const isClosing = /^<!--\s*\/wp:/i.test( trimmed );
+
+    // Each top-level block start opens a new segment.
+    if ( ( isOpening || isSelfClosing ) && depth === 0 ) {
+      segments.push( [] );
+      segIdx++;
+    }
+
+    segments[ segIdx ].push( line );
+
+    if ( isOpening ) depth++;
+    if ( isClosing ) depth--;
+  }
+
+  // Join each segment and drop any that contain no block comments (e.g. leading whitespace,
+  // trailing fastpath cache-buster comments).
+  return segments
+    .map( seg => seg.join( '\n' ).trim() )
+    .filter( s => s.length > 0 && /<!--\s*\/?wp:/i.test( s ) );
+};
+
 export const useAiConversation = ( options: UseAiConversationOptions ): UseAiConversationResult => {
   const {
     apiUrl,
@@ -289,8 +325,10 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         };
 
         if ( isSingleBlockRequestRef.current && pendingTopLevelIndexRef.current !== null ) {
-          // Block registry path: replace just the one top-level block and re-serialize the full page.
           const idx = pendingTopLevelIndexRef.current;
+          let handled = false;
+
+          // Primary: wp.blocks parse+serialize if available.
           const newBlocks = wpBlocksParse( html );
           if ( newBlocks.length > 0 && parsedBlocks.length > idx ) {
             const updatedBlocks = [ ...parsedBlocks ];
@@ -302,28 +340,66 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
               addHistoryEntry( newPageMarkup );
               setLastGeneratedHtml( null );
               clearSelection( iframeRef );
+              handled = true;
             }
           }
+
+          // Fallback: string-split replacement — works without wp.blocks.
+          if ( ! handled && previewHtml ) {
+            const pageBlocks = splitTopLevelBlocks( previewHtml );
+            if ( idx < pageBlocks.length ) {
+              const updatedPageBlocks = [ ...pageBlocks ];
+              updatedPageBlocks[ idx ] = html.trim();
+              const newPageMarkup = updatedPageBlocks.join( '\n\n' );
+              setPreviewHtml( newPageMarkup );
+              addHistoryEntry( newPageMarkup );
+              setLastGeneratedHtml( null );
+              clearSelection( iframeRef );
+            }
+          }
+
           isSingleBlockRequestRef.current = false;
           pendingTopLevelIndexRef.current = null;
         } else if ( selectedBlockIndex !== null && selectedBlockHtml !== null ) {
-          if ( /<!--\s*wp:/.test( html ) ) {
-            // AI returned full Gutenberg block markup — apply as full-page update.
-            const newBlocks = wpBlocksParse( html );
-            if ( newBlocks.length > 0 ) {
-              setParsedBlocks( newBlocks );
+          // Try Gutenberg block-marker replacement first; fall back to DOM patch.
+          const hasBlockMarkers = /<!--\s*wp:/.test( html );
+          const topLevelStr = selectedBlockIndex.split( '-' )[ 0 ];
+          const idx = parseInt( topLevelStr, 10 );
+          let usedBlockPath = false;
+
+          if ( hasBlockMarkers && ! isNaN( idx ) && previewHtml ) {
+            const pageBlocks = splitTopLevelBlocks( previewHtml );
+            if ( idx < pageBlocks.length ) {
+              // Happy path: page has Gutenberg block markers, replace the block in-place.
+              const updatedPageBlocks = [ ...pageBlocks ];
+              updatedPageBlocks[ idx ] = html.trim();
+              const newPageMarkup = updatedPageBlocks.join( '\n\n' );
+              const newBlocks = wpBlocksParse( newPageMarkup );
+              if ( newBlocks.length > 0 ) {
+                setParsedBlocks( newBlocks );
+              }
+              setPreviewHtml( newPageMarkup );
+              addHistoryEntry( newPageMarkup );
+              setLastGeneratedHtml( null );
+              clearSelection( iframeRef );
+              usedBlockPath = true;
             }
-            setPreviewHtml( html );
-            addHistoryEntry( html );
-            setLastGeneratedHtml( null );
-            clearSelection( iframeRef );
-          } else {
-            // AI returned a raw HTML fragment — patch just the selected block in the DOM.
+          }
+
+          if ( ! usedBlockPath ) {
+            // DOM patch — covers two cases:
+            //   1. AI returned raw HTML (no block markers)
+            //   2. AI returned Gutenberg markup but page is rendered HTML (no block markers to split on)
+            // For case 2, strip block comments so only rendered HTML is injected.
+            const patchHtml = hasBlockMarkers
+              ? html.replace( /<!--[\s\S]*?-->/g, '' ).trim()
+              : html;
+
             const doc = iframeRef.current?.contentDocument;
             if ( doc ) {
               const wrapper = doc.querySelector( `.nfd-block-wrapper[data-block-index="${ selectedBlockIndex }"]` );
               if ( wrapper ) {
-                wrapper.innerHTML = html;
+                wrapper.innerHTML = patchHtml;
 
                 const root = doc.getElementById( 'nfd-preview-root' );
                 let newHtml = '';
@@ -356,7 +432,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
                 setPreviewHtml( newHtml );
                 addHistoryEntry( newHtml );
-                setLastGeneratedHtml( html );
+                setLastGeneratedHtml( patchHtml );
                 clearSelection( iframeRef );
               }
             } else {
@@ -372,7 +448,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           addHistoryEntry( newHtml );
           setLastGeneratedHtml( html );
         } else {
-          // Full-page update — also refresh the block registry.
+          // Full-page update — also covers rendered HTML targeted edits where the AI returns
+          // the full modified page. Also refresh the block registry.
           const newBlocks = wpBlocksParse( html );
           if ( newBlocks.length > 0 ) {
             setParsedBlocks( newBlocks );
@@ -380,6 +457,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           setPreviewHtml( html );
           addHistoryEntry( html );
           setLastGeneratedHtml( null );
+          if ( selectedBlockIndex !== null ) {
+            clearSelection( iframeRef );
+          }
         }
         const isFirstGeneration = ! selectedItem && ! hasAIGenerated;
         setHasAIGenerated( true );
@@ -489,14 +569,22 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       let selectedBlockGutenbergMarkup: string | null = null;
       let topLevelBlockIndex: number | null = null;
 
-      if ( selectedBlockIndex !== null && parsedBlocks.length > 0 && ! isMetadataRequest ) {
+      if ( selectedBlockIndex !== null && ! isMetadataRequest && previewHtml ) {
         const topLevelStr = selectedBlockIndex.split( '-' )[ 0 ];
         const idx = parseInt( topLevelStr, 10 );
-        if ( ! isNaN( idx ) && idx >= 0 && idx < parsedBlocks.length ) {
-          const serialized = wpBlocksSerialize( [ parsedBlocks[ idx ] ] );
-          if ( serialized ) {
-            selectedBlockGutenbergMarkup = serialized;
+        if ( ! isNaN( idx ) && idx >= 0 ) {
+          // Primary: extract directly from the markup string — no wp.blocks dependency.
+          const pageBlocks = splitTopLevelBlocks( previewHtml );
+          if ( idx < pageBlocks.length && pageBlocks[ idx ] ) {
+            selectedBlockGutenbergMarkup = pageBlocks[ idx ];
             topLevelBlockIndex = idx;
+          } else if ( parsedBlocks.length > idx ) {
+            // Fallback: wp.blocks registry if string-split didn't produce a result.
+            const serialized = wpBlocksSerialize( [ parsedBlocks[ idx ] ] );
+            if ( serialized ) {
+              selectedBlockGutenbergMarkup = serialized;
+              topLevelBlockIndex = idx;
+            }
           }
         }
       }

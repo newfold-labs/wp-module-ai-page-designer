@@ -22,17 +22,17 @@ class FastPathHandler {
 	/**
 	 * AI client.
 	 *
-	 * @var AiClient|null
+	 * @var AiClientWorker|null
 	 */
 	private $ai_client;
 
 	/**
 	 * Constructor.
 	 *
-	 * @param ImageService|null $image_service Image service.
-	 * @param AiClient|null     $ai_client     AI client for keyword generation.
+	 * @param ImageService|null         $image_service Image service.
+	 * @param AiClientWorker|null       $ai_client     AI client for keyword generation.
 	 */
-	public function __construct( ?ImageService $image_service = null, ?AiClient $ai_client = null ) {
+	public function __construct( ?ImageService $image_service = null, ?AiClientWorker $ai_client = null ) {
 		$this->image_service = $image_service ?: new ImageService();
 		$this->ai_client     = $ai_client;
 	}
