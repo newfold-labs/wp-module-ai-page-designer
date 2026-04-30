@@ -15,6 +15,11 @@ declare global {
                 themeUrl: string;
                 globalStyles: string;
             };
+            colorPalette?: Array<{
+                slug: string;
+                name: string;
+                color: string;
+            }>;
         };
     }
 }

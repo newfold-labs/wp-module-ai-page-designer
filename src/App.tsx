@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PlusIcon, SparklesIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
-import ChatPanel from './components/ChatPanel';
 import DashboardView from './components/DashboardView';
 import MetaStrip from './components/MetaStrip';
 import PreviewFrame from './components/PreviewFrame';
 import PublishModal from './components/PublishModal';
 import RevertConfirm from './components/RevertConfirm';
+import SidePanel from './components/SidePanel';
 import { useAiConversation } from './hooks/useAiConversation';
 import { useBlockSelection } from './hooks/useBlockSelection';
 import { usePreviewIframe } from './hooks/usePreviewIframe';
@@ -30,6 +30,7 @@ declare global {
         themeUrl: string;
         globalStyles: string;
       };
+      colorPalette?: Array<{ slug: string; name: string; color: string }>;
     };
   }
 }
@@ -361,19 +362,25 @@ const App = () => {
             onRemoveImage={ handleRemoveImage }
           />
           <div className="ai-designer-content">
-            <ChatPanel
+            <SidePanel
               messages={ conversation.messages }
               chatMessagesRef={ conversation.chatMessagesRef }
               isLoading={ conversation.isLoading }
-              historyEntries={ conversation.historyEntries }
-              isHistoryOpen={ conversation.isHistoryOpen }
               hasAIGenerated={ conversation.hasAIGenerated }
               metaDirty={ metaDirty }
               publishing={ publishFlow.publishing }
               selectedItem={ selectedItem }
-              onToggleHistoryOpen={ () => conversation.setIsHistoryOpen( ( prev ) => ! prev ) }
-              onRevertTo={ conversation.handleRevertToEntry }
+              input={ conversation.input }
+              selectedBlockIndex={ selectedBlockIndex }
+              historyEntries={ conversation.historyEntries }
+              colorPalette={ nfdAIPageDesigner.colorPalette || [] }
+              previewHtml={ previewHtml }
+              onInputChange={ conversation.setInput }
+              onSend={ () => conversation.handleSend() }
+              onClearSelection={ () => clearSelection( iframeRef ) }
               onPublish={ handlePublishBarClick }
+              onRevertTo={ conversation.handleRevertToEntry }
+              onApplyDirectChange={ conversation.applyDirectChange }
             />
 
             <PreviewFrame
@@ -381,72 +388,6 @@ const App = () => {
               selectedItem={ selectedItem }
               iframeRef={ iframeRef }
             />
-          </div>
-
-          <div className="chat-input-area">
-            { selectedBlockIndex !== null && (
-              <div className="selected-block-indicator">
-                <div className="selected-block-indicator__content">
-                  <div className="selected-block-indicator__dot"></div>
-                  <span className="selected-block-indicator__text">
-                    <strong>Targeted Edit.</strong> Prompt affects only the highlighted section.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={ () => clearSelection( iframeRef ) }
-                  className="selected-block-indicator__button"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) }
-            <div className="chat-input-wrapper">
-              <textarea
-                value={ conversation.input }
-                onChange={ ( e ) => conversation.setInput( ( e.target as HTMLTextAreaElement ).value ) }
-                onKeyDown={ ( e ) => {
-                  if ( e.key === 'Enter' && ! e.shiftKey ) {
-                    e.preventDefault();
-                    conversation.handleSend();
-                  }
-                } }
-                placeholder="Describe your design idea..."
-                className="chat-textarea"
-                rows={ 1 }
-              />
-              <button
-                onClick={ () => conversation.handleSend() }
-                disabled={ ! conversation.input.trim() || conversation.isLoading }
-                className="chat-send-button"
-                aria-label="Send"
-              >
-                { conversation.isLoading ? '...' : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                  </svg>
-                ) }
-              </button>
-            </div>
-            { conversation.messages.length === 0 && (
-              <div className="chat-input-suggestion">
-                <span className="chat-input-suggestion__label">Try:</span>
-                <button
-                  type="button"
-                  className="chat-input-suggestion__pill"
-                  onClick={ () => conversation.setInput(
-                    selectedItem
-                      ? `Redesign my existing WordPress ${ selectedItem.type } titled "${ stripHtml( selectedItem.title?.rendered || '' ) }" — keep the same topic but make it modern and professional`
-                      : 'Create a modern homepage with a hero section, key features, and a call to action'
-                  ) }
-                >
-                  { selectedItem
-                    ? `Redesign "${ stripHtml( selectedItem.title?.rendered || '' ) }" — keep topic, make it modern`
-                    : 'Create a modern homepage with a hero section, key features, and a call to action' }
-                </button>
-              </div>
-            ) }
           </div>
         </div>
       </div>

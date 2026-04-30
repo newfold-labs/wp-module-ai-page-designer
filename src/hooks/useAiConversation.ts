@@ -39,6 +39,7 @@ type UseAiConversationResult = {
   handleRevertToEntry: (id: string) => void;
   resetAiConversation: () => void;
   appendAssistantMessage: (message: Message) => void;
+  applyDirectChange: (html: string, label: string) => void;
 };
 
 const REMOVAL_KEYWORDS = [ 'remove', 'delete', 'get rid of', 'take out', 'eliminate', 'cut this', 'hide this' ];
@@ -804,6 +805,25 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     clearSelection( iframeRef );
   }, [ clearSelection, iframeRef ] );
 
+  const applyDirectChange = useCallback( ( html: string, label: string ) => {
+    const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+    const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+    setPreviewHtml( html );
+    setHasAIGenerated( true );
+    if ( html !== previewHtml ) {
+      setHistoryEntries( ( prev ) => [
+        ...prev,
+        {
+          id: historyId,
+          html,
+          label,
+          timestamp,
+          publishTitle,
+        },
+      ] );
+    }
+  }, [ previewHtml, publishTitle, setPreviewHtml ] );
+
   return {
     messages,
     input,
@@ -821,6 +841,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     handleRevertToEntry,
     resetAiConversation,
     appendAssistantMessage,
+    applyDirectChange,
   };
 };
 

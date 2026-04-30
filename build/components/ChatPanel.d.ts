@@ -1,19 +1,20 @@
 import React, { type RefObject } from 'react';
-import type { HistoryEntry, Message, WPItem } from '../types';
+import type { Message, WPItem } from '../types';
 type Props = {
     messages: Message[];
     chatMessagesRef: RefObject<HTMLDivElement>;
     isLoading: boolean;
-    historyEntries: HistoryEntry[];
-    isHistoryOpen: boolean;
     hasAIGenerated: boolean;
     metaDirty: boolean;
     publishing: boolean;
     selectedItem: WPItem | null;
-    onToggleHistoryOpen: () => void;
-    onRevertTo: (id: string) => void;
+    input: string;
+    selectedBlockIndex: string | null;
+    onInputChange: (value: string) => void;
+    onSend: () => void;
+    onClearSelection: () => void;
     onPublish: () => void;
 };
-declare const ChatPanel: ({ messages, chatMessagesRef, isLoading, historyEntries, isHistoryOpen, hasAIGenerated, metaDirty, publishing, selectedItem, onToggleHistoryOpen, onRevertTo, onPublish, }: Props) => React.JSX.Element;
+declare const ChatPanel: ({ messages, chatMessagesRef, isLoading, hasAIGenerated, metaDirty, publishing, selectedItem, input, selectedBlockIndex, onInputChange, onSend, onClearSelection, onPublish, }: Props) => React.JSX.Element;
 export default ChatPanel;
 //# sourceMappingURL=ChatPanel.d.ts.map

@@ -130,6 +130,22 @@ class AIPageDesigner {
 			? wp_get_global_stylesheet()
 			: '';
 
+		// Theme color palette from theme.json
+		$color_palette = array();
+		if ( function_exists( 'wp_get_global_settings' ) ) {
+			$theme_settings = wp_get_global_settings();
+			$theme_swatches = isset( $theme_settings['color']['palette']['theme'] )
+				? $theme_settings['color']['palette']['theme']
+				: array();
+			foreach ( $theme_swatches as $swatch ) {
+				$color_palette[] = array(
+					'slug'  => isset( $swatch['slug'] ) ? $swatch['slug'] : '',
+					'name'  => isset( $swatch['name'] ) ? $swatch['name'] : ( isset( $swatch['slug'] ) ? $swatch['slug'] : '' ),
+					'color' => isset( $swatch['color'] ) ? $swatch['color'] : '',
+				);
+			}
+		}
+
 		// Localize script with configuration
 		wp_localize_script(
 			'nfd-ai-page-designer',
@@ -148,6 +164,7 @@ class AIPageDesigner {
 					'themeUrl'     => get_stylesheet_directory_uri() . '/style.css',
 					'globalStyles' => $global_styles_css,
 				),
+				'colorPalette'            => $color_palette,
 			)
 		);
 	}
