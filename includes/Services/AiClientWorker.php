@@ -351,7 +351,7 @@ class AiClientWorker {
 		$theme_swatches = $settings['color']['palette']['theme'] ?? array();
 		if ( ! empty( $theme_swatches ) ) {
 			$context['colorPalette'] = array_map(
-				function( $swatch ) {
+				function ( $swatch ) {
 					return array(
 						'slug'  => $swatch['slug'] ?? '',
 						'name'  => $swatch['name'] ?? $swatch['slug'] ?? '',
@@ -366,7 +366,7 @@ class AiClientWorker {
 		$font_families = $settings['typography']['fontFamilies']['theme'] ?? array();
 		if ( ! empty( $font_families ) ) {
 			$context['fontFamilies'] = array_map(
-				function( $font ) {
+				function ( $font ) {
 					return array(
 						'slug'       => $font['slug'] ?? '',
 						'fontFamily' => $font['fontFamily'] ?? '',
