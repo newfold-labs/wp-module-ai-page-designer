@@ -56,7 +56,7 @@ class AiClientWorker {
 			'theme_context'  => $this->get_theme_context(),
 		);
 
-		AIPageDesignerDebug::debug_log( 
+		AIPageDesignerDebug::debug_log(
 			'Calling Worker generate endpoint',
 			array(
 				'url'                => $worker_url,
@@ -97,7 +97,7 @@ class AiClientWorker {
 		}
 
 		$response_code = wp_remote_retrieve_response_code( $response );
-		$raw_body = wp_remote_retrieve_body( $response );
+		$raw_body      = wp_remote_retrieve_body( $response );
 
 		if ( 200 !== $response_code ) {
 			AIPageDesignerDebug::debug_log(
@@ -108,9 +108,9 @@ class AiClientWorker {
 				)
 			);
 
-			$error_body = json_decode( $raw_body, true );
+			$error_body    = json_decode( $raw_body, true );
 			$error_message = $error_body['error'] ?? 'We are unable to process the request at this moment';
-			
+
 			return new \WP_Error(
 				'ai_generation_error',
 				$error_message,
@@ -119,7 +119,7 @@ class AiClientWorker {
 		}
 
 		$result = json_decode( $raw_body, true );
-		
+
 		if ( ! $result['success'] ) {
 			return new \WP_Error(
 				'ai_generation_error',
@@ -169,14 +169,14 @@ class AiClientWorker {
 		}
 
 		$worker_url = NFD_AI_BASE . 'ai-page-designer/stream';
-		
+
 		$request_body = array(
-			'hiivetoken' => $hiive_token,
-			'messages' => $ai_messages,
-			'context' => $this->build_context_from_options($options),
+			'hiivetoken'     => $hiive_token,
+			'messages'       => $ai_messages,
+			'context'        => $this->build_context_from_options( $options ),
 			'current_markup' => $options['current_markup'] ?? '',
-			'content_type' => $options['content_type'] ?? 'page',
-			'theme_context' => $this->get_theme_context()
+			'content_type'   => $options['content_type'] ?? 'page',
+			'theme_context'  => $this->get_theme_context(),
 		);
 
 		AIPageDesignerDebug::debug_log(
@@ -187,96 +187,41 @@ class AiClientWorker {
 			)
 		);
 
-		// Use cURL for streaming since wp_remote_post doesn't handle SSE well
-		$curl_handle = curl_init( $worker_url );
-		curl_setopt( $curl_handle, CURLOPT_POST, true );
-		curl_setopt(
-			$curl_handle,
-			CURLOPT_HTTPHEADER,
+		// Use wp_remote_post with streaming handling
+		$response = wp_remote_post(
+			$worker_url,
 			array(
-				'Content-Type: application/json',
-				'X-Newfold-Brand: ' . $this->get_brand(),
+				'headers' => array(
+					'Content-Type'    => 'application/json',
+					'X-Newfold-Brand' => $this->get_brand(),
+				),
+				'timeout'   => 0, // No timeout for streaming
+				'blocking'  => true,
+				'body'      => wp_json_encode( $request_body ),
+				'stream'    => false, // We'll handle streaming manually
 			)
 		);
-		curl_setopt( $curl_handle, CURLOPT_POSTFIELDS, wp_json_encode($request_body) );
-		curl_setopt( $curl_handle, CURLOPT_TIMEOUT, 0 );
 
-		$buffer = '';
-		$response_id = null;
-
-		curl_setopt(
-			$curl_handle,
-			CURLOPT_WRITEFUNCTION,
-			function ( $ch, $chunk ) use ( &$buffer, &$response_id, $on_event ) {
-				$buffer .= $chunk;
-
-				// Process SSE events (same logic as original AiClient)
-				while ( false !== ( $pos = strpos( $buffer, "\n\n" ) ) ) {
-					$event_block = substr( $buffer, 0, $pos );
-					$buffer = substr( $buffer, $pos + 2 );
-
-					$lines = preg_split( "/\r?\n/", trim( $event_block ) );
-					$event = 'message';
-					$data_lines = array();
-
-					foreach ( $lines as $line ) {
-						if ( 0 === strpos( $line, 'event:' ) ) {
-							$event = trim( substr( $line, 6 ) );
-							continue;
-						}
-						if ( 0 === strpos( $line, 'data:' ) ) {
-							$data_lines[] = trim( substr( $line, 5 ) );
-						}
-					}
-
-					if ( empty( $data_lines ) ) {
-						continue;
-					}
-
-					$data = implode( "\n", $data_lines );
-					if ( '[DONE]' === $data ) {
-						$on_event( array( 'type' => 'done' ) );
-						continue;
-					}
-
-					$payload = json_decode( $data, true );
-					if ( is_array( $payload ) ) {
-						// Forward the event from the Worker
-						$on_event( $payload );
-						
-						// Extract response_id if present
-						if ( isset( $payload['response_id'] ) ) {
-							$response_id = $payload['response_id'];
-						}
-					}
-				}
-				return strlen( $chunk );
-			}
-		);
-
-		$ok = curl_exec( $curl_handle );
-		
-		if ( false === $ok ) {
-			$error_message = curl_error( $curl_handle );
-			curl_close( $curl_handle );
-			
+		if ( is_wp_error( $response ) ) {
 			AIPageDesignerDebug::debug_log(
 				'Streaming request failed',
 				array(
-					'error' => $error_message,
+					'error' => $response->get_error_message(),
 				)
 			);
 
 			return new \WP_Error(
 				'ai_stream_error',
-				/* translators: %s is the error message from the response */
-				sprintf( __( 'AI streaming request failed: %s', 'wp-module-ai-page-designer' ), $error_message ),
+				sprintf(
+					/* translators: %s is the error message from the response */
+					__( 'AI streaming request failed: %s', 'wp-module-ai-page-designer' ),
+					$response->get_error_message()
+				),
 				array( 'status' => 500 )
 			);
 		}
 
-		$response_code = curl_getinfo( $curl_handle, CURLINFO_RESPONSE_CODE );
-		curl_close( $curl_handle );
+		$response_code = wp_remote_retrieve_response_code( $response );
 
 		if ( $response_code && $response_code >= 400 ) {
 			AIPageDesignerDebug::debug_log(
@@ -288,10 +233,72 @@ class AiClientWorker {
 
 			return new \WP_Error(
 				'ai_stream_error',
-				/* translators: %s is the error message from the response */
-				sprintf( __( 'AI streaming request failed: %s', 'wp-module-ai-page-designer' ), $response_code ),
+				sprintf(
+					/* translators: %d is the HTTP status code */
+					__( 'AI streaming request failed with status: %d', 'wp-module-ai-page-designer' ),
+					$response_code
+				),
 				array( 'status' => $response_code )
 			);
+		}
+
+		// Get response body and process SSE events
+		$raw_body    = wp_remote_retrieve_body( $response );
+		$response_id = $this->process_sse_response( $raw_body, $on_event );
+
+		return $response_id;
+	}
+
+	/**
+	 * Process Server-Sent Events response body.
+	 *
+	 * @param string   $raw_body The raw response body containing SSE data.
+	 * @param callable $on_event Callback for stream events.
+	 * @return string|null Response ID extracted from events, or null if not found.
+	 */
+	private function process_sse_response( $raw_body, callable $on_event ) {
+		$buffer      = $raw_body;
+		$response_id = null;
+
+		// Process SSE events (same logic as original cURL implementation)
+		while ( false !== ( $pos = strpos( $buffer, "\n\n" ) ) ) {
+			$event_block = substr( $buffer, 0, $pos );
+			$buffer      = substr( $buffer, $pos + 2 );
+
+			$lines      = preg_split( "/\r?\n/", trim( $event_block ) );
+			$event      = 'message';
+			$data_lines = array();
+
+			foreach ( $lines as $line ) {
+				if ( 0 === strpos( $line, 'event:' ) ) {
+					$event = trim( substr( $line, 6 ) );
+					continue;
+				}
+				if ( 0 === strpos( $line, 'data:' ) ) {
+					$data_lines[] = trim( substr( $line, 5 ) );
+				}
+			}
+
+			if ( empty( $data_lines ) ) {
+				continue;
+			}
+
+			$data = implode( "\n", $data_lines );
+			if ( '[DONE]' === $data ) {
+				$on_event( array( 'type' => 'done' ) );
+				continue;
+			}
+
+			$payload = json_decode( $data, true );
+			if ( is_array( $payload ) ) {
+				// Forward the event from the Worker
+				$on_event( $payload );
+				
+				// Extract response_id if present
+				if ( isset( $payload['response_id'] ) ) {
+					$response_id = $payload['response_id'];
+				}
+			}
 		}
 
 		return $response_id;
@@ -315,15 +322,15 @@ class AiClientWorker {
 	 */
 	private function build_context_from_options( $options ) {
 		$context = array();
-		
+
 		if ( ! empty( $options['previous_response_id'] ) ) {
 			$context['previous_response_id'] = $options['previous_response_id'];
 		}
-		
+
 		if ( ! empty( $options['selected_block_markup'] ) ) {
 			$context['selected_block_markup'] = $options['selected_block_markup'];
 		}
-		
+
 		return $context;
 	}
 
@@ -345,8 +352,8 @@ class AiClientWorker {
 		if ( ! empty( $theme_swatches ) ) {
 			$context['colorPalette'] = array_map( function( $swatch ) {
 				return array(
-					'slug' => $swatch['slug'] ?? '',
-					'name' => $swatch['name'] ?? $swatch['slug'] ?? '',
+					'slug'  => $swatch['slug'] ?? '',
+					'name'  => $swatch['name'] ?? $swatch['slug'] ?? '',
 					'color' => $swatch['color'] ?? ''
 				);
 			}, $theme_swatches );
@@ -357,7 +364,7 @@ class AiClientWorker {
 		if ( ! empty( $font_families ) ) {
 			$context['fontFamilies'] = array_map( function( $font ) {
 				return array(
-					'slug' => $font['slug'] ?? '',
+					'slug'       => $font['slug'] ?? '',
 					'fontFamily' => $font['fontFamily'] ?? ''
 				);
 			}, $font_families );
@@ -371,5 +378,4 @@ class AiClientWorker {
 
 		return $context;
 	}
-
 }
