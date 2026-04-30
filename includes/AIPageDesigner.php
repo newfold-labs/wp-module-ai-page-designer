@@ -44,15 +44,16 @@ class AIPageDesigner {
 	public function __construct( Container $container ) {
 		$this->container = $container;
 
-		if ( ! CapabilityGate::has_ai_site_gen() ) {
+		// Always enqueue assets so the React app can render a proper message when
+		// canAccessAIPageDesigner is missing, rather than showing a blank page.
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+
+		if ( ! CapabilityGate::has_ai_site_gen() || ! CapabilityGate::has_ai_page_designer() ) {
 			return;
 		}
 
 		// Register REST API routes
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
-
-		// Register admin assets (menu is now handled by main plugin Admin class)
-		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 
 		// Load text domain
 		add_action( 'init', array( __CLASS__, 'load_text_domain' ), 100 );
@@ -87,11 +88,6 @@ class AIPageDesigner {
 	public function enqueue_assets( $hook ) {
 		// Only load on the main plugin pages (since we're integrating with the main app)
 		if ( false === strpos( $hook, 'web' ) ) {
-			return;
-		}
-
-		// Only enqueue if capability is enabled
-		if ( ! CapabilityGate::has_ai_site_gen() ) {
 			return;
 		}
 
@@ -139,14 +135,15 @@ class AIPageDesigner {
 			'nfd-ai-page-designer',
 			'nfdAIPageDesigner',
 			array(
-				'apiUrl'             => 'newfold-ai-page-designer/v1',
-				'apiRoot'            => esc_url_raw( rest_url() ),
-				'nonce'              => wp_create_nonce( 'wp_rest' ),
-				'siteUrl'            => get_site_url(),
-				'canAccessAI'        => CapabilityGate::has_ai_site_gen(),
-				'currentUserId'      => get_current_user_id(),
-				'ajaxUrl'            => admin_url( 'admin-ajax.php' ),
-				'previewStylesheets' => array(
+				'apiUrl'                  => 'newfold-ai-page-designer/v1',
+				'apiRoot'                 => esc_url_raw( rest_url() ),
+				'nonce'                   => wp_create_nonce( 'wp_rest' ),
+				'siteUrl'                 => get_site_url(),
+				'canAccessAI'             => CapabilityGate::has_ai_site_gen(),
+				'canAccessAIPageDesigner' => CapabilityGate::has_ai_page_designer(),
+				'currentUserId'           => get_current_user_id(),
+				'ajaxUrl'                 => admin_url( 'admin-ajax.php' ),
+				'previewStylesheets'      => array(
 					'blockLibrary' => $block_library_url,
 					'themeUrl'     => get_stylesheet_directory_uri() . '/style.css',
 					'globalStyles' => $global_styles_css,

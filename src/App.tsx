@@ -34,9 +34,8 @@ declare global {
   }
 }
 
-const { nfdAIPageDesigner } = window;
-
 const App = () => {
+  const { nfdAIPageDesigner } = window;
   const [ previewHtml, setPreviewHtml ] = useState<string | null>( null );
   const [ originalPreviewHtml, setOriginalPreviewHtml ] = useState<string | null>( null );
   const [ selectedItem, setSelectedItem ] = useState<WPItem | null>( null );
