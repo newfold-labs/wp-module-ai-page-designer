@@ -191,14 +191,14 @@ class AiClientWorker {
 		$response = wp_remote_post(
 			$worker_url,
 			array(
-				'headers' => array(
+				'headers'  => array(
 					'Content-Type'    => 'application/json',
 					'X-Newfold-Brand' => $this->get_brand(),
 				),
-				'timeout'   => 0, // No timeout for streaming
-				'blocking'  => true,
-				'body'      => wp_json_encode( $request_body ),
-				'stream'    => false, // We'll handle streaming manually
+				'timeout'  => 0, // No timeout for streaming
+				'blocking' => true,
+				'body'     => wp_json_encode( $request_body ),
+				'stream'   => false, // We'll handle streaming manually
 			)
 		);
 
@@ -293,7 +293,7 @@ class AiClientWorker {
 			if ( is_array( $payload ) ) {
 				// Forward the event from the Worker
 				$on_event( $payload );
-				
+
 				// Extract response_id if present
 				if ( isset( $payload['response_id'] ) ) {
 					$response_id = $payload['response_id'];
@@ -317,8 +317,8 @@ class AiClientWorker {
 	/**
 	 * Build context array from options for Worker request.
 	 *
-	 * @param array $options
-	 * @return array
+	 * @param array $options Optional settings (previous_response_id, selected_block_markup).
+	 * @return array Context array for the Worker request.
 	 */
 	private function build_context_from_options( $options ) {
 		$context = array();
@@ -345,29 +345,35 @@ class AiClientWorker {
 		}
 
 		$settings = wp_get_global_settings();
-		$context = array();
+		$context  = array();
 
 		// Color palette
 		$theme_swatches = $settings['color']['palette']['theme'] ?? array();
 		if ( ! empty( $theme_swatches ) ) {
-			$context['colorPalette'] = array_map( function( $swatch ) {
-				return array(
-					'slug'  => $swatch['slug'] ?? '',
-					'name'  => $swatch['name'] ?? $swatch['slug'] ?? '',
-					'color' => $swatch['color'] ?? ''
-				);
-			}, $theme_swatches );
+			$context['colorPalette'] = array_map(
+				function( $swatch ) {
+					return array(
+						'slug'  => $swatch['slug'] ?? '',
+						'name'  => $swatch['name'] ?? $swatch['slug'] ?? '',
+						'color' => $swatch['color'] ?? '',
+					);
+				},
+				$theme_swatches,
+			);
 		}
 
 		// Font families
 		$font_families = $settings['typography']['fontFamilies']['theme'] ?? array();
 		if ( ! empty( $font_families ) ) {
-			$context['fontFamilies'] = array_map( function( $font ) {
-				return array(
-					'slug'       => $font['slug'] ?? '',
-					'fontFamily' => $font['fontFamily'] ?? ''
-				);
-			}, $font_families );
+			$context['fontFamilies'] = array_map(
+				function( $font ) {
+					return array(
+						'slug'       => $font['slug'] ?? '',
+						'fontFamily' => $font['fontFamily'] ?? '',
+					);
+				},
+				$font_families,
+			);
 		}
 
 		// Site name
