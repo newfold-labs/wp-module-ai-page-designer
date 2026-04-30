@@ -74,12 +74,12 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * Constructor.
 	 */
 	public function __construct() {
-		$this->prompt_builder         = new PromptBuilder( new PatternLayoutProvider() );
-		
+		$this->prompt_builder = new PromptBuilder( new PatternLayoutProvider() );
+
 		// Always use Worker client for AI Page Designer
 		AIPageDesignerDebug::debug_log( 'Using Worker-based AI client' );
 		$this->ai_client = new AiClientWorker();
-		
+
 		$this->image_service          = new ImageService();
 		$this->block_markup_sanitizer = new BlockMarkupSanitizer();
 		$this->fast_path_handler      = new FastPathHandler( $this->image_service, $this->ai_client );
@@ -265,12 +265,12 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 				// Prepare options for streaming (enhanced for Worker compatibility)
 				$stream_options = array(
-					'previous_response_id' => $previous_response_id,
-					'current_markup' => $current_markup,
-					'content_type' => $content_type,
+					'previous_response_id'  => $previous_response_id,
+					'current_markup'        => $current_markup,
+					'content_type'          => $content_type,
 					'selected_block_markup' => $context['selected_block_markup'] ?? null,
 				);
-				
+
 				$stream_result = $this->ai_client->stream_content(
 					$ai_messages,
 					$stream_options,
@@ -313,12 +313,12 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 			// Prepare options for AI client (enhanced for Worker compatibility)
 			$ai_options = array(
-				'previous_response_id' => $previous_response_id,
-				'current_markup' => $current_markup,
-				'content_type' => $content_type,
+				'previous_response_id'  => $previous_response_id,
+				'current_markup'        => $current_markup,
+				'content_type'          => $content_type,
 				'selected_block_markup' => $context['selected_block_markup'] ?? null,
 			);
-			
+
 			$ai_result = $this->ai_client->generate_content( $ai_messages, $ai_options );
 
 			// If the stored response_id was stale/expired, clear it and retry without it.

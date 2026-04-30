@@ -12,7 +12,7 @@ use Web\AIPageDesignerDebug;
 
 /**
  * AI client that delegates to Cloudflare Worker.
- * 
+ *
  * Replaces the complex AiClient.php with a simple proxy to the Worker.
  * Follows the same pattern as SiteGen.php in wp-module-ai.
  */
@@ -46,7 +46,7 @@ class AiClientWorker {
 		}
 
 		$worker_url = NFD_AI_BASE . 'ai-page-designer/generate';
-		
+
 		$request_body = array(
 			'hiivetoken'     => $hiive_token,
 			'messages'       => $ai_messages,
@@ -56,11 +56,14 @@ class AiClientWorker {
 			'theme_context'  => $this->get_theme_context(),
 		);
 
-		AIPageDesignerDebug::debug_log( 'Calling Worker generate endpoint', array(
-			'url'                => $worker_url,
-			'messages_count'     => count( $ai_messages ),
-			'has_current_markup' => ! empty( $options['current_markup'] ),
-		) );
+		AIPageDesignerDebug::debug_log( 
+			'Calling Worker generate endpoint',
+			array(
+				'url'                => $worker_url,
+				'messages_count'     => count( $ai_messages ),
+				'has_current_markup' => ! empty( $options['current_markup'] ),
+			)
+		);
 
 		$response = wp_remote_post(
 			$worker_url,
@@ -75,13 +78,17 @@ class AiClientWorker {
 		);
 
 		if ( is_wp_error( $response ) ) {
-			AIPageDesignerDebug::debug_log( 'Worker request failed', array(
-				'error' => $response->get_error_message(),
-			) );
-			
+			AIPageDesignerDebug::debug_log(
+				'Worker request failed',
+				array(
+					'error' => $response->get_error_message(),
+				)
+			);
+
 			return new \WP_Error(
 				'ai_service_timeout',
 				sprintf(
+					/* translators: %s is the error message from the response */
 					__( 'AI service request failed: %s', 'wp-module-ai-page-designer' ),
 					$response->get_error_message()
 				),
@@ -93,11 +100,14 @@ class AiClientWorker {
 		$raw_body = wp_remote_retrieve_body( $response );
 
 		if ( 200 !== $response_code ) {
-			AIPageDesignerDebug::debug_log( 'Worker returned error', array(
-				'status_code' => $response_code,
-				'response'    => $raw_body,
-			) );
-			
+			AIPageDesignerDebug::debug_log(
+				'Worker returned error',
+				array(
+					'status_code' => $response_code,
+					'response'    => $raw_body,
+				)
+			);
+
 			$error_body = json_decode( $raw_body, true );
 			$error_message = $error_body['error'] ?? 'We are unable to process the request at this moment';
 			
@@ -118,11 +128,14 @@ class AiClientWorker {
 			);
 		}
 
-		AIPageDesignerDebug::debug_log( 'Worker request successful', array(
-			'has_content' => ! empty( $result['data']['content'] ),
-			'has_title'   => ! empty( $result['data']['title'] ),
-			'response_id' => $result['data']['response_id'] ?? null,
-		) );
+		AIPageDesignerDebug::debug_log(
+			'Worker request successful',
+			array(
+				'has_content' => ! empty( $result['data']['content'] ),
+				'has_title'   => ! empty( $result['data']['title'] ),
+				'response_id' => $result['data']['response_id'] ?? null,
+			)
+		);
 
 		return $result['data'];
 	}
@@ -166,10 +179,13 @@ class AiClientWorker {
 			'theme_context' => $this->get_theme_context()
 		);
 
-		AIPageDesignerDebug::debug_log( 'Calling Worker stream endpoint', array(
-			'url'            => $worker_url,
-			'messages_count' => count( $ai_messages ),
-		) );
+		AIPageDesignerDebug::debug_log(
+			'Calling Worker stream endpoint',
+			array(
+				'url'            => $worker_url,
+				'messages_count' => count( $ai_messages ),
+			)
+		);
 
 		// Use cURL for streaming since wp_remote_post doesn't handle SSE well
 		$curl_handle = curl_init( $worker_url );
@@ -244,12 +260,16 @@ class AiClientWorker {
 			$error_message = curl_error( $curl_handle );
 			curl_close( $curl_handle );
 			
-			AIPageDesignerDebug::debug_log( 'Streaming request failed', array(
-				'error' => $error_message,
-			) );
-			
+			AIPageDesignerDebug::debug_log(
+				'Streaming request failed',
+				array(
+					'error' => $error_message,
+				)
+			);
+
 			return new \WP_Error(
 				'ai_stream_error',
+				/* translators: %s is the error message from the response */
 				sprintf( __( 'AI streaming request failed: %s', 'wp-module-ai-page-designer' ), $error_message ),
 				array( 'status' => 500 )
 			);
@@ -259,12 +279,16 @@ class AiClientWorker {
 		curl_close( $curl_handle );
 
 		if ( $response_code && $response_code >= 400 ) {
-			AIPageDesignerDebug::debug_log( 'Streaming returned error status', array(
-				'status_code' => $response_code,
-			) );
-			
+			AIPageDesignerDebug::debug_log(
+				'Streaming returned error status',
+				array(
+					'status_code' => $response_code,
+				)
+			);
+
 			return new \WP_Error(
 				'ai_stream_error',
+				/* translators: %s is the error message from the response */
 				sprintf( __( 'AI streaming request failed: %s', 'wp-module-ai-page-designer' ), $response_code ),
 				array( 'status' => $response_code )
 			);

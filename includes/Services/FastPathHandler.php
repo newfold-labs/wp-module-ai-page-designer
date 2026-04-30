@@ -29,11 +29,11 @@ class FastPathHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param ImageService|null         $image_service Image service.
-	 * @param AiClientWorker|null       $ai_client     AI client for keyword generation.
+	 * @param ImageService|null   $image_service Image service.
+	 * @param AiClientWorker|null $ai_client AI client for keyword generation.
 	 */
 	public function __construct( ?ImageService $image_service = null, ?AiClientWorker $ai_client = null ) {
-		$this->image_service = $image_service ?: new ImageService();
+		$this->image_service = $image_service ?? new ImageService();
 		$this->ai_client     = $ai_client;
 	}
 
@@ -62,8 +62,8 @@ class FastPathHandler {
 			$has_images_in_markup = (bool) preg_match( '/<img\b|<!--\s*wp:(image|cover)\b/i', $current_markup );
 
 			if ( $has_images_in_markup ) {
-				$page_title     = $this->extract_page_title( $current_markup );
-				$search_context = $this->generate_image_keywords( $last_user_prompt, $page_title );
+				$page_title      = $this->extract_page_title( $current_markup );
+				$search_context  = $this->generate_image_keywords( $last_user_prompt, $page_title );
 				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
 				if ( ! empty( $unsplash_images ) ) {
 					$new_html = $this->image_service->replace_images_in_html( $current_markup, $unsplash_images );
@@ -128,7 +128,7 @@ class FastPathHandler {
 	 */
 	private function extract_page_title( $markup ) {
 		if ( preg_match( '/<h[1-3][^>]*>(.*?)<\/h[1-3]>/is', $markup, $m ) ) {
-			$title = strip_tags( $m[1] );
+			$title = wp_strip_all_tags( $m[1] );
 			// Strip common separators used in page titles (e.g. "Brand | Tagline - Site").
 			$title = preg_replace( '/\s*[\|\-–—:]\s*/', ' ', $title );
 			return trim( $title );
@@ -176,5 +176,4 @@ class FastPathHandler {
 			200
 		);
 	}
-
 }
