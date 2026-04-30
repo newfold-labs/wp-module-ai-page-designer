@@ -265,7 +265,7 @@ class AiClientWorker {
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_exec
 		$curl_result = curl_exec( $curl );
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_error
-		$curl_error  = curl_error( $curl );
+		$curl_error = curl_error( $curl );
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_getinfo
 		$final_http_code = curl_getinfo( $curl, CURLINFO_HTTP_CODE );
 
@@ -273,7 +273,7 @@ class AiClientWorker {
 		curl_close( $curl );
 
 		// Use the HTTP code from headers if available, otherwise from curl_getinfo
-		$response_code = $http_code ?: $final_http_code;
+		$response_code = $http_code ?? $final_http_code;
 
 		if ( false === $curl_result ) {
 			AIPageDesignerDebug::debug_log(
