@@ -8,12 +8,10 @@
 namespace NewfoldLabs\WP\Module\AIPageDesigner\RestApi;
 
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\AiClientWorker;
-use NewfoldLabs\WP\Module\AIPageDesigner\Services\BlockMarkupSanitizer;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\FastPathHandler;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\ImageService;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PatternLayoutProvider;
-use NewfoldLabs\WP\Module\AIPageDesigner\Services\PromptBuilder;
 use Web\AIPageDesignerDebug;
 
 /**
@@ -36,32 +34,11 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	protected $rest_base = 'generate';
 
 	/**
-	 * Prompt builder.
+	 * Pattern layout provider.
 	 *
-	 * @var PromptBuilder
+	 * @var PatternLayoutProvider
 	 */
-	private $prompt_builder;
-
-	/**
-	 * AI client.
-	 *
-	 * @var AiClientWorker
-	 */
-	private $ai_client;
-
-	/**
-	 * Image service.
-	 *
-	 * @var ImageService
-	 */
-	private $image_service;
-
-	/**
-	 * Markup sanitizer.
-	 *
-	 * @var BlockMarkupSanitizer
-	 */
-	private $block_markup_sanitizer;
+	private $pattern_layout_provider;
 
 	/**
 	 * Fast path handler.
@@ -74,14 +51,13 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * Constructor.
 	 */
 	public function __construct() {
-		$this->prompt_builder = new PromptBuilder( new PatternLayoutProvider() );
+		$this->pattern_layout_provider = new PatternLayoutProvider();
 
 		// Always use Worker client for AI Page Designer
 		AIPageDesignerDebug::debug_log( 'Using Worker-based AI client' );
 		$this->ai_client = new AiClientWorker();
 
 		$this->image_service          = new ImageService();
-		$this->block_markup_sanitizer = new BlockMarkupSanitizer();
 		$this->fast_path_handler      = new FastPathHandler( $this->image_service, $this->ai_client );
 	}
 
@@ -253,12 +229,22 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			// into the conversation thread or they'd corrupt the next full-page context.
 			// Redesign requests must also start a fresh conversation so the AI isn't biased
 			// by the previous page's context when generating a genuinely new design.
-			$is_redesign_request = $this->prompt_builder->is_redesign_request( $last_user_prompt );
+			$is_redesign_request = $this->is_redesign_request( $last_user_prompt );
 			if ( $is_redesign_request ) {
 				delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
 			}
 			$previous_response_id = $is_redesign_request ? null : $this->load_previous_response_id( $conversation_key );
-			$ai_messages          = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type, $context );
+			
+			$is_new = count( $messages ) === 1;
+			$use_pattern = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
+				|| ( $is_redesign_request && 'post' !== $content_type );
+			
+			$base_layout = '';
+			if ( $use_pattern && \NewfoldLabs\WP\Module\AIPageDesigner\AIPageDesigner::PATTERN_PROVIDER === 'wonderblocks' ) {
+				$base_layout = $this->pattern_layout_provider->get_random_pattern_layout( $last_user_prompt );
+			}
+
+			$ai_messages          = $messages;
 
 			if ( $stream ) {
 				$this->init_streaming_response();
@@ -271,6 +257,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					'current_markup'        => $current_markup,
 					'content_type'          => $content_type,
 					'selected_block_markup' => $context['selected_block_markup'] ?? null,
+					'base_layout'           => $base_layout,
 				);
 
 				$stream_result = $this->ai_client->stream_content(
@@ -319,6 +306,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				'current_markup'        => $current_markup,
 				'content_type'          => $content_type,
 				'selected_block_markup' => $context['selected_block_markup'] ?? null,
+				'base_layout'           => $base_layout,
 			);
 
 			$ai_result = $this->ai_client->generate_content( $ai_messages, $ai_options );
@@ -556,7 +544,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$this->store_response_id( $conversation_key, $response_id );
 		}
 
-		$title_data = $this->block_markup_sanitizer->extract_page_title( $content );
+		$title_data = $this->extract_page_title( $content );
 		$final_html = $title_data['html'];
 
 		// We didn't fetch images beforehand. Let's try doing it after using the AI's title and all prompts.
@@ -828,8 +816,107 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 		}
 
-		return $urls;
+		return array_unique( $urls );
 	}
+
+	/**
+	 * Detect whether a prompt is asking for a full redesign or regeneration.
+	 *
+	 * @param string $prompt The user prompt text.
+	 * @return bool
+	 */
+	private function is_redesign_request( $prompt ) {
+		$prompt_lower = strtolower( $prompt );
+		$triggers     = array(
+			'redesign', 'regenerate', 'generate again', 'redo', 'remake', 'rebuild', 'start over', 'start fresh', 'from scratch', 'create new', 'make a new', 'build a new', 'try again', 'new version', 'new design',
+		);
+		foreach ( $triggers as $trigger ) {
+			if ( str_contains( $prompt_lower, $trigger ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Extract the PAGE_TITLE comment embedded in every AI HTML response.
+	 *
+	 * @param string $content Raw AI response content.
+	 * @return array{title:string,excerpt:string,summary:string,html:string}
+	 */
+	private function extract_page_title( $content ) {
+		$title   = '';
+		$excerpt = '';
+		$summary = '';
+		$html    = $content;
+
+		if ( preg_match( '/<!--\s*PAGE_TITLE:\s*(.+?)\s*-->/i', $html, $m ) ) {
+			$title = trim( $m[1] );
+			$html  = preg_replace( '/<!--\s*PAGE_TITLE:\s*.+?\s*-->\s*/i', '', $html, 1 );
+		}
+
+		if ( preg_match( '/<!--\s*PAGE_EXCERPT:\s*(.+?)\s*-->/i', $html, $m ) ) {
+			$excerpt = trim( $m[1] );
+			$html    = preg_replace( '/<!--\s*PAGE_EXCERPT:\s*.+?\s*-->\s*/i', '', $html, 1 );
+		}
+
+		if ( preg_match( '/<!--\s*RESPONSE_SUMMARY:\s*(.+?)\s*-->/i', $html, $m ) ) {
+			$summary = trim( $m[1] );
+			$html    = preg_replace( '/<!--\s*RESPONSE_SUMMARY:\s*.+?\s*-->\s*/i', '', $html, 1 );
+		}
+
+		return array(
+			'title'   => $title,
+			'excerpt' => $excerpt,
+			'summary' => $summary,
+			'html'    => $this->sanitize_block_content( trim( $html ) ),
+		);
+	}
+
+	/**
+	 * Sanitize Gutenberg block markup returned by the AI.
+	 *
+	 * @param string $content Block markup to sanitize.
+	 * @return string Sanitized block markup.
+	 */
+	private function sanitize_block_content( $content ) {
+		$content = preg_replace( '/<!--(?![\s\S]*?-->)[\s\S]*$/u', '', $content );
+		$content = trim( $content );
+
+		preg_match_all(
+			'/<!--\s*(\/?)wp:([\w\/-]+)(?:\s[^-]*)?\s*(\/?)-->/i',
+			$content,
+			$matches,
+			PREG_SET_ORDER
+		);
+
+		$stack = array();
+		foreach ( $matches as $match ) {
+			$is_closing      = ( '/' === trim( $match[1] ) );
+			$block_name      = trim( $match[2] );
+			$is_self_closing = ( '/' === trim( $match[3] ) );
+
+			if ( $is_self_closing ) {
+				continue;
+			}
+
+			if ( $is_closing ) {
+				if ( ! empty( $stack ) && end( $stack ) === $block_name ) {
+					array_pop( $stack );
+				}
+			} else {
+				$stack[] = $block_name;
+			}
+		}
+
+		while ( ! empty( $stack ) ) {
+			$block_name = array_pop( $stack );
+			$content   .= "\n<!-- /wp:{$block_name} -->";
+		}
+
+		return $content;
+	}
+
 	/**
 	 * Check permissions for routes.
 	 *

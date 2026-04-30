@@ -54,6 +54,7 @@ class AiClientWorker {
 			'current_markup' => $options['current_markup'] ?? '',
 			'content_type'   => $options['content_type'] ?? 'page',
 			'theme_context'  => $this->get_theme_context(),
+			'base_layout'    => $options['base_layout'] ?? '',
 		);
 
 		AIPageDesignerDebug::debug_log(
@@ -177,6 +178,7 @@ class AiClientWorker {
 			'current_markup' => $options['current_markup'] ?? '',
 			'content_type'   => $options['content_type'] ?? 'page',
 			'theme_context'  => $this->get_theme_context(),
+			'base_layout'    => $options['base_layout'] ?? '',
 		);
 
 		AIPageDesignerDebug::debug_log(
