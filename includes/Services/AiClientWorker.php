@@ -213,7 +213,8 @@ class AiClientWorker {
 			$buffer .= $data;
 
 			// Process complete SSE events
-			while ( false !== ( $pos = strpos( $buffer, "\n\n" ) ) ) {
+			$pos = strpos( $buffer, "\n\n" );
+			while ( false !== $pos ) {
 				$event_block = substr( $buffer, 0, $pos );
 				$buffer      = substr( $buffer, $pos + 2 );
 
@@ -221,6 +222,8 @@ class AiClientWorker {
 				if ( $response_id_from_event ) {
 					$response_id = $response_id_from_event;
 				}
+				
+				$pos = strpos( $buffer, "\n\n" );
 			}
 
 			return strlen( $data );
@@ -289,7 +292,7 @@ class AiClientWorker {
 				sprintf(
 					/* translators: %s is the cURL error message */
 					__( 'AI streaming request failed: %s', 'wp-module-ai-page-designer' ),
-					$curl_error ?: 'Unknown cURL error'
+					$curl_error ?? 'Unknown cURL error'
 				),
 				array( 'status' => 500 )
 			);

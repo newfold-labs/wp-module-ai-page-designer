@@ -78,3 +78,34 @@ HistoryEntry // { id, html, label, timestamp, publishTitle? }
 - The parent plugin (`wp-plugin-web`) loads this module; the admin menu is registered by the parent.
 - Assets are enqueued only on the `web` admin page via `admin_enqueue_scripts`.
 - WordPress block library and theme stylesheets are injected into the preview iframe by `usePreviewIframe`.
+
+## Coding Guidelines
+
+### PHP Standards
+
+**NEVER use short ternary operators** (`?:`):
+
+```php
+// ❌ Avoid short ternary:
+$result = $value ?: 'default';
+
+// ✅ Prefer explicit ternary:
+$result = $value ? $value : 'default';
+
+// ✅ Null coalescing is OK:
+$name = $user->getName() ?? 'Unknown';
+$config = $options['setting'] ?? $defaults['setting'];
+
+// ✅ Or explicit conditionals for complex logic:
+if ($value) {
+    $result = $value;
+} else {
+    $result = 'default';
+}
+```
+
+**cURL Usage:** Always add phpcs ignore comments when using cURL functions:
+```php
+// phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_init
+$curl = curl_init();
+```
