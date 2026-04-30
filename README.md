@@ -4,48 +4,69 @@ AI-powered page and post designer for WordPress with live preview and publishing
 
 ## Features
 
-- AI chat-driven page/post generation with Gutenberg block markup output
-- Blueprint/pattern-based base layouts for new pages to improve structure consistency
-- Live preview with block-level selection and targeted edits
-- Dashboard to browse and edit existing pages and posts, or create new ones with AI
-- Always-visible page details strip (title, excerpt, featured image) in the designer view
-- Context-aware prompt suggestion pill below the chat input (clickable, not pre-filled)
-- Dashboard hero input pre-filled with a suggested prompt for quick generation
-- Fast-path block removal: detects removal intent on a selected block and removes it without an AI round-trip
-- Metadata-only responses: excerpt/title-only prompts update the meta strip without altering the preview
-- Direct publishing options (new page, new post, or set as homepage)
-- Theme-aware generation using active theme colour palette and typography
-- Automatic Unsplash image replacement for all placeholder image URLs (including cover blocks and backgrounds)
-- AI-generated image search keywords for accurate Unsplash results when swapping images
-- Fast-path image swaps: detects image replacement intent and resolves without a full AI round-trip
-- Redesign/regeneration detection: skips existing markup and uses a clean blueprint when the user asks to redesign or start over
+### Dashboard
+- Hero prompt input pre-filled with a suggested prompt; press Enter or click Generate to start
+- Separate Pages and Posts lists with title, publish/draft status badge, and relative modification date
+- Inline real-time search for pages and posts with a result count badge and clear button
+- Lists truncate to 5 items by default; expand/collapse toggle shows the rest
+- Click any existing page or post to open it in the Designer view pre-loaded with its content
+
+### AI Designer
+- Conversational AI chat interface; assistant replies include a human-readable summary
+- Expandable `<details>` toggle on assistant messages lets you inspect the raw generated block markup
+- **Streaming live preview** — the first generation for a new page streams block markup into the preview in real time; subsequent targeted edits use a non-streaming path for precise block replacement
+- Live preview iframe loads WordPress block library CSS and the active theme stylesheet for an accurate in-browser preview without a full page load
+- **Conversation chaining** — `response_id` / `conversation_id` are passed to the AI API so each message builds on prior context without resending the full history
+- Blueprint/pattern-based base layouts for new pages improve structural consistency; blueprints rotate to avoid repetition and adapt by site type (`ecommerce` for WooCommerce, `business` otherwise)
+- Theme-aware generation using active theme colour palette and typography from `theme.json`
+- Redesign/regeneration detection: when the user asks to redesign or start over, existing markup is skipped and a clean blueprint is used
 - Markup size guard: large existing pages are skeletonised before being sent to the AI to avoid gateway timeouts
 - Stale conversation recovery: automatically retries without a stale `previous_response_id` on failure
-- Conversation history drawer with revert support
-- Gated by Hiive `canAccessAI` capability
+
+### Targeted (Single-Block) Editing
+- Click any section in the preview iframe to select it; the selected block is highlighted
+- **Context optimization** — when a block is selected, only that block's Gutenberg markup is sent to the AI (not the full page), reducing token cost and improving precision
+- **Dual replacement strategy** — the modified block is spliced back using `wp.blocks.parse/serialize` when available, with a string-split fallback that works without the Gutenberg JS runtime
+- **DOM patch fallback** — when the page is rendered HTML without block markers, edits are applied directly to the iframe DOM
+- **Follow-up edit tracking** — after a targeted edit, a follow-up prompt without re-selecting continues editing the same block automatically
+
+### Fast-Path Operations (No AI Round-Trip)
+- **Block removal** — removal intent is detected from natural language (`remove`, `delete`, `get rid of`, etc.); if no content qualifier is present, the block is removed from the DOM immediately
+- **Image replacement** — `ImageService` resolves Unsplash images for placeholder URLs with AI-generated search keywords
+- **Metadata-only responses** — prompts for title, excerpt, or summary update the meta strip without altering the preview content
+
+### Page Metadata (Meta Strip)
+- Editable page title and excerpt fields; AI auto-populates them from `<!-- PAGE_TITLE: ... -->` and `<!-- PAGE_EXCERPT: ... -->` markers in generated output
+- Featured image thumbnail with a Change button (WP media picker) and Remove option; shown only when the post type supports thumbnails
+
+### History & Revert
+- Edit history drawer — every AI generation appends a timestamped entry labelled with the prompt
+- Restore to any prior version (truncates subsequent history)
+- Full revert — discards all AI changes and restores the original WordPress content (with a confirmation modal)
+
+### Publishing
+- **Publish as blog post** — creates a new post
+- **Publish as new page** — creates a standalone page
+- **Set as homepage** — creates a page and sets it as the site's static front page
+- **Update existing** — replaces content on a selected page or post, including title, excerpt, and featured image in a single request
+- **Overwrite from publish modal** — when publishing a new design, the modal lets you choose any existing page or post to overwrite instead
+- Post-publish link appears in the chat: "View published page"
+
+### Access Control
+- Gated by Hiive `canAccessAI` capability — the module does not load at all on sites without this flag
+- All REST routes require `edit_pages` user capability AND `canAccessAI` Hiive capability
+
+---
 
 ## Installation
 
-This module is automatically loaded by the wp-plugin-web plugin when the `canAccessAI` capability is enabled.
+This module is automatically loaded by `wp-plugin-web` when the `canAccessAI` capability is enabled for the site.
+
+---
 
 ## Development
 
 ### Backend (PHP)
-
-The PHP code is located in the `includes/` directory:
-
-| File | Purpose |
-|---|---|
-| `AIPageDesigner.php` | Main module class, hooks and asset registration |
-| `RestApi/AIPageDesignerController.php` | AI generation endpoint, image replacement pipeline |
-| `RestApi/WordPressProxyController.php` | WordPress content CRUD |
-| `Services/AiClient.php` | JWT exchange and AI API request/response handling |
-| `Services/PromptBuilder.php` | System prompt, user message assembly, markup skeletonisation |
-| `Services/FastPathHandler.php` | Image swap fast path with AI keyword generation |
-| `Services/ImageService.php` | Unsplash search and image URL replacement |
-| `Services/BlueprintService.php` | Base layout blueprints for new pages |
-| `Services/BlockMarkupSanitizer.php` | Sanitises and extracts title from AI output |
-| `Data/SystemPrompts.php` | AI system prompts including Gutenberg serialization and image placeholder rules |
 
 ```bash
 composer install   # Install PHP dependencies
@@ -53,15 +74,51 @@ composer lint      # PHP CodeSniffer
 composer fix       # PHP CodeSniffer auto-fix
 ```
 
-### Frontend (React/TypeScript)
+PHP source is in `includes/`:
 
-The React app is in the `src/` directory.
+| File | Purpose |
+|---|---|
+| `AIPageDesigner.php` | Main module class, hooks and asset registration |
+| `RestApi/AIPageDesignerController.php` | AI generation endpoint, image replacement pipeline |
+| `RestApi/WordPressProxyController.php` | WordPress content CRUD proxy |
+| `Services/AiClient.php` | Hiive JWT exchange and AI API request/response handling |
+| `Services/PromptBuilder.php` | System prompt and user message assembly, markup skeletonisation |
+| `Services/FastPathHandler.php` | Image swap fast path with AI keyword generation |
+| `Services/ImageService.php` | Unsplash search and image URL replacement |
+| `Services/BlueprintService.php` | Base layout blueprints — fetches, caches, and parses from Hiive API |
+| `Services/PatternLayoutProvider.php` | Gutenberg block pattern layouts as structural context |
+| `Services/BlockMarkupSanitizer.php` | Validates and auto-closes unclosed block tags in AI output |
+| `Services/CapabilityGate.php` | Centralised capability checks for REST routes and module load |
+| `Data/SystemPrompts.php` | AI system prompts including Gutenberg serialisation and image placeholder rules |
+
+### Frontend (React/TypeScript)
 
 ```bash
 npm install        # Install dependencies
 npm run build      # Production build
 npm run dev        # Development build with watch
+npm run build:dev  # Development build without watch
 ```
+
+React source is in `src/`:
+
+| File | Purpose |
+|---|---|
+| `src/index.tsx` | App entry point, mounts `AIPageDesignerApp` |
+| `src/components/DashboardView.tsx` | Dashboard with hero prompt, pages/posts lists, and search |
+| `src/components/ChatPanel.tsx` | AI chat messages, loading indicator, history drawer, publish bar |
+| `src/components/PreviewFrame.tsx` | Live preview iframe with theme/block stylesheet injection |
+| `src/components/MetaStrip.tsx` | Editable title, excerpt, and featured image fields |
+| `src/components/HistoryDrawer.tsx` | Collapsible edit history with restore-to-version |
+| `src/components/PublishModal.tsx` | Publish options: new post, new page, homepage, overwrite existing |
+| `src/components/RevertConfirm.tsx` | Confirmation modal for full revert |
+| `src/hooks/useAiConversation.ts` | AI conversation state, streaming, targeted editing, history |
+| `src/hooks/usePublishFlow.ts` | Publish and update logic, publish modal state |
+| `src/hooks/useBlockSelection.ts` | iframe postMessage listener for block click selection |
+| `src/hooks/usePreviewIframe.ts` | Iframe initialisation with WordPress stylesheets |
+| `src/hooks/useSiteContent.ts` | Fetches pages and posts from the WordPress proxy REST API |
+
+---
 
 ## AI Output Contract
 
@@ -70,34 +127,34 @@ The AI is instructed to:
 - Embed the page title as `<!-- PAGE_TITLE: Title Here -->`, optional excerpt as `<!-- PAGE_EXCERPT: ... -->`, and a short chat summary as `<!-- RESPONSE_SUMMARY: ... -->`
 - For metadata-only requests (e.g. "generate an excerpt"), return just the metadata comments with no block markup — the UI applies the values to the meta strip and keeps the preview unchanged
 - Use `https://placehold.co/WIDTHxHEIGHT` for all image URLs (replaced automatically by Unsplash)
-- Use escaped `\u002d\u002d` sequences inside Gutenberg block comment JSON whenever a CSS custom property appears there
-- Keep rendered HTML `style` attributes in normal CSS syntax, for example `style="color:var(--wp--preset--color--contrast_midtone);font-family:system-font"`
-- Apply color, background, and font changes via Gutenberg block attributes plus the corresponding rendered HTML style when needed — never as standalone CSS
+- Use escaped `--` sequences inside Gutenberg block comment JSON whenever a CSS custom property appears there
+- Keep rendered HTML `style` attributes in normal CSS syntax, e.g. `style="color:var(--wp--preset--color--contrast_midtone);font-family:system-font"`
+- Apply color, background, and font changes via Gutenberg block attributes plus the corresponding rendered HTML style — never as standalone CSS
 
-## REST API Endpoints
+---
+
+## REST API
 
 ### AI Generation
 - `POST /newfold-ai-page-designer/v1/generate`
-  - Body: `{ messages: [{role, content}], current_markup?, content_type?, conversation_id? }`
-  - Returns: AI-generated HTML content, page title, response/conversation IDs
+  - Body: `{ messages: [{role, content}], current_markup?, content_type?, conversation_id?, selected_block_markup?, single_block_edit? }`
+  - Returns: AI-generated content, page title, excerpt, summary, response/conversation IDs
 
 ### Content Management
 - `GET /newfold-ai-page-designer/v1/content/pages` — List pages
 - `GET /newfold-ai-page-designer/v1/content/posts` — List posts
 - `GET /newfold-ai-page-designer/v1/content/{type}/{id}` — Get single item
 - `POST /newfold-ai-page-designer/v1/content/{type}` — Create content
-- `PUT /newfold-ai-page-designer/v1/content/{type}/{id}` — Update content
-- `POST /newfold-ai-page-designer/v1/homepage/{id}` — Set as homepage
+- `PUT /newfold-ai-page-designer/v1/content/{type}/{id}` — Update content (title, excerpt, featured image, content)
+- `POST /newfold-ai-page-designer/v1/homepage/{id}` — Set page as site front page
 
-## Capability Requirements
+All endpoints require `edit_pages` user capability and `canAccessAI` Hiive site capability.
 
-All endpoints require:
-1. User capability: `edit_pages`
-2. Hiive capability: `canAccessAI`
+---
 
 ## Pattern Provider Configuration
 
-The AI Page Designer supports multiple layout providers for new page generation. The provider is configured via the `PATTERN_PROVIDER` constant in the `AIPageDesigner` class.
+The AI Page Designer supports multiple layout providers for new page generation, configured via the `PATTERN_PROVIDER` constant in `AIPageDesigner.php`.
 
 ### Available Providers
 
@@ -105,51 +162,27 @@ The AI Page Designer supports multiple layout providers for new page generation.
 ```php
 const PATTERN_PROVIDER = 'wonderblocks';
 ```
-- **Intent-based selection**: Analyzes user prompts to select relevant patterns
-- **Professional design**: Uses curated, modern UI/UX patterns
-- **Theme compliance**: Native blocks respect active theme's `theme.json`
-- **Fast performance**: 5-15s generation time
-- **Use case**: Best for production sites requiring professional layouts
+- Intent-based pattern selection from curated, modern UI/UX patterns
+- Native blocks respect the active theme's `theme.json`
+- ~5–15s generation time
 
 #### Blueprints
 ```php
 const PATTERN_PROVIDER = 'blueprints';
 ```
-- **Random selection**: Fetches random blueprints from Hiive API
-- **Varied layouts**: Different blueprint structures for each generation
-- **Legacy support**: Maintains compatibility with existing blueprint system
-- **Use case**: Testing variety and blueprint system validation
+- Fetches and rotates blueprints from the Hiive API
+- Downloads blueprint ZIP, parses the SQL export, and extracts Gutenberg page markup as a base layout
 
-#### Pure AI Generation
+#### Pure AI (No Scaffolding)
 ```php
 const PATTERN_PROVIDER = '';
 ```
-- **No scaffolding**: AI creates layouts from scratch without base templates
-- **Maximum creativity**: AI has full freedom to design layouts
-- **Experimental**: Tests AI's ability to generate professional layouts independently
-- **Use case**: Research and testing AI layout generation capabilities
+- AI generates layouts from scratch with no base template
+- Useful for testing AI layout generation independently
 
-### Testing Strategy
+To change the provider, modify the constant in [`includes/AIPageDesigner.php`](includes/AIPageDesigner.php).
 
-1. **Performance Testing**: Compare response times across all three providers
-2. **Quality Assessment**: Evaluate layout appropriateness and design quality
-3. **Intent Recognition**: Test how well each provider matches user requests
-4. **A/B Testing**: Switch providers to compare results for the same prompts
-
-### Configuration
-
-To change the provider, modify the constant in [`AIPageDesigner.php`](includes/AIPageDesigner.php):
-
-```php
-// Current default (recommended)
-const PATTERN_PROVIDER = 'wonderblocks';
-
-// For testing blueprints
-const PATTERN_PROVIDER = 'blueprints';
-
-// For pure AI experimentation  
-const PATTERN_PROVIDER = '';
-```
+---
 
 ## License
 
