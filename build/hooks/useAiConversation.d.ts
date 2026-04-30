@@ -5,6 +5,8 @@ type UseAiConversationOptions = {
     previewHtml: string | null;
     originalPreviewHtml: string | null;
     publishTitle: string;
+    metaTitle: string;
+    metaExcerpt: string;
     selectedItem: WPItem | null;
     selectedBlockIndex: string | null;
     selectedBlockHtml: string | null;

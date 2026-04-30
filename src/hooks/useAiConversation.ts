@@ -8,6 +8,8 @@ type UseAiConversationOptions = {
   previewHtml: string | null;
   originalPreviewHtml: string | null;
   publishTitle: string;
+  metaTitle: string;
+  metaExcerpt: string;
   selectedItem: WPItem | null;
   selectedBlockIndex: string | null;
   selectedBlockHtml: string | null;
@@ -128,6 +130,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     previewHtml,
     originalPreviewHtml,
     publishTitle,
+    metaTitle,
+    metaExcerpt,
     selectedItem,
     selectedBlockIndex,
     selectedBlockHtml,
@@ -606,6 +610,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         post_id: selectedItem?.id,
         conversation_id: selectedItem ? undefined : conversationId || undefined,
         content_type: ( selectedItem?.type ?? 'page' ) as 'page' | 'post',
+        page_title: metaTitle || undefined,
+        page_excerpt: metaExcerpt || undefined,
         ...( isSingleBlockEdit
           ? { selected_block_markup: selectedBlockGutenbergMarkup!, single_block_edit: true }
           : selectedBlockIndex !== null && selectedBlockHtml !== null

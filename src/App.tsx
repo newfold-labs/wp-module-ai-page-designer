@@ -86,6 +86,8 @@ const App = () => {
     previewHtml,
     originalPreviewHtml,
     publishTitle,
+    metaTitle,
+    metaExcerpt,
     selectedItem,
     selectedBlockIndex,
     selectedBlockHtml,

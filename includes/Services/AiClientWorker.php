@@ -375,6 +375,87 @@ class AiClientWorker {
 	}
 
 	/**
+	 * Send a lightweight analysis request to the Worker (no system-prompt injection).
+	 *
+	 * The caller supplies the full messages array including its own system prompt.
+	 * Unlike generate_content(), the Worker forwards messages as-is to the AI.
+	 *
+	 * @param array $ai_messages Message payload including caller's system prompt.
+	 * @return array|\WP_Error
+	 */
+	public function analyze( array $ai_messages ) {
+		$hiive_token = HiiveConnection::get_auth_token();
+
+		if ( ! $hiive_token ) {
+			return new \WP_Error(
+				'rest_forbidden',
+				__( 'You are not authorized to make this call. Hiive authentication failed.', 'wp-module-ai-page-designer' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		if ( ! defined( 'NFD_AI_BASE' ) ) {
+			return new \WP_Error(
+				'configuration_error',
+				__( 'AI service is not configured. Please contact support.', 'wp-module-ai-page-designer' ),
+				array( 'status' => 503 )
+			);
+		}
+
+		$worker_url = NFD_AI_BASE . 'ai-page-designer/analyze';
+
+		$response = wp_remote_post(
+			$worker_url,
+			array(
+				'headers' => array(
+					'Content-Type'    => 'application/json',
+					'X-Newfold-Brand' => $this->get_brand(),
+				),
+				'timeout' => 30,
+				'body'    => wp_json_encode(
+					array(
+						'hiivetoken' => $hiive_token,
+						'messages'   => $ai_messages,
+					)
+				),
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return new \WP_Error(
+				'ai_service_timeout',
+				$response->get_error_message(),
+				array( 'status' => 408 )
+			);
+		}
+
+		$response_code = wp_remote_retrieve_response_code( $response );
+		$raw_body      = wp_remote_retrieve_body( $response );
+
+		if ( 200 !== $response_code ) {
+			$error_body    = json_decode( $raw_body, true );
+			$error_message = $error_body['error'] ? $error_body['error'] : 'Analysis request failed';
+			return new \WP_Error(
+				'ai_analysis_error',
+				$error_message,
+				array( 'status' => $response_code )
+			);
+		}
+
+		$result = json_decode( $raw_body, true );
+
+		if ( empty( $result['success'] ) ) {
+			return new \WP_Error(
+				'ai_analysis_error',
+				$result['error'] ? $result['error'] : 'Unknown error from Worker',
+				array( 'status' => 500 )
+			);
+		}
+
+		return $result['data'];
+	}
+
+	/**
 	 * Get the current brand identifier.
 	 *
 	 * @return string

@@ -224,6 +224,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 			$current_markup   = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
 			$content_type     = isset( $context['content_type'] ) && 'post' === $context['content_type'] ? 'post' : 'page';
+			$page_title       = isset( $context['page_title'] ) ? sanitize_text_field( $context['page_title'] ) : '';
+			$page_excerpt     = isset( $context['page_excerpt'] ) ? sanitize_textarea_field( $context['page_excerpt'] ) : '';
 			$last_user_prompt = '';
 
 			for ( $index = count( $messages ) - 1; $index >= 0; $index-- ) {
@@ -235,7 +237,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 			$stream = (bool) $request->get_param( 'stream' );
 
-			$fast_path_response = $this->fast_path_handler->maybe_handle_fast_path( $current_markup, $last_user_prompt );
+			$fast_path_response = $this->fast_path_handler->maybe_handle_fast_path( $current_markup, $last_user_prompt, $page_title, $page_excerpt );
 			if ( $fast_path_response ) {
 				if ( $stream ) {
 					$this->init_streaming_response();

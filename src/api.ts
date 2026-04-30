@@ -16,6 +16,8 @@ export type GenerateContentContext = {
   content_type?: 'page' | 'post';
   selected_block_markup?: string;
   single_block_edit?: boolean;
+  page_title?: string;
+  page_excerpt?: string;
 };
 
 export type GenerateContentResponse = {
