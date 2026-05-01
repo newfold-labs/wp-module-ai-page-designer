@@ -57,8 +57,8 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		AIPageDesignerDebug::debug_log( 'Using Worker-based AI client' );
 		$this->ai_client = new AiClientWorker();
 
-		$this->image_service          = new ImageService();
-		$this->fast_path_handler      = new FastPathHandler( $this->image_service, $this->ai_client );
+		$this->image_service     = new ImageService();
+		$this->fast_path_handler = new FastPathHandler( $this->image_service, $this->ai_client );
 	}
 
 	/**
@@ -234,17 +234,17 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
 			}
 			$previous_response_id = $is_redesign_request ? null : $this->load_previous_response_id( $conversation_key );
-			
-			$is_new = count( $messages ) === 1;
+
+			$is_new      = count( $messages ) === 1;
 			$use_pattern = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
 				|| ( $is_redesign_request && 'post' !== $content_type );
-			
+
 			$base_layout = '';
 			if ( $use_pattern && \NewfoldLabs\WP\Module\AIPageDesigner\AIPageDesigner::PATTERN_PROVIDER === 'wonderblocks' ) {
 				$base_layout = $this->pattern_layout_provider->get_random_pattern_layout( $last_user_prompt );
 			}
 
-			$ai_messages          = $messages;
+			$ai_messages = $messages;
 
 			if ( $stream ) {
 				$this->init_streaming_response();
@@ -828,7 +828,21 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	private function is_redesign_request( $prompt ) {
 		$prompt_lower = strtolower( $prompt );
 		$triggers     = array(
-			'redesign', 'regenerate', 'generate again', 'redo', 'remake', 'rebuild', 'start over', 'start fresh', 'from scratch', 'create new', 'make a new', 'build a new', 'try again', 'new version', 'new design',
+			'redesign',
+			'regenerate',
+			'generate again',
+			'redo',
+			'remake',
+			'rebuild',
+			'start over',
+			'start fresh',
+			'from scratch',
+			'create new',
+			'make a new',
+			'build a new',
+			'try again',
+			'new version',
+			'new design',
 		);
 		foreach ( $triggers as $trigger ) {
 			if ( str_contains( $prompt_lower, $trigger ) ) {

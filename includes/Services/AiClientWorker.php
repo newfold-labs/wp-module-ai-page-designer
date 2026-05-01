@@ -224,7 +224,7 @@ class AiClientWorker {
 				if ( $response_id_from_event ) {
 					$response_id = $response_id_from_event;
 				}
-				
+
 				$pos = strpos( $buffer, "\n\n" );
 			}
 

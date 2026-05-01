@@ -209,7 +209,7 @@ class FastPathHandler {
 			if ( $pos >= 0 && $pos < $block_count && $image_idx < count( $images ) ) {
 				$image_block = $this->build_image_block_markup( $images[ $image_idx ] );
 				array_splice( $blocks, $pos + 1, 0, array( $image_block ) );
-				$image_idx++;
+				++$image_idx;
 			}
 		}
 
@@ -242,10 +242,10 @@ class FastPathHandler {
 		$current = '';
 
 		foreach ( explode( "\n", $markup ) as $line ) {
-			$trimmed        = trim( $line );
+			$trimmed         = trim( $line );
 			$is_self_closing = (bool) preg_match( '/^<!--\s*wp:[^ ].*?\/-->/i', $trimmed );
-			$is_opening     = ! $is_self_closing && (bool) preg_match( '/^<!--\s*wp:/i', $trimmed );
-			$is_closing     = (bool) preg_match( '/^<!--\s*\/wp:/i', $trimmed );
+			$is_opening      = ! $is_self_closing && (bool) preg_match( '/^<!--\s*wp:/i', $trimmed );
+			$is_closing      = (bool) preg_match( '/^<!--\s*\/wp:/i', $trimmed );
 
 			if ( ( $is_opening || $is_self_closing ) && 0 === $depth ) {
 				if ( '' !== trim( $current ) ) {
@@ -257,10 +257,10 @@ class FastPathHandler {
 			$current .= $line . "\n";
 
 			if ( $is_opening ) {
-				$depth++;
+				++$depth;
 			}
 			if ( $is_closing ) {
-				$depth--;
+				--$depth;
 			}
 		}
 
