@@ -251,6 +251,25 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       if ( ! selectedItem && responseData?.conversation_id ) {
         setConversationId( responseData.conversation_id );
       }
+
+      if ( applied.length > 0 && previewHtml !== null ) {
+        const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+        const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+        const historyLabelDetail = text.length ? `: ${ text.substring( 0, 60 ) }` : '';
+        const historyLabel = `Metadata edit${ historyLabelDetail }`;
+
+        setHistoryEntries( ( prev ) => [
+          ...prev,
+          {
+            id: historyId,
+            html: previewHtml,
+            label: historyLabel,
+            timestamp,
+            publishTitle: title || publishTitle,
+            metaExcerpt: excerpt || metaExcerpt,
+          },
+        ] );
+      }
     };
 
     const applyFinalResponse = ( rawContent: string, responseData: any, isFollowUpEdit: boolean ) => {
@@ -323,6 +342,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
                 label: historyLabel,
                 timestamp,
                 publishTitle: title || publishTitle,
+                metaExcerpt: responseData?.excerpt || metaExcerpt,
+                metaFeaturedImageUrl: responseData?.featured_image_url || undefined,
               },
             ] );
           }
@@ -780,6 +801,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setHistoryEntries( remainingHistory );
     setPreviewHtml( targetEntry.html );
     setPublishTitle( targetEntry.publishTitle ?? '' );
+    if ( targetEntry.publishTitle !== undefined ) {
+      setMetaTitle( targetEntry.publishTitle );
+    }
+    if ( targetEntry.metaExcerpt !== undefined ) {
+      setMetaExcerpt( targetEntry.metaExcerpt );
+    }
+    if ( targetEntry.metaFeaturedImageUrl !== undefined ) {
+      setMetaFeaturedImageUrl( targetEntry.metaFeaturedImageUrl );
+    }
     setHasAIGenerated( true );
     clearSelection( iframeRef );
   }, [
@@ -789,6 +819,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setHasAIGenerated,
     setPreviewHtml,
     setPublishTitle,
+    setMetaTitle,
+    setMetaExcerpt,
+    setMetaFeaturedImageUrl,
   ] );
 
   const resetAiConversation = useCallback( () => {

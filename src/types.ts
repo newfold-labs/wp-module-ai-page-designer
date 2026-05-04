@@ -29,4 +29,6 @@ export type HistoryEntry = {
   label: string;
   timestamp: string;
   publishTitle?: string;
+  metaExcerpt?: string;
+  metaFeaturedImageUrl?: string;
 };
