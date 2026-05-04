@@ -83,7 +83,12 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     setPublishStatus( null );
     setPublishedUrl( null );
     try {
-      const title = publishTitle || 'AI Generated Page';
+      const trimmedMeta =
+        typeof metaTitle === 'string' ? metaTitle.trim() : '';
+      const title =
+        trimmedMeta ||
+        publishTitle.trim() ||
+        'AI Generated Page';
       const publishType = type === 'homepage' ? 'new_page' : type;
       const result = await publishNewContent( publishType, title, stripLocalStyles( previewHtml ) );
       if ( 'homepage' === type && result?.id ) {
@@ -111,7 +116,7 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     } finally {
       setPublishing( false );
     }
-  }, [ appendAssistantMessage, onPublished, previewHtml, publishTitle ] );
+  }, [ appendAssistantMessage, metaTitle, onPublished, previewHtml, publishTitle ] );
 
   const handleReplaceItem = useCallback( async ( item: WPItem ) => {
     if ( ! previewHtml ) {
