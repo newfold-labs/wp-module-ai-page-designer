@@ -373,14 +373,12 @@ const App = () => {
               input={ conversation.input }
               selectedBlockIndex={ selectedBlockIndex }
               historyEntries={ conversation.historyEntries }
-              colorPalette={ nfdAIPageDesigner.colorPalette || [] }
               previewHtml={ previewHtml }
               onInputChange={ conversation.setInput }
               onSend={ () => conversation.handleSend() }
               onClearSelection={ () => clearSelection( iframeRef ) }
               onPublish={ handlePublishBarClick }
               onRevertTo={ conversation.handleRevertToEntry }
-              onApplyDirectChange={ conversation.applyDirectChange }
             />
 
             <PreviewFrame

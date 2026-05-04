@@ -35,7 +35,6 @@ type UseAiConversationResult = {
     handleRevertToEntry: (id: string) => void;
     resetAiConversation: () => void;
     appendAssistantMessage: (message: Message) => void;
-    applyDirectChange: (html: string, label: string) => void;
 };
 export declare const useAiConversation: (options: UseAiConversationOptions) => UseAiConversationResult;
 export default useAiConversation;
