@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { Message, PublishStatus, WPItem } from '../types';
 import { publishNewContent, setHomepage, updateExistingItem } from '../api';
+import { stripLocalStyles } from '../util/aiDesignerHelpers';
 
 type UsePublishFlowOptions = {
   apiUrl: string;
@@ -10,6 +11,7 @@ type UsePublishFlowOptions = {
   metaExcerpt?: string;
   metaFeaturedMediaId?: number | null;
   onMetaUpdated?: (item: WPItem) => void;
+  onPublished?: (item: WPItem) => void;
   appendAssistantMessage: (message: Message) => void;
 };
 
@@ -37,6 +39,7 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     metaExcerpt,
     metaFeaturedMediaId,
     onMetaUpdated,
+    onPublished,
     appendAssistantMessage,
   } = options;
 
@@ -80,15 +83,23 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     setPublishStatus( null );
     setPublishedUrl( null );
     try {
-      const title = publishTitle || 'AI Generated Page';
+      const trimmedMeta =
+        typeof metaTitle === 'string' ? metaTitle.trim() : '';
+      const title =
+        trimmedMeta ||
+        publishTitle.trim() ||
+        'AI Generated Page';
       const publishType = type === 'homepage' ? 'new_page' : type;
-      const result = await publishNewContent( publishType, title, previewHtml );
+      const result = await publishNewContent( publishType, title, stripLocalStyles( previewHtml ) );
       if ( 'homepage' === type && result?.id ) {
         await setHomepage( result.id );
       }
       const url = result?.link || null;
       setPublishedUrl( url );
       setPublishStatus( { type: 'success', message: 'Published successfully!' } );
+      if ( result && typeof onPublished === 'function' ) {
+        onPublished( { ...result, type: publishType === 'new_page' ? 'page' : 'post' } as WPItem );
+      }
       setTimeout( () => {
         setShowPublishModal( false );
         setPublishStatus( null );
@@ -105,7 +116,7 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     } finally {
       setPublishing( false );
     }
-  }, [ appendAssistantMessage, previewHtml, publishTitle ] );
+  }, [ appendAssistantMessage, metaTitle, onPublished, previewHtml, publishTitle ] );
 
   const handleReplaceItem = useCallback( async ( item: WPItem ) => {
     if ( ! previewHtml ) {
@@ -115,7 +126,7 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     setPublishStatus( null );
     setPublishedUrl( null );
     try {
-      const response = await updateExistingItem( apiUrl, item, previewHtml, {
+      const response = await updateExistingItem( apiUrl, item, stripLocalStyles( previewHtml ), {
         title: typeof metaTitle === 'string' ? metaTitle : undefined,
         excerpt: typeof metaExcerpt === 'string' ? metaExcerpt : undefined,
         featuredMedia: typeof metaFeaturedMediaId === 'number' ? metaFeaturedMediaId : undefined,

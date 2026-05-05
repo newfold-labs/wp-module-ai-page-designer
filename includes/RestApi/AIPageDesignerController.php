@@ -7,13 +7,12 @@
 
 namespace NewfoldLabs\WP\Module\AIPageDesigner\RestApi;
 
-use NewfoldLabs\WP\Module\AIPageDesigner\Services\AiClient;
-use NewfoldLabs\WP\Module\AIPageDesigner\Services\BlockMarkupSanitizer;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\AiClientWorker;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\FastPathHandler;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\ImageService;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PatternLayoutProvider;
-use NewfoldLabs\WP\Module\AIPageDesigner\Services\PromptBuilder;
+use Web\AIPageDesignerDebug;
 
 /**
  * REST API Controller for AI Page Generation
@@ -35,32 +34,11 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	protected $rest_base = 'generate';
 
 	/**
-	 * Prompt builder.
+	 * Pattern layout provider.
 	 *
-	 * @var PromptBuilder
+	 * @var PatternLayoutProvider
 	 */
-	private $prompt_builder;
-
-	/**
-	 * AI client.
-	 *
-	 * @var AiClient
-	 */
-	private $ai_client;
-
-	/**
-	 * Image service.
-	 *
-	 * @var ImageService
-	 */
-	private $image_service;
-
-	/**
-	 * Markup sanitizer.
-	 *
-	 * @var BlockMarkupSanitizer
-	 */
-	private $block_markup_sanitizer;
+	private $pattern_layout_provider;
 
 	/**
 	 * Fast path handler.
@@ -73,11 +51,14 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * Constructor.
 	 */
 	public function __construct() {
-		$this->prompt_builder         = new PromptBuilder( new PatternLayoutProvider() );
-		$this->ai_client              = new AiClient();
-		$this->image_service          = new ImageService();
-		$this->block_markup_sanitizer = new BlockMarkupSanitizer();
-		$this->fast_path_handler      = new FastPathHandler( $this->image_service, $this->ai_client );
+		$this->pattern_layout_provider = new PatternLayoutProvider();
+
+		// Always use Worker client for AI Page Designer
+		AIPageDesignerDebug::debug_log( 'Using Worker-based AI client' );
+		$this->ai_client = new AiClientWorker();
+
+		$this->image_service     = new ImageService();
+		$this->fast_path_handler = new FastPathHandler( $this->image_service, $this->ai_client );
 	}
 
 	/**
@@ -103,6 +84,11 @@ class AIPageDesignerController extends \WP_REST_Controller {
 							'type'              => 'object',
 							'description'       => __( 'Additional context like current markup', 'wp-module-ai-page-designer' ),
 							'validate_callback' => array( $this, 'validate_context' ),
+						),
+						'stream'   => array(
+							'required'    => false,
+							'type'        => 'boolean',
+							'description' => __( 'Stream AI response as SSE', 'wp-module-ai-page-designer' ),
 						),
 					),
 					'permission_callback' => array( $this, 'check_permission' ),
@@ -162,6 +148,34 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 		}
 
+		if ( isset( $context['theme_mode'] ) ) {
+			if ( ! is_string( $context['theme_mode'] ) ) {
+				return false;
+			}
+
+			$theme_mode = sanitize_key( $context['theme_mode'] );
+			if ( '' === $theme_mode ) {
+				return false;
+			}
+
+			$allowed_modes = array( 'dark', 'black', 'blue', 'red', 'green', 'yellow', 'white' );
+			if ( ! in_array( $theme_mode, $allowed_modes, true ) ) {
+				return false;
+			}
+		}
+
+		if ( isset( $context['selected_block_markup'] ) ) {
+			if ( ! is_string( $context['selected_block_markup'] ) ) {
+				return false;
+			}
+		}
+
+		if ( isset( $context['single_block_edit'] ) ) {
+			if ( ! is_bool( $context['single_block_edit'] ) ) {
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -184,8 +198,10 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$conversation_key = $conversation_context['conversation_key'];
 			$conversation_id  = $conversation_context['conversation_id'];
 
-			$current_markup = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
-			$content_type   = isset( $context['content_type'] ) && 'post' === $context['content_type'] ? 'post' : 'page';
+			$current_markup   = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
+			$content_type     = isset( $context['content_type'] ) && 'post' === $context['content_type'] ? 'post' : 'page';
+			$page_title       = isset( $context['page_title'] ) ? sanitize_text_field( $context['page_title'] ) : '';
+			$page_excerpt     = isset( $context['page_excerpt'] ) ? sanitize_textarea_field( $context['page_excerpt'] ) : '';
 			$last_user_prompt = '';
 
 			for ( $index = count( $messages ) - 1; $index >= 0; $index-- ) {
@@ -195,19 +211,105 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				}
 			}
 
-			$fast_path_response = $this->fast_path_handler->maybe_handle_fast_path( $current_markup, $last_user_prompt );
+			$stream = (bool) $request->get_param( 'stream' );
+
+			$fast_path_response = $this->fast_path_handler->maybe_handle_fast_path( $current_markup, $last_user_prompt, $page_title, $page_excerpt );
 			if ( $fast_path_response ) {
+				if ( $stream ) {
+					$this->init_streaming_response();
+					$fast_path_data = $fast_path_response->get_data();
+					$this->send_stream_event( 'result', $fast_path_data['data'] ?? $fast_path_data );
+					$this->send_stream_event( 'done', array() );
+					exit;
+				}
 				return $fast_path_response;
 			}
 
-			$ai_messages          = $this->prompt_builder->build_ai_messages( $messages, $current_markup, $content_type );
-			$previous_response_id = $this->load_previous_response_id( $conversation_key );
-			$ai_result            = $this->ai_client->generate_content(
-				$ai_messages,
-				array(
-					'previous_response_id' => $previous_response_id,
-				)
+			// Single-block edits return partial markup, not a full page — don't chain them
+			// into the conversation thread or they'd corrupt the next full-page context.
+			// Redesign requests must also start a fresh conversation so the AI isn't biased
+			// by the previous page's context when generating a genuinely new design.
+			$is_redesign_request = $this->is_redesign_request( $last_user_prompt );
+			if ( $is_redesign_request ) {
+				delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
+			}
+			$previous_response_id = $is_redesign_request ? null : $this->load_previous_response_id( $conversation_key );
+
+			$is_new      = count( $messages ) === 1;
+			$use_pattern = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
+				|| ( $is_redesign_request && 'post' !== $content_type );
+
+			$base_layout = '';
+			if ( $use_pattern && \NewfoldLabs\WP\Module\AIPageDesigner\AIPageDesigner::PATTERN_PROVIDER === 'wonderblocks' ) {
+				$base_layout = $this->pattern_layout_provider->get_random_pattern_layout( $last_user_prompt );
+			}
+
+			$ai_messages = $messages;
+
+			if ( $stream ) {
+				$this->init_streaming_response();
+				$raw_content     = '';
+				$stream_response = null;
+
+				// Prepare options for streaming (enhanced for Worker compatibility)
+				$stream_options = array(
+					'previous_response_id'  => $previous_response_id,
+					'current_markup'        => $current_markup,
+					'content_type'          => $content_type,
+					'selected_block_markup' => $context['selected_block_markup'] ?? null,
+					'base_layout'           => $base_layout,
+				);
+
+				$stream_result = $this->ai_client->stream_content(
+					$ai_messages,
+					$stream_options,
+					function ( $event ) use ( &$raw_content, &$stream_response ) {
+						if ( 'delta' === $event['type'] && ! empty( $event['text'] ) ) {
+							$raw_content .= $event['text'];
+							$this->send_stream_event( 'delta', array( 'text' => $event['text'] ) );
+						}
+						if ( 'meta' === $event['type'] && ! empty( $event['response_id'] ) ) {
+							$stream_response = $event['response_id'];
+						}
+					}
+				);
+
+				if ( is_wp_error( $stream_result ) ) {
+					$this->send_stream_event( 'error', array( 'message' => $stream_result->get_error_message() ) );
+					exit;
+				}
+
+				$response_id   = is_string( $stream_result ) && $stream_result ? $stream_result : $stream_response;
+				$response_data = $this->build_response_payload(
+					$raw_content,
+					$response_id,
+					$messages,
+					$context,
+					$conversation_context,
+					$last_user_prompt,
+					true
+				);
+
+				if ( is_wp_error( $response_data ) ) {
+					$this->send_stream_event( 'error', array( 'message' => $response_data->get_error_message() ) );
+					exit;
+				}
+
+				$this->send_stream_event( 'result', $response_data );
+				$this->send_stream_event( 'done', array() );
+				exit;
+			}
+
+			// Prepare options for AI client (enhanced for Worker compatibility)
+			$ai_options = array(
+				'previous_response_id'  => $previous_response_id,
+				'current_markup'        => $current_markup,
+				'content_type'          => $content_type,
+				'selected_block_markup' => $context['selected_block_markup'] ?? null,
+				'base_layout'           => $base_layout,
 			);
+
+			$ai_result = $this->ai_client->generate_content( $ai_messages, $ai_options );
 
 			// If the stored response_id was stale/expired, clear it and retry without it.
 			if ( is_wp_error( $ai_result ) && $previous_response_id ) {
@@ -225,63 +327,18 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$content     = $ai_result['content'] ?? '';
 			$response_id = $ai_result['response_id'] ?? '';
 
-			if ( empty( $response_id ) ) {
-				return new \WP_Error(
-					'ai_generation_error',
-					__( 'AI response missing response_id', 'wp-module-ai-page-designer' ),
-					array( 'status' => 500 )
-				);
-			}
-
-			$this->store_response_id( $conversation_key, $response_id );
-
-			$title_data = $this->block_markup_sanitizer->extract_page_title( $content );
-			$final_html = $title_data['html'];
-
-			// We didn't fetch images beforehand. Let's try doing it after using the AI's title and all prompts.
-			$all_prompts = '';
-			foreach ( $messages as $msg ) {
-				if ( 'user' === ( $msg['role'] ?? '' ) ) {
-					// Don't include the base layout markup we append in the system prompt.
-					$clean_msg   = explode( '--- BASE LAYOUT ---', $msg['content'] )[0];
-					$clean_msg   = explode( '--- CURRENT TARGET LAYOUT ---', $clean_msg )[0];
-					$all_prompts .= ' ' . trim( $clean_msg );
-				}
-			}
-
-			// Combine the AI-generated title and prompts to get a richer context for image search.
-			$search_context = '';
-			if ( ! empty( $title_data['title'] ) ) {
-				$search_context .= rtrim( $title_data['title'], ' -|' ) . ' ';
-			}
-			$search_context .= $all_prompts;
-
-			// Only fetch images if we actually found placeholders that need replacing.
-			$has_image_placeholders = (
-				preg_match( '/<img[^>]+src=["\']([^"\']+)["\']/i', $final_html ) ||
-				preg_match( '/<!-- wp:(image|cover)/i', $final_html ) ||
-				preg_match( '/background-image:\s*url\(/i', $final_html ) ||
-				preg_match( '/https?:\/\/images\.unsplash\.com\//i', $final_html ) ||
-				preg_match( '/https?:\/\/(www\.)?unsplash\.com\//i', $final_html ) ||
-				preg_match( '/https?:\/\/placehold\.co\//i', $final_html )
-			);
-			if ( $has_image_placeholders ) {
-				$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
-				if ( ! empty( $unsplash_images ) ) {
-					shuffle( $unsplash_images );
-					$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images, true );
-				}
-			}
-
-			$response_data = array(
-				'content'          => $final_html,
-				'title'            => $title_data['title'],
-				'response_id'      => $response_id,
-				'conversation_key' => $conversation_key,
+			$response_data = $this->build_response_payload(
+				$content,
+				$response_id,
+				$messages,
+				$context,
+				$conversation_context,
+				$last_user_prompt,
+				false
 			);
 
-			if ( ! empty( $conversation_id ) ) {
-				$response_data['conversation_id'] = $conversation_id;
+			if ( is_wp_error( $response_data ) ) {
+				return $response_data;
 			}
 
 			return new \WP_REST_Response(
@@ -293,6 +350,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		} catch ( \Exception $e ) {
 			return new \WP_Error(
 				'server_error',
+				// translators: %s is the error message
 				sprintf( __( 'AI generation failed: %s', 'wp-module-ai-page-designer' ), $e->getMessage() ),
 				array( 'status' => 500 )
 			);
@@ -389,215 +447,456 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Get a randomized pattern layout based on user intent.
+	 * Recursively update block themes
 	 *
-	 * @param string $user_prompt The user's request
-	 * @return string The assembled block markup
+	 * @param array  &$blocks Parsed blocks array
+	 * @param string $theme_mode The requested theme mode (dark, light, etc)
 	 */
-	private function get_random_pattern_layout( $user_prompt ) {
-		$prompt_lower = strtolower( $user_prompt );
-		
-		// Map common keywords to pattern categories
-		$intent_mapping = array(
-			'contact'     => array( 'hero', 'contact' ),
-			'about'       => array( 'hero', 'about', 'team' ),
-			'services'    => array( 'hero', 'services', 'call-to-action' ),
-			'product'     => array( 'hero', 'gallery', 'call-to-action' ),
-			'store'       => array( 'hero', 'gallery', 'call-to-action' ),
-			'portfolio'   => array( 'hero', 'portfolio', 'contact' ),
-			'blog'        => array( 'hero', 'text' ),
-			'post'        => array( 'hero', 'text' ),
-			'landing'     => array( 'hero', 'features', 'call-to-action' ),
-		);
-
-		// Default to a standard homepage layout if no specific intent is found
-		$categories = array( 'hero', 'about' );
-
-		foreach ( $intent_mapping as $keyword => $cats ) {
-			if ( strpos( $prompt_lower, $keyword ) !== false ) {
-				$categories = array_slice( $cats, 0, 2 );
-				break;
-			}
+	private function update_block_theme_recursive( &$blocks, $theme_mode ) {
+		// Map user intent to our standard theme slugs
+		$target_slug = 'white';
+		if ( in_array( $theme_mode, array( 'dark', 'black' ), true ) ) {
+			$target_slug = 'dark';
+		} elseif ( in_array( $theme_mode, array( 'blue', 'red', 'green', 'yellow' ), true ) ) {
+			$target_slug = 'primary';
 		}
 
-		$layout = '';
+		foreach ( $blocks as &$block ) {
+			// Try to find ANY group block or block that might have our theme classes
+			if ( isset( $block['attrs']['nfdGroupTheme'] ) ) {
+				$old_slug = $block['attrs']['nfdGroupTheme'];
 
-		foreach ( $categories as $category ) {
-			// Get a wider pool per category to increase randomness without large payloads.
-			$patterns = Items::get(
-				'patterns',
-				array(
-					'category' => $category,
-					'per_page' => 12,
-				)
-			);
+				$block['attrs']['nfdGroupTheme'] = $target_slug;
 
-			if ( ! is_wp_error( $patterns ) && is_array( $patterns ) && ! empty( $patterns ) ) {
-				// Filter to only patterns with content, then shuffle to randomize order.
-				$patterns = array_values(
-					array_filter(
-						$patterns,
-						function ( $pattern ) {
-							return ! empty( $pattern['content'] );
-						}
-					)
-				);
-
-				if ( empty( $patterns ) ) {
-					continue;
+				if ( ! empty( $block['innerHTML'] ) ) {
+					$block['innerHTML'] = str_replace(
+						'is-style-nfd-theme-' . $old_slug,
+						'is-style-nfd-theme-' . $target_slug,
+						$block['innerHTML']
+					);
 				}
 
-				shuffle( $patterns );
-
-				// Avoid repeating the same pattern twice in a row for the same category.
-				$transient_key = 'nfd_aipd_last_pattern_' . sanitize_key( $category );
-				$last_slug     = get_transient( $transient_key );
-				$selected      = $patterns[0];
-
-				if ( $last_slug && count( $patterns ) > 1 ) {
-					foreach ( $patterns as $pattern ) {
-						$pattern_slug = $pattern['slug'] ?? md5( $pattern['content'] );
-						if ( $pattern_slug !== $last_slug ) {
-							$selected = $pattern;
-							break;
+				if ( ! empty( $block['innerContent'] ) ) {
+					foreach ( $block['innerContent'] as &$content_string ) {
+						if ( is_string( $content_string ) ) {
+							$content_string = str_replace(
+								'is-style-nfd-theme-' . $old_slug,
+								'is-style-nfd-theme-' . $target_slug,
+								$content_string
+							);
 						}
 					}
 				}
+			} else {
+				// Even if it doesn't have the nfdGroupTheme attr, maybe it has the class in the raw HTML
+				if ( ! empty( $block['innerHTML'] ) && strpos( $block['innerHTML'], 'is-style-nfd-theme-' ) !== false ) {
+					$block['innerHTML'] = preg_replace(
+						'/is-style-nfd-theme-(white|dark|primary|secondary|tertiary|quaternary)/',
+						'is-style-nfd-theme-' . $target_slug,
+						$block['innerHTML']
+					);
+				}
+				if ( ! empty( $block['innerContent'] ) ) {
+					foreach ( $block['innerContent'] as &$content_string ) {
+						if ( is_string( $content_string ) && strpos( $content_string, 'is-style-nfd-theme-' ) !== false ) {
+							$content_string = preg_replace(
+								'/is-style-nfd-theme-(white|dark|primary|secondary|tertiary|quaternary)/',
+								'is-style-nfd-theme-' . $target_slug,
+								$content_string
+							);
+						}
+					}
+				}
+			}
 
-				$selected_slug = $selected['slug'] ?? md5( $selected['content'] );
-				set_transient( $transient_key, $selected_slug, HOUR_IN_SECONDS );
-
-				// Minify the pattern content to save AI tokens (remove tabs, newlines, duplicate spaces).
-				$content = $selected['content'];
-				$content = preg_replace( '/>\s+</', '><', $content ); // Remove spaces between tags
-				$content = preg_replace( '/\s+/', ' ', $content ); // Replace multiple spaces with single space
-				$layout .= trim( $content ) . "\n\n";
+			// Process inner blocks recursively
+			if ( ! empty( $block['innerBlocks'] ) ) {
+				$this->update_block_theme_recursive( $block['innerBlocks'], $theme_mode );
 			}
 		}
-
-		// If for some reason we couldn't fetch patterns, fallback to empty string
-		return $layout;
 	}
 
 	/**
-	 * Build a theme context string from the active theme's color palette and typography.
+	 * Build the response payload from AI content.
 	 *
-	 * Reads wp_get_global_settings() (theme.json) and returns a prompt appendix
-	 * instructing the AI to use the site's actual color slugs in block attributes
-	 * instead of hardcoded hex values.
-	 *
-	 * @return string Theme context prompt string, or empty string if no palette found.
+	 * @param string $content Raw AI response content.
+	 * @param string $response_id AI response ID.
+	 * @param array  $messages Original messages array.
+	 * @param array  $context Request context.
+	 * @param array  $conversation_context Conversation key/id.
+	 * @param string $last_user_prompt Latest user prompt.
+	 * @param bool   $allow_missing_response_id Allow missing response ID.
+	 * @return array|\WP_Error
 	 */
-	private function get_theme_context_prompt() {
-		if ( ! function_exists( 'wp_get_global_settings' ) ) {
-			return '';
+	private function build_response_payload( $content, $response_id, array $messages, array $context, array $conversation_context, $last_user_prompt, $allow_missing_response_id = false ) {
+		if ( empty( $response_id ) && ! $allow_missing_response_id ) {
+			return new \WP_Error(
+				'ai_generation_error',
+				__( 'AI response missing response_id', 'wp-module-ai-page-designer' ),
+				array( 'status' => 500 )
+			);
 		}
 
-		$settings = wp_get_global_settings();
-		$lines    = array();
+		$conversation_key = $conversation_context['conversation_key'];
+		$conversation_id  = $conversation_context['conversation_id'];
 
-		// --- Color palette ---
-		// Only use the theme-defined palette. Ignore the WordPress default palette
-		// (vivid-red, luminous-orange, etc.) — it is too broad and leads to poor color choices.
-		$theme_swatches = $settings['color']['palette']['theme'] ?? array();
+		if ( ! empty( $response_id ) ) {
+			$this->store_response_id( $conversation_key, $response_id );
+		}
 
-		if ( ! empty( $theme_swatches ) ) {
-			$palette = array();
-			foreach ( $theme_swatches as $swatch ) {
-				if ( isset( $swatch['slug'], $swatch['color'] ) ) {
-					$palette[] = array(
-						'slug'  => $swatch['slug'],
-						'name'  => $swatch['name'] ?? $swatch['slug'],
-						'color' => $swatch['color'],
-					);
+		$title_data = $this->extract_page_title( $content );
+		$final_html = $title_data['html'];
+
+		// We didn't fetch images beforehand. Let's try doing it after using the AI's title and all prompts.
+		$all_prompts = '';
+		foreach ( $messages as $msg ) {
+			if ( 'user' === ( $msg['role'] ?? '' ) ) {
+				// Don't include the base layout markup we append in the system prompt.
+				$clean_msg    = explode( '--- BASE LAYOUT ---', $msg['content'] )[0];
+				$clean_msg    = explode( '--- CURRENT TARGET LAYOUT ---', $clean_msg )[0];
+				$all_prompts .= ' ' . trim( $clean_msg );
+			}
+		}
+
+		// Build a focused search context for image search using page-specific content.
+		$search_context_parts = array();
+
+		// 1. Add existing post/page title when editing existing content
+		if ( ! empty( $context['post_id'] ) ) {
+			$post_title = get_the_title( (int) $context['post_id'] );
+			if ( ! empty( $post_title ) ) {
+				$search_context_parts[] = $post_title;
+			}
+		}
+
+		// 2. Add AI-generated title if available
+		if ( ! empty( $title_data['title'] ) ) {
+			$search_context_parts[] = rtrim( $title_data['title'], ' -|' );
+		}
+
+		// 3. Add AI-generated excerpt if available
+		if ( ! empty( $title_data['excerpt'] ) ) {
+			$search_context_parts[] = $title_data['excerpt'];
+		}
+
+		// 4. Add user prompts
+		if ( ! empty( $all_prompts ) ) {
+			$search_context_parts[] = trim( $all_prompts );
+		}
+
+		$search_context = implode( ' ', $search_context_parts );
+
+		// Replace images for new pages with placeholders, or when the user explicitly asks for it.
+		$has_images_in_markup = false;
+		$blocks               = parse_blocks( $final_html );
+		if ( ! empty( $blocks ) ) {
+			$has_images_in_markup = $this->has_image_blocks( $blocks );
+		}
+		$featured_image_url = '';
+		$wants_images       = (bool) preg_match( '/\b(image|images|photo|photos|picture|pictures|gallery|replace image|replace images|swap image|swap images|change image|change images)\b/i', $last_user_prompt );
+		$current_markup     = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
+		$is_new_request     = empty( $context['post_id'] );
+		$has_placeholders   = strpos( $final_html, 'placehold.co' ) !== false;
+
+		// Fallback: if we have placeholders but didn't detect image blocks,
+		// there might be images in non-standard blocks or malformed markup
+		if ( ! $has_images_in_markup && $has_placeholders ) {
+			$has_images_in_markup = true;
+		}
+
+		if ( $is_new_request && $has_images_in_markup ) {
+			$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
+			if ( ! empty( $unsplash_images ) ) {
+				$featured_image_url = $unsplash_images[0];
+				shuffle( $unsplash_images );
+				$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images, ! $has_placeholders ? false : true );
+			}
+		} elseif ( ! $wants_images && ! empty( $current_markup ) ) {
+			$final_html = $this->restore_image_urls( $final_html, $current_markup );
+		} elseif ( $wants_images && $has_images_in_markup ) {
+			$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
+			if ( ! empty( $unsplash_images ) ) {
+				$featured_image_url = $unsplash_images[0];
+				shuffle( $unsplash_images );
+				$final_html = $this->image_service->replace_images_in_html( $final_html, $unsplash_images, true );
+			}
+		}
+
+		$theme_mode = isset( $context['theme_mode'] ) ? sanitize_key( $context['theme_mode'] ) : '';
+		if ( $theme_mode ) {
+			$blocks = parse_blocks( $final_html );
+			if ( ! empty( $blocks ) ) {
+				$this->update_block_theme_recursive( $blocks, $theme_mode );
+				$final_html = '';
+				foreach ( $blocks as $block ) {
+					$final_html .= serialize_blocks( array( $block ) );
+				}
+			}
+		}
+
+		// Handle metadata-only responses (e.g., when user asks for excerpt generation)
+		$is_metadata_only = empty( $final_html ) && ( ! empty( $title_data['title'] ) || ! empty( $title_data['excerpt'] ) || ! empty( $title_data['summary'] ) );
+
+		$response_data = array(
+			'content'            => $final_html,
+			'title'              => $title_data['title'],
+			'excerpt'            => $title_data['excerpt'] ?? '',
+			'summary'            => $title_data['summary'] ?? '',
+			'featured_image_url' => $featured_image_url,
+			'conversation_key'   => $conversation_key,
+			'is_metadata_only'   => $is_metadata_only,
+		);
+		if ( ! empty( $response_id ) ) {
+			$response_data['response_id'] = $response_id;
+		}
+
+		if ( ! empty( $conversation_id ) ) {
+			$response_data['conversation_id'] = $conversation_id;
+		}
+
+		return $response_data;
+	}
+
+	/**
+	 * Initialize SSE streaming response.
+	 *
+	 * @return void
+	 */
+	private function init_streaming_response() {
+		header( 'Content-Type: text/event-stream' );
+		header( 'Cache-Control: no-cache' );
+		header( 'X-Accel-Buffering: no' );
+		header( 'Connection: keep-alive' );
+
+		while ( ob_get_level() > 0 ) {
+			ob_end_flush();
+		}
+
+		flush();
+	}
+
+	/**
+	 * Send an SSE event.
+	 *
+	 * @param string $event Event name.
+	 * @param array  $data Event payload.
+	 * @return void
+	 */
+	private function send_stream_event( $event, array $data ) {
+		echo 'event: ' . sanitize_key( $event ) . "\n";
+		echo 'data: ' . wp_json_encode( $data ) . "\n\n";
+		flush();
+	}
+
+	/**
+	 * Detect whether parsed blocks contain image/cover usage.
+	 *
+	 * @param array $blocks Parsed blocks array.
+	 * @return bool
+	 */
+	private function has_image_blocks( array $blocks ) {
+		foreach ( $blocks as $block ) {
+			$block_name = $block['blockName'] ?? '';
+
+			// Check if this block contains any image URLs regardless of block type
+			$block_html = $block['innerHTML'] ?? '';
+			if ( ! empty( $block_html ) && strpos( $block_html, 'placehold.co' ) !== false ) {
+				return true;
+			}
+
+			if ( in_array( $block_name, array( 'core/image', 'core/cover', 'core/gallery', 'core/media-text' ), true ) ) {
+				if ( ! empty( $block['attrs']['url'] ) ) {
+					return true;
+				}
+				if ( ! empty( $block['innerHTML'] ) && preg_match( '/<img[^>]+src=["\']([^"\']+)["\']/i', $block['innerHTML'] ) ) {
+					return true;
+				}
+				if ( ! empty( $block['innerHTML'] ) && preg_match( '/background-image:\s*url\(/i', $block['innerHTML'] ) ) {
+					return true;
+				}
+				if ( ! empty( $block['innerContent'] ) ) {
+					foreach ( $block['innerContent'] as $content_string ) {
+						if ( is_string( $content_string ) && preg_match( '/(src=["\']|background-image:\s*url\()/i', $content_string ) ) {
+							return true;
+						}
+					}
 				}
 			}
 
-			if ( ! empty( $palette ) ) {
-				$lines[] = '';
-				$lines[] = 'Active theme color palette — use these slugs in Gutenberg block backgroundColor/textColor attributes to match the site\'s brand. Do NOT use arbitrary hex values for backgrounds or text; use the slugs below:';
-				foreach ( $palette as $swatch ) {
-					$lines[] = sprintf( '  - slug: "%s" | name: %s | hex: %s', $swatch['slug'], $swatch['name'], $swatch['color'] );
+			if ( ! empty( $block['innerBlocks'] ) && $this->has_image_blocks( $block['innerBlocks'] ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Restore original image URLs when the user did not request image changes.
+	 *
+	 * @param string $final_html Updated markup from the AI.
+	 * @param string $current_markup Original markup before edits.
+	 * @return string
+	 */
+	private function restore_image_urls( $final_html, $current_markup ) {
+		$original_urls = $this->extract_image_urls( $current_markup );
+		$updated_urls  = $this->extract_image_urls( $final_html );
+
+		if ( empty( $original_urls ) || empty( $updated_urls ) ) {
+			return $final_html;
+		}
+
+		$max = min( count( $original_urls ), count( $updated_urls ) );
+		for ( $i = 0; $i < $max; $i++ ) {
+			if ( $original_urls[ $i ] !== $updated_urls[ $i ] ) {
+				$final_html = str_replace( $updated_urls[ $i ], $original_urls[ $i ], $final_html );
+			}
+		}
+
+		return $final_html;
+	}
+
+	/**
+	 * Extract image URLs from block markup in document order.
+	 *
+	 * @param string $markup Gutenberg block markup.
+	 * @return string[]
+	 */
+	private function extract_image_urls( $markup ) {
+		$urls   = array();
+		$blocks = parse_blocks( $markup );
+
+		if ( empty( $blocks ) ) {
+			return $urls;
+		}
+
+		$stack = $blocks;
+		while ( ! empty( $stack ) ) {
+			$block      = array_shift( $stack );
+			$block_name = $block['blockName'] ?? '';
+
+			if ( in_array( $block_name, array( 'core/image', 'core/cover', 'core/gallery', 'core/media-text' ), true ) ) {
+				if ( ! empty( $block['attrs']['url'] ) ) {
+					$urls[] = $block['attrs']['url'];
 				}
-				$lines[] = 'Example: <!-- wp:button {"backgroundColor":"primary","textColor":"base"} -->';
-				$lines[] = 'Example: <!-- wp:group {"align":"full","style":{"color":{"background":"var(--wp--preset--color--contrast)"}}} -->';
+				if ( ! empty( $block['innerHTML'] ) ) {
+					if ( preg_match_all( '/<img[^>]+src=["\']([^"\']+)["\']/i', $block['innerHTML'], $matches ) ) {
+						foreach ( $matches[1] as $url ) {
+							$urls[] = $url;
+						}
+					}
+					if ( preg_match_all( '/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i', $block['innerHTML'], $matches ) ) {
+						foreach ( $matches[1] as $url ) {
+							$urls[] = $url;
+						}
+					}
+				}
+				if ( ! empty( $block['innerContent'] ) ) {
+					foreach ( $block['innerContent'] as $content_string ) {
+						if ( is_string( $content_string ) ) {
+							if ( preg_match_all( '/<img[^>]+src=["\']([^"\']+)["\']/i', $content_string, $matches ) ) {
+								foreach ( $matches[1] as $url ) {
+									$urls[] = $url;
+								}
+							}
+							if ( preg_match_all( '/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i', $content_string, $matches ) ) {
+								foreach ( $matches[1] as $url ) {
+									$urls[] = $url;
+								}
+							}
+						}
+					}
+				}
+			}
+
+			if ( ! empty( $block['innerBlocks'] ) ) {
+				foreach ( $block['innerBlocks'] as $inner ) {
+					$stack[] = $inner;
+				}
 			}
 		}
 
-		// --- Primary font family ---
-		$font_families = $settings['typography']['fontFamilies']['theme'] ?? array();
-		if ( ! empty( $font_families ) ) {
-			$primary = reset( $font_families );
-			if ( ! empty( $primary['fontFamily'] ) ) {
-				$lines[] = '';
-				$lines[] = sprintf(
-					'Active theme font: %s — use this font family slug "%s" in typography block attributes where a custom font is needed.',
-					$primary['fontFamily'],
-					$primary['slug'] ?? 'primary'
-				);
+		return array_unique( $urls );
+	}
+
+	/**
+	 * Detect whether a prompt is asking for a full redesign or regeneration.
+	 *
+	 * @param string $prompt The user prompt text.
+	 * @return bool
+	 */
+	private function is_redesign_request( $prompt ) {
+		$prompt_lower = strtolower( $prompt );
+		$triggers     = array(
+			'redesign',
+			'regenerate',
+			'generate again',
+			'redo',
+			'remake',
+			'rebuild',
+			'start over',
+			'start fresh',
+			'from scratch',
+			'create new',
+			'make a new',
+			'build a new',
+			'try again',
+			'new version',
+			'new design',
+		);
+		foreach ( $triggers as $trigger ) {
+			if ( str_contains( $prompt_lower, $trigger ) ) {
+				return true;
 			}
 		}
-
-		// --- Site title for contextual copy ---
-		$site_name = get_bloginfo( 'name' );
-		if ( $site_name ) {
-			$lines[] = '';
-			$lines[] = sprintf( 'Site name: "%s" — you may reference this naturally in headings or CTAs where appropriate.', $site_name );
-		}
-
-		return implode( "\n", $lines );
+		return false;
 	}
 
 	/**
 	 * Extract the PAGE_TITLE comment embedded in every AI HTML response.
 	 *
-	 * The AI is instructed to always start with: <!-- PAGE_TITLE: ... -->
-	 * This method extracts that title, strips the comment from the HTML,
-	 * and sanitizes the remaining block markup.
-	 *
 	 * @param string $content Raw AI response content.
-	 * @return array { title: string, html: string }
+	 * @return array{title:string,excerpt:string,summary:string,html:string}
 	 */
 	private function extract_page_title( $content ) {
-		$title = '';
-		$html  = $content;
+		$title   = '';
+		$excerpt = '';
+		$summary = '';
+		$html    = $content;
 
-		if ( preg_match( '/<!--\s*PAGE_TITLE:\s*(.+?)\s*-->/i', $content, $m ) ) {
+		if ( preg_match( '/<!--\s*PAGE_TITLE:\s*(.+?)\s*-->/i', $html, $m ) ) {
 			$title = trim( $m[1] );
-			// Remove the title comment line from the HTML so it is not stored in WordPress content
-			$html = preg_replace( '/<!--\s*PAGE_TITLE:\s*.+?\s*-->\s*/i', '', $content, 1 );
+			$html  = preg_replace( '/<!--\s*PAGE_TITLE:\s*.+?\s*-->\s*/i', '', $html, 1 );
+		}
+
+		if ( preg_match( '/<!--\s*PAGE_EXCERPT:\s*(.+?)\s*-->/i', $html, $m ) ) {
+			$excerpt = trim( $m[1] );
+			$html    = preg_replace( '/<!--\s*PAGE_EXCERPT:\s*.+?\s*-->\s*/i', '', $html, 1 );
+		}
+
+		if ( preg_match( '/<!--\s*RESPONSE_SUMMARY:\s*(.+?)\s*-->/i', $html, $m ) ) {
+			$summary = trim( $m[1] );
+			$html    = preg_replace( '/<!--\s*RESPONSE_SUMMARY:\s*.+?\s*-->\s*/i', '', $html, 1 );
 		}
 
 		return array(
-			'title' => $title,
-			'html'  => $this->sanitize_block_content( trim( $html ) ),
+			'title'   => $title,
+			'excerpt' => $excerpt,
+			'summary' => $summary,
+			'html'    => $this->sanitize_block_content( trim( $html ) ),
 		);
 	}
 
 	/**
 	 * Sanitize Gutenberg block markup returned by the AI.
 	 *
-	 * Handles two common failure modes:
-	 *  1. Truncated/incomplete HTML comment at the end of the response
-	 *     (e.g. the response was cut off mid-tag: "<!-- /wp:" or "<!-- wp:image {").
-	 *  2. Unclosed block tags — uses a stack to detect opening blocks that were
-	 *     never closed and appends the missing closing comments.
-	 *
 	 * @param string $content Block markup to sanitize.
 	 * @return string Sanitized block markup.
 	 */
 	private function sanitize_block_content( $content ) {
-		// 1. Remove any incomplete HTML comment that was never closed.
-		//    The regex matches "<!--" followed by anything that does NOT contain "-->"
-		//    which means the comment was truncated before its closing delimiter.
 		$content = preg_replace( '/<!--(?![\s\S]*?-->)[\s\S]*$/u', '', $content );
 		$content = trim( $content );
 
-		// 2. Walk every Gutenberg block comment and track nesting with a stack.
-		//    Pattern captures:
-		//      group 1 — "/" for closing tags
-		//      group 2 — block name (e.g. "columns", "wp:group/inner" etc.)
-		//      group 3 — "/" at the end for self-closing tags
 		preg_match_all(
 			'/<!--\s*(\/?)wp:([\w\/-]+)(?:\s[^-]*)?\s*(\/?)-->/i',
 			$content,
@@ -612,12 +911,10 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$is_self_closing = ( '/' === trim( $match[3] ) );
 
 			if ( $is_self_closing ) {
-				// Self-closing blocks (e.g. <!-- wp:spacer /--> ) need no stack entry.
 				continue;
 			}
 
 			if ( $is_closing ) {
-				// Pop the stack only when the closing tag matches the most recent opener.
 				if ( ! empty( $stack ) && end( $stack ) === $block_name ) {
 					array_pop( $stack );
 				}
@@ -626,7 +923,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 		}
 
-		// 3. Close any blocks that were opened but never closed (most recent first).
 		while ( ! empty( $stack ) ) {
 			$block_name = array_pop( $stack );
 			$content   .= "\n<!-- /wp:{$block_name} -->";
@@ -635,515 +931,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		return $content;
 	}
 
-	/**
-	 * Parse a [PUBLISH_READY] AI response into structured fields.
-	 *
-	 * Returns an array with keys: is_publish_ready, title, slug, description, type, html.
-	 * If the content is not a [PUBLISH_READY] response, is_publish_ready is false
-	 * and all other keys are empty strings.
-	 *
-	 * @param string $content Raw AI response content.
-	 * @return array Parsed publish metadata and HTML.
-	 */
-	private function parse_publish_ready( $content ) {
-		$result = array(
-			'is_publish_ready' => false,
-			'title'            => '',
-			'slug'             => '',
-			'description'      => '',
-			'type'             => '',
-			'html'             => '',
-		);
-
-		if ( strpos( $content, '[PUBLISH_READY]' ) === false ) {
-			return $result;
-		}
-
-		$result['is_publish_ready'] = true;
-
-		// Extract metadata fields
-		if ( preg_match( '/^Title:\s*(.+)$/m', $content, $m ) ) {
-			$result['title'] = trim( $m[1] );
-		}
-		if ( preg_match( '/^Slug:\s*(.+)$/m', $content, $m ) ) {
-			$result['slug'] = trim( $m[1] );
-		}
-		if ( preg_match( '/^Description:\s*(.+)$/m', $content, $m ) ) {
-			$result['description'] = trim( $m[1] );
-		}
-		if ( preg_match( '/^Type:\s*(.+)$/m', $content, $m ) ) {
-			$result['type'] = strtolower( trim( $m[1] ) );
-		}
-
-		// Everything after the --- separator is the HTML content
-		$separator_pos = strpos( $content, "\n---\n" );
-		if ( false !== $separator_pos ) {
-			$result['html'] = trim( substr( $content, $separator_pos + 5 ) );
-		}
-
-		return $result;
-	}
-
-	/**
-	 * Exchange Hiive token for JWT token from JWT worker
-	 *
-	 * @param string $hiive_token The Hiive authentication token
-	 * @return string|\WP_Error JWT token or WP_Error on failure
-	 */
-	private function get_jwt_token( $hiive_token ) {
-		// Get brand from plugin or fallback to option
-		$brand = get_option( 'mm_brand', 'web' );
-		
-		// Apply the AI SiteGen brand filter to allow brand mapping
-		$brand = apply_filters( 'newfold_ai_sitegen_brand', $brand );
-		
-		// Prepare headers
-		$headers = array(
-			'Content-Type' => 'application/json',
-			'Accept'       => 'application/json',
-		);
-		
-		// Add brand as X-Newfold-Brand header if available (matches cf-worker-ai-sitegen pattern)
-		if ( $brand ) {
-			$headers['X-Newfold-Brand'] = $brand;
-		}
-		
-		$test_token = "test-ai-sitegen";
-		
-		$response = wp_remote_post(
-			'https://cf-worker-newfold-services-jwt.bluehost.workers.dev/',
-			array(
-				'headers' => $headers,
-				'timeout' => 30,
-				'body'    => wp_json_encode(
-					array(
-						'hiiveToken' => $test_token,
-					)
-				),
-			)
-		);
-
-		$response_code = wp_remote_retrieve_response_code( $response );
-		
-		if ( 200 !== $response_code ) {
-			return new \WP_Error(
-				'jwt_generation_error',
-				__( 'Failed to obtain JWT token from JWT worker', 'wp-module-ai-page-designer' ),
-				array( 'status' => $response_code )
-			);
-		}
-
-		$result = json_decode( wp_remote_retrieve_body( $response ), true );
-		
-		if ( ! isset( $result['jwt'] ) ) {
-			return new \WP_Error(
-				'jwt_generation_error',
-				__( 'Invalid response from JWT worker', 'wp-module-ai-page-designer' ),
-				array( 'status' => 500 )
-			);
-		}
-		return $result['jwt'];
-	}
-
-	/**
-	 * Fetch images from Unsplash based on a query.
-	 *
-	 * @param string $query The search query.
-	 * @return array Array of image URLs.
-	 */
-	private function get_unsplash_images( $query ) {
-		$hiive_base_url = defined( 'NFD_HIIVE_BASE_URL' ) ? NFD_HIIVE_BASE_URL : 'https://hiive.cloud';
-		$endpoint       = '/workers/unsplash/search/photos';
-		
-		// Clean up query: remove common conversational words to get better image results.
-		// Also remove site/brand name tokens to avoid skewed image results.
-		$stopwords = array('create', 'a', 'an', 'the', 'page', 'post', 'about', 'for', 'with', 'design', 'make', 'website', 'site', 'my', 'new', 'add', 'some', 'images', 'image', 'picture', 'photos', 'photo', 'update', 'modify', 'change', 'landing', 'home', 'homepage', 'contact', 'services', 'portfolio');
-		$site_name = get_bloginfo( 'name' );
-		if ( $site_name ) {
-			$site_words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $site_name ) ) );
-			$stopwords  = array_merge( $stopwords, array_filter( $site_words ) );
-		}
-		$words = explode( ' ', strtolower( preg_replace( '/[^a-zA-Z0-9\s]/', '', $query ) ) );
-		$keywords = array_diff( $words, $stopwords );
-		$search_query = implode( ' ', array_slice( $keywords, 0, 4 ) );
-		
-		if ( empty( trim( $search_query ) ) ) {
-			$search_query = 'nature'; // fallback
-		}
-
-		$args = array(
-			'query'    => trim( $search_query ),
-			'per_page' => 15, // Increase to 15 to have a better pool to randomize from
-		);
-		$transient_key = 'nfd_unsplash_' . md5( $args['query'] );
-		$cached_images = get_transient( $transient_key );
-
-		if ( false !== $cached_images && is_array( $cached_images ) && ! empty( $cached_images ) ) {
-			return $cached_images;
-		}
-
-		$request_url = $hiive_base_url . $endpoint . '?' . http_build_query( $args );
-
-		$response = wp_remote_get( $request_url, array( 'timeout' => 10 ) );
-		$images = array();
-
-		if ( ! is_wp_error( $response ) && 200 === wp_remote_retrieve_response_code( $response ) ) {
-			$body = json_decode( wp_remote_retrieve_body( $response ), true );
-			if ( ! empty( $body['results'] ) ) {
-				foreach ( $body['results'] as $result ) {
-					if ( ! empty( $result['urls']['regular'] ) ) {
-						$images[] = $result['urls']['regular'];
-					}
-				}
-				
-				if ( ! empty( $images ) ) {
-					// Cache the image results for an hour
-					set_transient( $transient_key, $images, HOUR_IN_SECONDS );
-				}
-			}
-		}
-
-		return $images;
-	}
-
-	/**
-	 * Replace image URLs in HTML content with Unsplash images using native WP parsers.
-	 *
-	 * @param string $html The HTML content containing images
-	 * @param array $unsplash_images Array of Unsplash image URLs
-	 * @return string The updated HTML
-	 */
-	private function replace_images_in_html( $html, $unsplash_images ) {
-		if ( empty( $unsplash_images ) ) {
-			return $html;
-		}
-
-		$image_index = 0;
-		$total_images = count( $unsplash_images );
-		$url_map = array();
-
-		// 1. Replace URLs inside Gutenberg block comments safely using parse_blocks
-		$blocks = parse_blocks( $html );
-		
-		// We only need to process if there are actual blocks
-		if ( ! empty( $blocks ) ) {
-			$this->update_block_images_recursive( $blocks, $url_map, $unsplash_images, $image_index, $total_images );
-			
-			// Rebuild HTML from blocks
-			$html = '';
-			foreach ( $blocks as $block ) {
-				$html .= serialize_blocks( array($block) );
-			}
-		}
-
-		// 2. Replace <img> src attributes safely using WP_HTML_Tag_Processor
-		// Doing this AFTER parse_blocks/serialize_blocks to catch any stragglers 
-		// that weren't inside a core/image or core/cover block's specific attrs
-		if ( class_exists( 'WP_HTML_Tag_Processor' ) ) {
-			$tags = new \WP_HTML_Tag_Processor( $html );
-			while ( $tags->next_tag( 'img' ) ) {
-				$orig_url = $tags->get_attribute( 'src' );
-				if ( $orig_url ) {
-					$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
-					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
-						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
-					}
-					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-					
-					if ( isset( $url_map[ $orig_url ] ) ) {
-						$new_url = $url_map[ $orig_url ];
-						if ( strpos($new_url, 'cb=') === false ) {
-							$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
-						}
-						$tags->set_attribute( 'src', $new_url );
-					}
-					// Remove srcset if it exists so browser falls back to src
-					$tags->remove_attribute( 'srcset' );
-				}
-			}
-			$html = $tags->get_updated_html();
-			
-			// Also replace inline styles for background images
-			$html = preg_replace_callback('/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i', function($matches) use (&$image_index, &$url_map, $unsplash_images, $total_images) {
-				$orig_url = $matches[1];
-				
-				$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
-				if ( ! isset( $url_map[ $base_orig_url ] ) ) {
-					$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-					$image_index++;
-				}
-				$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-				
-				$new_url = $url_map[ $orig_url ];
-				if ( strpos($new_url, 'cb=') === false ) {
-					$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
-				}
-				return 'background-image: url(' . $new_url . ')';
-			}, $html);
-			
-		} else {
-			// Fallback if WP_HTML_Tag_Processor doesn't exist (older WP versions)
-			$html = preg_replace_callback( '/<img[^>]+src=["\']([^"\']+)["\']/i', function( $matches ) use ( &$image_index, &$url_map, $unsplash_images, $total_images ) {
-				$orig_url = $matches[1];
-				
-				$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
-				if ( ! isset( $url_map[ $base_orig_url ] ) ) {
-					$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-					$image_index++;
-				}
-				$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-				
-				$new_url = $url_map[ $orig_url ];
-				if ( strpos($new_url, 'cb=') === false ) {
-					$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
-				}
-				return str_replace( $orig_url, $new_url, $matches[0] );
-			}, $html );
-			// Also strip srcset from fallback since we don't have srcset unsplash URLs
-			$html = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $html);
-		}
-
-		// Fallback for any other remaining images using regex just in case
-		$html = preg_replace_callback( '/(<img[^>]+src=["\'])([^"\']+)["\']/', function( $matches ) use ( &$url_map, $unsplash_images, &$image_index, $total_images ) {
-			$orig_url = $matches[2];
-			
-			$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
-			if ( ! isset( $url_map[ $base_orig_url ] ) ) {
-				$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-				$image_index++;
-			}
-			$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-			
-			$new_url = $url_map[ $orig_url ];
-			if ( strpos($new_url, 'cb=') === false ) {
-				$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
-			}
-			return $matches[1] . $new_url . '"';
-		}, $html );
-		
-		// Remove all srcset attributes to prevent old images from showing
-		$html = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $html);
-
-		return trim($html);
-	}
-
-	/**
-	 * Recursively update image URLs in parsed Gutenberg blocks
-	 *
-	 * @param array &$blocks Parsed blocks array
-	 * @param array &$url_map Map of original to new URLs
-	 * @param array $unsplash_images Array of available Unsplash URLs
-	 * @param int &$image_index Current index in the Unsplash array
-	 * @param int $total_images Total number of Unsplash images
-	 */
-	private function update_block_images_recursive( &$blocks, &$url_map, $unsplash_images, &$image_index, $total_images ) {
-		foreach ( $blocks as &$block ) {
-			// Check if block has an attrs array
-			if ( ! isset( $block['attrs'] ) ) {
-				$block['attrs'] = array();
-			}
-			
-			// Update wp:image block URL attribute
-			if ( 'core/image' === $block['blockName'] ) {
-				if ( isset( $block['attrs']['url'] ) ) {
-					$orig_url = $block['attrs']['url'];
-				} else {
-					// Sometimes the URL is only in the innerHTML, extract it
-					if ( preg_match('/src=["\']([^"\']+)["\']/i', $block['innerHTML'], $m) ) {
-						$orig_url = $m[1];
-					} else {
-						$orig_url = '';
-					}
-				}
-				
-				// Make sure we have a URL to map
-				if ( ! empty( $orig_url ) ) {
-					$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
-					
-					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
-						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
-					}
-					// Map both with and without cb to the same new base image
-					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-					
-					if ( isset( $url_map[ $orig_url ] ) ) {
-						$block['attrs']['url'] = $url_map[ $orig_url ];
-						$block['attrs']['id'] = null; // Remove the old ID to prevent block validation errors and forcing it to look new
-						
-						// Also update HTML content strings inside the block array
-						if ( ! empty( $block['innerHTML'] ) ) {
-							$new_url = $url_map[ $orig_url ];
-							// Add a random cache buster so images look "new" even if URL is same
-							if ( strpos($new_url, 'cb=') === false ) {
-								$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
-							}
-							$block['innerHTML'] = preg_replace_callback('/(src=["\'])([^"\']+)(["\'])/i', function($matches) use ($new_url) {
-								return $matches[1] . $new_url . $matches[3];
-							}, $block['innerHTML']);
-							// Check for img src inside srcset as well
-							$block['innerHTML'] = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $block['innerHTML']);
-						}
-						if ( ! empty( $block['innerContent'] ) ) {
-							foreach ( $block['innerContent'] as &$content_string ) {
-								if ( is_string( $content_string ) ) {
-									$new_url = $url_map[ $orig_url ];
-									if ( strpos($new_url, 'cb=') === false ) {
-										$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
-									}
-									// Update to correctly replace inside Gutenberg comments and image tags in innerContent
-									$content_string = preg_replace_callback('/(src=["\'])([^"\']+)(["\'])/i', function($matches) use ($new_url) {
-										return $matches[1] . $new_url . $matches[3];
-									}, $content_string);
-									// Catch innerContent comments that store the raw image block before parsing
-									$content_string = preg_replace_callback('/"url":"([^"]+)"/i', function($matches) use ($new_url) {
-										return '"url":"' . $new_url . '"';
-									}, $content_string);
-									$content_string = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $content_string);
-								}
-							}
-						}
-					}
-				}
-			}
-			
-			// Update wp:cover block URL attribute
-			if ( 'core/cover' === $block['blockName'] ) {
-				if ( isset( $block['attrs']['url'] ) ) {
-					$orig_url = $block['attrs']['url'];
-				} else {
-					$orig_url = '';
-				}
-				
-				if ( ! empty( $orig_url ) ) {
-					$base_orig_url = preg_replace('/[?&]cb=\d+/', '', $orig_url);
-					
-					if ( ! isset( $url_map[ $base_orig_url ] ) ) {
-						$url_map[ $base_orig_url ] = $unsplash_images[ $image_index % $total_images ];
-						$image_index++;
-					}
-					// Map both with and without cb to the same new base image
-					$url_map[ $orig_url ] = $url_map[ $base_orig_url ];
-					
-					if ( isset( $url_map[ $orig_url ] ) ) {
-						$block['attrs']['url'] = $url_map[ $orig_url ];
-						$block['attrs']['id'] = null; // Remove the old ID to prevent block validation errors and forcing it to look new
-						
-						// Also update HTML content strings inside the block array
-						if ( ! empty( $block['innerHTML'] ) ) {
-							$new_url = $url_map[ $orig_url ];
-							if ( strpos($new_url, 'cb=') === false ) {
-								$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
-							}
-							$block['innerHTML'] = preg_replace_callback('/url\([\'"]?([^\'"]+)[\'"]?\)/i', function($matches) use ($new_url) {
-								return 'url(' . $new_url . ')';
-							}, $block['innerHTML']);
-							$block['innerHTML'] = preg_replace_callback('/(src=["\'])([^"\']+)(["\'])/i', function($matches) use ($new_url) {
-								return $matches[1] . $new_url . $matches[3];
-							}, $block['innerHTML']);
-							$block['innerHTML'] = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $block['innerHTML']);
-						}
-						if ( ! empty( $block['innerContent'] ) ) {
-							foreach ( $block['innerContent'] as &$content_string ) {
-								if ( is_string( $content_string ) ) {
-									$new_url = $url_map[ $orig_url ];
-									if ( strpos($new_url, 'cb=') === false ) {
-										$new_url .= (strpos($new_url, '?') !== false ? '&' : '?') . 'cb=' . rand(1000, 9999);
-									}
-									$content_string = preg_replace_callback('/url\([\'"]?([^\'"]+)[\'"]?\)/i', function($matches) use ($new_url) {
-										return 'url(' . $new_url . ')';
-									}, $content_string);
-									$content_string = preg_replace_callback('/(src=["\'])([^"\']+)(["\'])/i', function($matches) use ($new_url) {
-										return $matches[1] . $new_url . $matches[3];
-									}, $content_string);
-									$content_string = preg_replace_callback('/"url":"([^"]+)"/i', function($matches) use ($new_url) {
-										return '"url":"' . $new_url . '"';
-									}, $content_string);
-									$content_string = preg_replace('/srcset=["\'][^"\']+["\']/i', '', $content_string);
-								}
-							}
-						}
-					}
-				}
-			}
-
-			// Process inner blocks recursively
-			if ( ! empty( $block['innerBlocks'] ) ) {
-				$this->update_block_images_recursive( $block['innerBlocks'], $url_map, $unsplash_images, $image_index, $total_images );
-			}
-		}
-	}
-
-	/**
-	 * Recursively update block themes
-	 *
-	 * @param array &$blocks Parsed blocks array
-	 * @param string $theme_mode The requested theme mode (dark, light, etc)
-	 */
-	private function update_block_theme_recursive( &$blocks, $theme_mode ) {
-		// Map user intent to our standard theme slugs
-		$target_slug = 'white';
-		if ( in_array( $theme_mode, array( 'dark', 'black' ) ) ) {
-			$target_slug = 'dark';
-		} elseif ( in_array( $theme_mode, array( 'blue', 'red', 'green', 'yellow' ) ) ) {
-			$target_slug = 'primary';
-		}
-
-		foreach ( $blocks as &$block ) {
-			// Try to find ANY group block or block that might have our theme classes
-			if ( isset( $block['attrs']['nfdGroupTheme'] ) ) {
-				$old_slug = $block['attrs']['nfdGroupTheme'];
-				
-				$block['attrs']['nfdGroupTheme'] = $target_slug;
-				
-				if ( ! empty( $block['innerHTML'] ) ) {
-					$block['innerHTML'] = str_replace( 
-						'is-style-nfd-theme-' . $old_slug, 
-						'is-style-nfd-theme-' . $target_slug, 
-						$block['innerHTML'] 
-					);
-				}
-				
-				if ( ! empty( $block['innerContent'] ) ) {
-					foreach ( $block['innerContent'] as &$content_string ) {
-						if ( is_string( $content_string ) ) {
-							$content_string = str_replace( 
-								'is-style-nfd-theme-' . $old_slug, 
-								'is-style-nfd-theme-' . $target_slug, 
-								$content_string 
-							);
-						}
-					}
-				}
-			} else {
-				// Even if it doesn't have the nfdGroupTheme attr, maybe it has the class in the raw HTML
-				if ( ! empty( $block['innerHTML'] ) && strpos( $block['innerHTML'], 'is-style-nfd-theme-' ) !== false ) {
-					$block['innerHTML'] = preg_replace( 
-						'/is-style-nfd-theme-(white|dark|primary|secondary|tertiary|quaternary)/', 
-						'is-style-nfd-theme-' . $target_slug, 
-						$block['innerHTML'] 
-					);
-				}
-				if ( ! empty( $block['innerContent'] ) ) {
-					foreach ( $block['innerContent'] as &$content_string ) {
-						if ( is_string( $content_string ) && strpos( $content_string, 'is-style-nfd-theme-' ) !== false ) {
-							$content_string = preg_replace( 
-								'/is-style-nfd-theme-(white|dark|primary|secondary|tertiary|quaternary)/', 
-								'is-style-nfd-theme-' . $target_slug, 
-								$content_string 
-							);
-						}
-					}
-				}
-			}
-
-			// Process inner blocks recursively
-			if ( ! empty( $block['innerBlocks'] ) ) {
-				$this->update_block_theme_recursive( $block['innerBlocks'], $theme_mode );
-			}
-		}
-	}
 	/**
 	 * Check permissions for routes.
 	 *

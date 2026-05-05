@@ -34,7 +34,7 @@ This is a WordPress module (library) that adds an AI-powered page designer UI to
 - **Mount:** App mounts as `window.AIPageDesignerApp` (or `#nfd-ai-page-designer-root`). WordPress config is passed via `window.nfdAIPageDesigner` (localized script).
 - **Two views:** Dashboard (list existing pages/posts) and Designer (AI chat + live preview).
 - **Live preview:** An iframe loads WordPress block library CSS + active theme styles to render Gutenberg block markup in real time.
-- **Fast path:** `getLocalStyleChange()` in `src/util/aiDesignerHelpers.ts` detects simple prompts (dark mode, color changes) and applies CSS directly without an AI round-trip.
+- **Fast path:** `FastPathHandler` (PHP) handles image replacement requests without an AI round-trip. All style/color changes go through the full AI pipeline so the result is proper block markup that persists on publish.
 - **Conversation state:** `useAiConversation` hook manages message history, tracks `response_id` for chaining, and maintains `HistoryEntry[]` for the history drawer.
 
 ### Backend (PHP)
@@ -78,3 +78,34 @@ HistoryEntry // { id, html, label, timestamp, publishTitle? }
 - The parent plugin (`wp-plugin-web`) loads this module; the admin menu is registered by the parent.
 - Assets are enqueued only on the `web` admin page via `admin_enqueue_scripts`.
 - WordPress block library and theme stylesheets are injected into the preview iframe by `usePreviewIframe`.
+
+## Coding Guidelines
+
+### PHP Standards
+
+**NEVER use short ternary operators** (`?:`):
+
+```php
+// ❌ Avoid short ternary:
+$result = $value ?: 'default';
+
+// ✅ Prefer explicit ternary:
+$result = $value ? $value : 'default';
+
+// ✅ Null coalescing is OK:
+$name = $user->getName() ?? 'Unknown';
+$config = $options['setting'] ?? $defaults['setting'];
+
+// ✅ Or explicit conditionals for complex logic:
+if ($value) {
+    $result = $value;
+} else {
+    $result = 'default';
+}
+```
+
+**cURL Usage:** Always add phpcs ignore comments when using cURL functions:
+```php
+// phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_init
+$curl = curl_init();
+```

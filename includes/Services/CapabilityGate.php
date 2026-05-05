@@ -30,6 +30,21 @@ class CapabilityGate {
 	}
 
 	/**
+	 * Check whether the AI Page Designer feature is enabled for the current site.
+	 *
+	 * @return bool
+	 */
+	public static function has_ai_page_designer() {
+		if ( ! class_exists( SiteCapabilities::class ) ) {
+			return false;
+		}
+
+		$capabilities = new SiteCapabilities();
+
+		return (bool) $capabilities->get( 'canAccessAIPageDesigner' );
+	}
+
+	/**
 	 * Check whether the current user can access the AI Page Designer routes.
 	 *
 	 * @return bool|\WP_Error
@@ -47,6 +62,14 @@ class CapabilityGate {
 			return new \WP_Error(
 				'rest_forbidden',
 				__( 'AI Site Generation is not enabled for your site', 'wp-module-ai-page-designer' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		if ( ! self::has_ai_page_designer() ) {
+			return new \WP_Error(
+				'rest_forbidden',
+				__( 'AI Page Designer is not enabled for your site', 'wp-module-ai-page-designer' ),
 				array( 'status' => 403 )
 			);
 		}

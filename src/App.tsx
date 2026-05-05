@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import ChatPanel from './components/ChatPanel';
+import { PlusIcon, SparklesIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
 import DashboardView from './components/DashboardView';
-import DesignerTabs from './components/DesignerTabs';
 import MetaStrip from './components/MetaStrip';
 import PreviewFrame from './components/PreviewFrame';
 import PublishModal from './components/PublishModal';
 import RevertConfirm from './components/RevertConfirm';
+import SidePanel from './components/SidePanel';
 import { useAiConversation } from './hooks/useAiConversation';
 import { useBlockSelection } from './hooks/useBlockSelection';
 import { usePreviewIframe } from './hooks/usePreviewIframe';
 import { usePublishFlow } from './hooks/usePublishFlow';
 import { useSiteContent } from './hooks/useSiteContent';
+import { convertHtmlToGutenberg, hasGutenbergMarkers } from './util/aiDesignerHelpers';
 import type { WPItem } from './types';
 
 declare global {
@@ -23,18 +24,19 @@ declare global {
       canAccessAI: boolean;
       currentUserId: number;
       ajaxUrl: string;
+      enableStreaming?: boolean;
       previewStylesheets?: {
         blockLibrary: string;
         themeUrl: string;
         globalStyles: string;
       };
+      colorPalette?: Array<{ slug: string; name: string; color: string }>;
     };
   }
 }
 
-const { nfdAIPageDesigner } = window;
-
 const App = () => {
+  const { nfdAIPageDesigner } = window;
   const [ previewHtml, setPreviewHtml ] = useState<string | null>( null );
   const [ originalPreviewHtml, setOriginalPreviewHtml ] = useState<string | null>( null );
   const [ selectedItem, setSelectedItem ] = useState<WPItem | null>( null );
@@ -48,7 +50,6 @@ const App = () => {
   const [ metaExcerpt, setMetaExcerpt ] = useState( '' );
   const [ metaFeaturedMediaId, setMetaFeaturedMediaId ] = useState<number | null>( null );
   const [ metaFeaturedImageUrl, setMetaFeaturedImageUrl ] = useState<string | null>( null );
-  const [ metaStripOpen, setMetaStripOpen ] = useState( false );
   const [ originalMeta, setOriginalMeta ] = useState<{
     title: string;
     excerpt: string;
@@ -61,9 +62,10 @@ const App = () => {
     nfdAIPageDesigner.apiUrl,
     'dashboard' === view
   );
+  const previewUrl = selectedItem?.link || nfdAIPageDesigner.siteUrl;
   const { iframeRef } = usePreviewIframe(
     previewHtml,
-    nfdAIPageDesigner.siteUrl,
+    previewUrl,
     nfdAIPageDesigner.previewStylesheets
   );
   const { selectedBlockIndex, selectedBlockHtml, clearSelection } = useBlockSelection();
@@ -85,12 +87,17 @@ const App = () => {
     previewHtml,
     originalPreviewHtml,
     publishTitle,
+    metaTitle,
+    metaExcerpt,
     selectedItem,
     selectedBlockIndex,
     selectedBlockHtml,
     iframeRef,
     setPreviewHtml,
     setPublishTitle,
+    setMetaTitle,
+    setMetaExcerpt,
+    setMetaFeaturedImageUrl,
     clearSelection,
   } );
 
@@ -116,6 +123,14 @@ const App = () => {
         featuredMediaId: nextFeaturedMediaId,
       } );
     },
+    onPublished: ( item ) => {
+      setSelectedItem( item );
+      setOriginalMeta( {
+        title: metaTitle,
+        excerpt: metaExcerpt,
+        featuredMediaId: metaFeaturedMediaId,
+      } );
+    },
     appendAssistantMessage: conversation.appendAssistantMessage,
   } );
 
@@ -124,10 +139,11 @@ const App = () => {
     publishFlow.resetPublishState();
     setSelectedItem( item );
     setView( 'designer' );
-    const cleanTitle = stripHtml( item.title?.rendered || '' );
-    conversation.setInput( `Redesign my existing WordPress ${ item.type } titled "${ cleanTitle }" — keep the same topic but make it modern and professional` );
 
-    const baseHtml = item.content?.raw || item.content?.rendered || '';
+    const rawHtml = item.content?.raw || item.content?.rendered || '';
+    const baseHtml = rawHtml && ! hasGutenbergMarkers( rawHtml )
+      ? convertHtmlToGutenberg( rawHtml )
+      : rawHtml;
     setOriginalPreviewHtml( baseHtml );
     setPreviewHtml( baseHtml );
     const nextTitle = stripHtml( item.title?.rendered || '' );
@@ -158,7 +174,22 @@ const App = () => {
     setOriginalMeta( null );
     setPublishTitle( '' );
     setView( 'designer' );
-    conversation.setInput( 'Create a modern homepage with a hero section, key features, and a call to action' );
+  };
+
+  const handleCreateWithPrompt = ( prompt: string ) => {
+    conversation.resetAiConversation();
+    publishFlow.resetPublishState();
+    setSelectedItem( null );
+    setPreviewHtml( null );
+    setOriginalPreviewHtml( null );
+    setMetaTitle( '' );
+    setMetaExcerpt( '' );
+    setMetaFeaturedMediaId( null );
+    setMetaFeaturedImageUrl( null );
+    setOriginalMeta( null );
+    setPublishTitle( '' );
+    setView( 'designer' );
+    conversation.handleSend( prompt );
   };
 
   const handleShowDashboard = () => {
@@ -241,14 +272,56 @@ const App = () => {
     setMetaFeaturedImageUrl( selectedItem.featured_image_url || null );
   }, [ selectedItem ] );
 
+  const header = (
+    <header className="ai-designer-header">
+      <div className="ai-designer-header__left">
+        <span className="ai-designer-header__logo">AI Page Designer</span>
+        <nav className="ai-designer-header__nav">
+          <button
+            type="button"
+            className={ `ai-designer-header__nav-btn ${ view === 'dashboard' ? 'active' : '' }` }
+            onClick={ handleShowDashboard }
+          >
+            <Squares2X2Icon className="icon" />
+            Dashboard
+          </button>
+          <button
+            type="button"
+            className={ `ai-designer-header__nav-btn ${ view === 'designer' ? 'active' : '' }` }
+            onClick={ handleShowDesigner }
+          >
+            <SparklesIcon className="icon" />
+            Designer
+          </button>
+        </nav>
+      </div>
+      <div className="ai-designer-header__right">
+        { view === 'designer' && ( conversation.hasAIGenerated || metaDirty ) && (
+          <button
+            type="button"
+            className="ai-btn ai-btn--primary"
+            onClick={ handlePublishBarClick }
+            disabled={ publishFlow.publishing }
+          >
+            { publishFlow.publishing ? 'Publishing...' : 'Publish Page' }
+          </button>
+        ) }
+        <button
+          type="button"
+          className="ai-btn ai-btn--primary ai-btn--create-new"
+          onClick={ handleCreateNew }
+        >
+          <PlusIcon className="icon" />
+          Create New
+        </button>
+      </div>
+    </header>
+  );
+
   if ( 'dashboard' === view ) {
     return (
       <div id="nfd-ai-page-designer-root" className="ai-designer-container">
-        <DesignerTabs
-          view={ view }
-          onDashboard={ handleShowDashboard }
-          onDesigner={ handleShowDesigner }
-        />
+        { header }
         <div className="ai-designer-body">
           <DashboardView
             loadingSite={ loadingSite }
@@ -258,7 +331,7 @@ const App = () => {
             postsSearchQuery={ postsSearchQuery }
             pagesExpanded={ pagesExpanded }
             postsExpanded={ postsExpanded }
-            onCreateNew={ handleCreateNew }
+            onCreateWithPrompt={ handleCreateWithPrompt }
             onSelectItem={ handleSelectItem }
             onPagesSearchChange={ setPagesSearchQuery }
             onPostsSearchChange={ setPostsSearchQuery }
@@ -272,28 +345,11 @@ const App = () => {
 
   return (
     <div id="nfd-ai-page-designer-root" className="ai-designer-container">
-      <DesignerTabs
-        view={ view }
-        onDashboard={ handleShowDashboard }
-        onDesigner={ handleShowDesigner }
-      />
+      { header }
       <div className="ai-designer-body">
         <div className="ai-designer-main">
-          { Boolean( selectedItem ) && (
-            <button
-              type="button"
-              className="ai-meta-strip-bar"
-              onClick={ () => setMetaStripOpen( ( prev ) => ! prev ) }
-              aria-expanded={ metaStripOpen }
-            >
-              <span className="ai-meta-strip-bar__label">Page details</span>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={ { transform: metaStripOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' } }>
-                <path d="M2 4.5L7 9.5L12 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-          ) }
           <MetaStrip
-            visible={ Boolean( selectedItem ) && metaStripOpen }
+            visible={ Boolean( selectedItem ) || conversation.hasAIGenerated }
             title={ metaTitle }
             excerpt={ metaExcerpt }
             featuredImageUrl={ metaFeaturedImageUrl }
@@ -306,22 +362,23 @@ const App = () => {
             onRemoveImage={ handleRemoveImage }
           />
           <div className="ai-designer-content">
-            <ChatPanel
+            <SidePanel
               messages={ conversation.messages }
               chatMessagesRef={ conversation.chatMessagesRef }
               isLoading={ conversation.isLoading }
-              historyEntries={ conversation.historyEntries }
-              selectedHistoryIds={ conversation.selectedHistoryIds }
-              isHistoryOpen={ conversation.isHistoryOpen }
-              onToggleHistoryOpen={ () => conversation.setIsHistoryOpen( ( prev ) => ! prev ) }
-              onToggleHistorySelection={ conversation.handleToggleHistorySelection }
-              onRevertSelected={ conversation.handleRevertSelectedHistory }
-              onClearSelectedHistory={ () => conversation.setSelectedHistoryIds( [] ) }
-              hasAIGenerated={ conversation.hasAIGenerated || metaDirty }
+              hasAIGenerated={ conversation.hasAIGenerated }
+              metaDirty={ metaDirty }
               publishing={ publishFlow.publishing }
               selectedItem={ selectedItem }
+              input={ conversation.input }
+              selectedBlockIndex={ selectedBlockIndex }
+              historyEntries={ conversation.historyEntries }
+              previewHtml={ previewHtml }
+              onInputChange={ conversation.setInput }
+              onSend={ () => conversation.handleSend() }
+              onClearSelection={ () => clearSelection( iframeRef ) }
               onPublish={ handlePublishBarClick }
-              onRevertChanges={ publishFlow.openRevertConfirm }
+              onRevertTo={ conversation.handleRevertToEntry }
             />
 
             <PreviewFrame
@@ -329,47 +386,6 @@ const App = () => {
               selectedItem={ selectedItem }
               iframeRef={ iframeRef }
             />
-          </div>
-
-          <div className="chat-input-area">
-            { selectedBlockIndex !== null && (
-              <div className="selected-block-indicator">
-                <div className="selected-block-indicator__content">
-                  <div className="selected-block-indicator__dot"></div>
-                  <span className="selected-block-indicator__text">
-                    <strong>Targeted Edit.</strong> Prompt affects only the highlighted section.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={ () => clearSelection( iframeRef ) }
-                  className="selected-block-indicator__button"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) }
-            <div className="chat-input-wrapper">
-              <textarea
-                value={ conversation.input }
-                onChange={ ( e ) => conversation.setInput( ( e.target as HTMLTextAreaElement ).value ) }
-                onKeyDown={ ( e ) => {
-                  if ( e.key === 'Enter' && ! e.shiftKey ) {
-                    e.preventDefault();
-                    conversation.handleSend();
-                  }
-                } }
-                placeholder="Describe your design idea... (Press Enter to send, Shift+Enter for new line)"
-                className="chat-textarea"
-              />
-              <button
-                onClick={ conversation.handleSend }
-                disabled={ ! conversation.input.trim() || conversation.isLoading }
-                className="chat-send-button"
-              >
-                { conversation.isLoading ? 'Generating...' : 'Send' }
-              </button>
-            </div>
           </div>
         </div>
       </div>

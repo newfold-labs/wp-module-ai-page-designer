@@ -18,11 +18,6 @@ if ( function_exists( 'add_action' ) ) {
 	add_action(
 		'plugins_loaded',
 		function () {
-			// Only load module if AI SiteGen is enabled.
-			if ( ! CapabilityGate::has_ai_site_gen() ) {
-				return;
-			}
-
 			// Set Global Constants
 			if ( ! defined( 'NFD_MODULE_AI_PAGE_DESIGNER_DIR' ) ) {
 				define( 'NFD_MODULE_AI_PAGE_DESIGNER_DIR', __DIR__ );

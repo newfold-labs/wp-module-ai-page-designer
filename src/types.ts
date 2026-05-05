@@ -1,6 +1,8 @@
 export type Message = {
   role: 'user' | 'assistant';
   content: string;
+  summary?: string;
+  code?: string;
   link?: string;
 };
 
@@ -15,6 +17,8 @@ export type WPItem = {
   status: string;
   link: string;
   type: string;
+  date?: string;
+  modified?: string;
 };
 
 export type PublishStatus = { type: 'success' | 'error'; message: string } | null;
@@ -25,4 +29,6 @@ export type HistoryEntry = {
   label: string;
   timestamp: string;
   publishTitle?: string;
+  metaExcerpt?: string;
+  metaFeaturedImageUrl?: string;
 };
