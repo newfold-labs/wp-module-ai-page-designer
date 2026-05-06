@@ -484,6 +484,10 @@ class AiClientWorker {
 			$context['selected_block_markup'] = $options['selected_block_markup'];
 		}
 
+		if ( ! empty( $options['single_block_edit'] ) ) {
+			$context['single_block_edit'] = true;
+		}
+
 		return $context;
 	}
 

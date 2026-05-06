@@ -132,6 +132,93 @@ const extractRequestedTextColor = ( text: string ): { label: string; value: stri
   return null;
 };
 
+const extractRequestedBackgroundColor = ( text: string ): { label: string; value: string; adjustText: boolean } | null => {
+  const lower = text.toLowerCase();
+  const isBackgroundRequest =
+    /\bbackground\b/.test( lower ) &&
+    /\b(color|darker|dark|black|shade|bg)\b/.test( lower );
+
+  if ( ! isBackgroundRequest || /\bimage|photo|picture\b/.test( lower ) ) {
+    return null;
+  }
+
+  const hexMatch = text.match( /#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})\b/i );
+  if ( hexMatch?.[0] ) {
+    return { label: hexMatch[0], value: hexMatch[0], adjustText: false };
+  }
+
+  const funcColorMatch = text.match( /\b(?:rgb|rgba|hsl|hsla)\([^)]+\)/i );
+  if ( funcColorMatch?.[0] && isValidCssColor( funcColorMatch[0] ) ) {
+    return { label: funcColorMatch[0], value: funcColorMatch[0], adjustText: false };
+  }
+
+  if ( /\b(darker|dark|black)\b/.test( lower ) ) {
+    return { label: 'dark', value: '#1f2937', adjustText: true };
+  }
+
+  const phraseCandidates: string[] = [];
+  const toMatch = text.match( /\bto\s+([^.!?,\n]+)/i );
+  const backgroundMatch = text.match( /\bbackground(?:\s+color)?\s+(?:to\s+)?([^.!?,\n]+)/i );
+  if ( toMatch?.[1] ) {
+    phraseCandidates.push( toMatch[1] );
+  }
+  if ( backgroundMatch?.[1] ) {
+    phraseCandidates.push( backgroundMatch[1] );
+  }
+
+  for ( const rawPhrase of phraseCandidates ) {
+    const cleaned = rawPhrase
+      .replace( /\b(for|in|on|within|inside)\b.*$/i, '' )
+      .replace( /[^a-zA-Z\s-]/g, ' ' )
+      .replace( /\s+/g, ' ' )
+      .trim();
+
+    if ( ! cleaned ) {
+      continue;
+    }
+
+    const parts = cleaned.split( ' ' );
+    for ( let len = Math.min( 4, parts.length ); len >= 1; len-- ) {
+      const candidate = parts.slice( 0, len ).join( ' ' ).trim();
+      if ( candidate && isValidCssColor( candidate ) ) {
+        return { label: candidate, value: candidate, adjustText: false };
+      }
+    }
+  }
+
+  return null;
+};
+
+const getPreviewHtmlFromDocument = ( doc: Document ): string => {
+  const root = doc.getElementById( 'nfd-preview-root' );
+
+  if ( root ) {
+    const clone = root.cloneNode( true ) as HTMLElement;
+
+    clone.querySelectorAll( '.nfd-block-wrapper' ).forEach( ( w ) => {
+      while ( w.firstChild ) {
+        w.parentNode?.insertBefore( w.firstChild, w );
+      }
+      w.parentNode?.removeChild( w );
+    } );
+
+    clone.querySelectorAll( 'span' ).forEach( ( s ) => {
+      if ( s.attributes.length === 0 ) {
+        while ( s.firstChild ) {
+          s.parentNode?.insertBefore( s.firstChild, s );
+        }
+        s.parentNode?.removeChild( s );
+      }
+    } );
+
+    return clone.innerHTML;
+  }
+
+  return Array.from( doc.querySelectorAll( '.nfd-block-wrapper' ) )
+    .map( ( w ) => w.innerHTML )
+    .join( '\n\n' );
+};
+
 // Helper: parse Gutenberg markup into a top-level block array via wp.blocks global.
 const wpBlocksParse = ( markup: string ): any[] => {
   const wp = ( window as any )?.wp;
@@ -602,34 +689,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           ( node as HTMLElement ).style.setProperty( 'color', color.value, 'important' );
         } );
 
-        const root = doc.getElementById( 'nfd-preview-root' );
-        let newHtml = '';
-
-        if ( root ) {
-          const clone = root.cloneNode( true ) as HTMLElement;
-
-          clone.querySelectorAll( '.nfd-block-wrapper' ).forEach( ( w ) => {
-            while ( w.firstChild ) {
-              w.parentNode?.insertBefore( w.firstChild, w );
-            }
-            w.parentNode?.removeChild( w );
-          } );
-
-          clone.querySelectorAll( 'span' ).forEach( ( s ) => {
-            if ( s.attributes.length === 0 ) {
-              while ( s.firstChild ) {
-                s.parentNode?.insertBefore( s.firstChild, s );
-              }
-              s.parentNode?.removeChild( s );
-            }
-          } );
-
-          newHtml = clone.innerHTML;
-        } else {
-          newHtml = Array.from( doc.querySelectorAll( '.nfd-block-wrapper' ) )
-            .map( ( w ) => w.innerHTML )
-            .join( '\n\n' );
-        }
+        const newHtml = getPreviewHtmlFromDocument( doc );
 
         if ( ! newHtml ) {
           return false;
@@ -658,6 +718,62 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         setMessages( [
           ...newMessages,
           { role: 'assistant', content: didChange ? `Updated text color to ${ color.label } for this section.` : 'No visible text color changes were applied.' },
+        ] );
+        clearSelection( iframeRef );
+        return true;
+      };
+
+      const applySelectedBackgroundColor = ( color: { label: string; value: string; adjustText: boolean } ): boolean => {
+        const doc = iframeRef.current?.contentDocument;
+        if ( ! doc ) {
+          return false;
+        }
+        const wrapper = doc.querySelector( `.nfd-block-wrapper[data-block-index="${ selectedBlockIndex }"]` );
+        const target = wrapper?.firstElementChild as HTMLElement | null;
+        if ( ! target ) {
+          return false;
+        }
+
+        target.style.setProperty( 'background-color', color.value, 'important' );
+        if ( color.adjustText ) {
+          const textSelector = 'p, h1, h2, h3, h4, h5, h6, li, a, span, strong, em, small, blockquote, figcaption, button, label';
+          const textTargets = target.matches( textSelector )
+            ? [ target, ...Array.from( target.querySelectorAll( textSelector ) ) ]
+            : Array.from( target.querySelectorAll( textSelector ) );
+
+          textTargets.forEach( ( node ) => {
+            ( node as HTMLElement ).style.setProperty( 'color', '#ffffff', 'important' );
+          } );
+        }
+
+        const newHtml = getPreviewHtmlFromDocument( doc );
+        if ( ! newHtml ) {
+          return false;
+        }
+
+        const didChange = newHtml !== previewHtml;
+        setPreviewHtml( newHtml );
+        setHasAIGenerated( true );
+        if ( didChange ) {
+          const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+          const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+          const historyLabel = `Targeted edit: ${ text.substring( 0, 60 ) }`;
+          setHistoryEntries( ( prev ) => [
+            ...prev,
+            {
+              id: historyId,
+              html: newHtml,
+              label: historyLabel,
+              timestamp,
+              publishTitle,
+              metaExcerpt,
+            },
+          ] );
+        }
+
+        setMessages( [
+          ...newMessages,
+          { role: 'assistant', content: didChange ? `Updated background color to ${ color.label } for this section.` : 'No visible background changes were applied.' },
         ] );
         clearSelection( iframeRef );
         return true;
@@ -730,6 +846,11 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       }
 
       if ( selectedBlockIndex !== null && selectedBlockHtml !== null ) {
+        const requestedBackgroundColor = extractRequestedBackgroundColor( text );
+        if ( requestedBackgroundColor && applySelectedBackgroundColor( requestedBackgroundColor ) ) {
+          return;
+        }
+
         const requestedTextColor = extractRequestedTextColor( text );
         if ( requestedTextColor && applySelectedTextColor( requestedTextColor ) ) {
           return;
