@@ -68,7 +68,7 @@ const App = () => {
     previewUrl,
     nfdAIPageDesigner.previewStylesheets
   );
-  const { selectedBlockIndex, selectedBlockHtml, clearSelection } = useBlockSelection();
+  const { selectedBlockIndex, selectedBlockHtml, selectedBlockLabel, clearSelection } = useBlockSelection();
   const canUseMedia = Boolean( ( window as any )?.wp?.media );
   const supportsThumbnail = selectedItem?.supports_thumbnail !== false;
   const metaDirty = useMemo( () => {
@@ -372,6 +372,7 @@ const App = () => {
               selectedItem={ selectedItem }
               input={ conversation.input }
               selectedBlockIndex={ selectedBlockIndex }
+              selectedBlockLabel={ selectedBlockLabel }
               historyEntries={ conversation.historyEntries }
               previewHtml={ previewHtml }
               onInputChange={ conversation.setInput }

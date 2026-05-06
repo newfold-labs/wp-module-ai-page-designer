@@ -1,8 +1,14 @@
-import React, { type RefObject } from 'react';
+import React, { useMemo, type RefObject } from 'react';
 import {
   ArrowTopRightOnSquareIcon,
   ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
+import {
+  CHAT_EXISTING_PAGE_PROMPT_CHIPS,
+  CHAT_NEW_PAGE_PROMPT_CHIPS,
+  CHAT_SELECTED_BLOCK_PROMPT_CHIPS,
+  pickRandomPromptChips,
+} from '../promptChips';
 import type { Message, WPItem } from '../types';
 
 type Props = {
@@ -15,6 +21,7 @@ type Props = {
   selectedItem: WPItem | null;
   input: string;
   selectedBlockIndex: string | null;
+  selectedBlockLabel: string | null;
   onInputChange: ( value: string ) => void;
   onSend: () => void;
   onClearSelection: () => void;
@@ -31,6 +38,7 @@ const ChatPanel = ( {
   selectedItem,
   input,
   selectedBlockIndex,
+  selectedBlockLabel,
   onInputChange,
   onSend,
   onClearSelection,
@@ -40,6 +48,17 @@ const ChatPanel = ( {
     Boolean( content?.includes( '<!-- wp:' ) || content?.includes( '<!-- /wp:' ) );
 
   const stripHtml = ( value: string ) => value.replace( /<[^>]*>/g, '' );
+  const selectedTitle = stripHtml( selectedItem?.title?.rendered || '' );
+  const promptSuggestions = useMemo( () => {
+    const pool =
+      selectedBlockIndex !== null
+        ? CHAT_SELECTED_BLOCK_PROMPT_CHIPS
+        : selectedItem
+          ? CHAT_EXISTING_PAGE_PROMPT_CHIPS( selectedTitle )
+          : CHAT_NEW_PAGE_PROMPT_CHIPS;
+
+    return pickRandomPromptChips( pool, 3 );
+  }, [ selectedBlockIndex, selectedItem, selectedTitle ] );
 
   return (
     <div className="ai-chat-panel">
@@ -129,7 +148,13 @@ const ChatPanel = ( {
             <div className="selected-block-indicator__content">
               <div className="selected-block-indicator__dot"></div>
               <span className="selected-block-indicator__text">
-                <strong>Targeted Edit.</strong> Prompt affects only the highlighted section.
+                <strong>Targeted Edit.</strong>
+                { ' ' }
+                { selectedBlockLabel ? (
+                  <>
+                    You&apos;re editing a <span className="selected-block-indicator__label">{ selectedBlockLabel }</span> block only.
+                  </>
+                ) : 'Prompt affects only the highlighted section.' }
               </span>
             </div>
             <button
@@ -153,7 +178,7 @@ const ChatPanel = ( {
             } }
             placeholder="Describe your design idea..."
             className="chat-textarea"
-            rows={ 1 }
+            rows={ 2 }
           />
           <button
             onClick={ onSend }
@@ -169,24 +194,19 @@ const ChatPanel = ( {
             ) }
           </button>
         </div>
-        { messages.length === 0 && (
-          <div className="chat-input-suggestion">
-            <span className="chat-input-suggestion__label">Try:</span>
+        <div className="chat-input-suggestion">
+          <span className="chat-input-suggestion__label">Try:</span>
+          { promptSuggestions.map( ( suggestion ) => (
             <button
+              key={ suggestion }
               type="button"
               className="chat-input-suggestion__pill"
-              onClick={ () => onInputChange(
-                selectedItem
-                  ? `Redesign my existing WordPress ${ selectedItem.type } titled "${ stripHtml( selectedItem.title?.rendered || '' ) }" — keep the same topic but make it modern and professional`
-                  : 'Create a modern homepage with a hero section, key features, and a call to action'
-              ) }
+              onClick={ () => onInputChange( suggestion ) }
             >
-              { selectedItem
-                ? `Redesign "${ stripHtml( selectedItem.title?.rendered || '' ) }" — keep topic, make it modern`
-                : 'Create a modern homepage with a hero section, key features, and a call to action' }
+              { suggestion }
             </button>
-          </div>
-        ) }
+          ) ) }
+        </div>
       </div>
     </div>
   );

@@ -10,11 +10,12 @@ type Props = {
     selectedItem: WPItem | null;
     input: string;
     selectedBlockIndex: string | null;
+    selectedBlockLabel: string | null;
     onInputChange: (value: string) => void;
     onSend: () => void;
     onClearSelection: () => void;
     onPublish: () => void;
 };
-declare const ChatPanel: ({ messages, chatMessagesRef, isLoading, hasAIGenerated, metaDirty, publishing, selectedItem, input, selectedBlockIndex, onInputChange, onSend, onClearSelection, onPublish, }: Props) => React.JSX.Element;
+declare const ChatPanel: ({ messages, chatMessagesRef, isLoading, hasAIGenerated, metaDirty, publishing, selectedItem, input, selectedBlockIndex, selectedBlockLabel, onInputChange, onSend, onClearSelection, onPublish, }: Props) => React.JSX.Element;
 export default ChatPanel;
 //# sourceMappingURL=ChatPanel.d.ts.map

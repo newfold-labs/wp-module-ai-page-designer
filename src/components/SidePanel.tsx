@@ -14,6 +14,7 @@ type Props = {
   selectedItem: WPItem | null;
   input: string;
   selectedBlockIndex: string | null;
+  selectedBlockLabel: string | null;
   historyEntries: HistoryEntry[];
   previewHtml: string | null;
   onInputChange: ( value: string ) => void;
@@ -38,6 +39,7 @@ const SidePanel = ( {
   selectedItem,
   input,
   selectedBlockIndex,
+  selectedBlockLabel,
   historyEntries,
   previewHtml,
   onInputChange,
@@ -89,6 +91,7 @@ const SidePanel = ( {
             selectedItem={ selectedItem }
             input={ input }
             selectedBlockIndex={ selectedBlockIndex }
+            selectedBlockLabel={ selectedBlockLabel }
             onInputChange={ onInputChange }
             onSend={ onSend }
             onClearSelection={ onClearSelection }

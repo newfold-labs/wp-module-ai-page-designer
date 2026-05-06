@@ -258,6 +258,49 @@ export const usePreviewIframe = (
             });
           }
 
+          function _toTitleCase(value) {
+            if (!value) return '';
+            return value
+              .replace(/[-_]+/g, ' ')
+              .trim()
+              .replace(/\b\w/g, function(ch) { return ch.toUpperCase(); });
+          }
+
+          function _resolveBlockLabel(wrapper) {
+            if (!wrapper || !wrapper.firstElementChild) return 'Section';
+            var el = wrapper.firstElementChild;
+            var classNames = Array.from(el.classList || []);
+            var wpBlockClass = classNames.find(function(cls) { return cls.indexOf('wp-block-') === 0; });
+
+            if (wpBlockClass) {
+              var raw = wpBlockClass.replace(/^wp-block-/, '');
+              if (raw === 'heading') return 'Heading';
+              if (raw === 'paragraph') return 'Paragraph';
+              if (raw === 'image') return 'Image';
+              if (raw === 'cover') return 'Cover';
+              if (raw === 'columns') return 'Columns';
+              if (raw === 'column') return 'Column';
+              if (raw === 'buttons') return 'Buttons';
+              if (raw === 'button') return 'Button';
+              if (raw === 'list') return 'List';
+              if (raw === 'quote') return 'Quote';
+              if (raw === 'separator') return 'Separator';
+              if (raw === 'spacer') return 'Spacer';
+              if (raw === 'group') return 'Group';
+              return _toTitleCase(raw);
+            }
+
+            var tag = (el.tagName || '').toLowerCase();
+            if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6') return 'Heading';
+            if (tag === 'p') return 'Paragraph';
+            if (tag === 'img' || tag === 'figure') return 'Image';
+            if (tag === 'ul' || tag === 'ol') return 'List';
+            if (tag === 'blockquote') return 'Quote';
+            if (tag === 'button' || tag === 'a') return 'Button';
+
+            return 'Section';
+          }
+
           // Called by the parent frame to inject or update content without reloading the iframe.
           // Animations are suppressed while calls arrive rapidly (streaming); 300 ms after the
           // last call the content is re-rendered without the flag so animations play once.
@@ -324,9 +367,10 @@ export const usePreviewIframe = (
                 });
 
                 var html = tempWrapper.innerHTML;
-                window.parent.postMessage({ type: 'NFD_BLOCK_SELECTED', index: wrapper.dataset.blockIndex, html: html }, '*');
+                var blockLabel = _resolveBlockLabel(wrapper);
+                window.parent.postMessage({ type: 'NFD_BLOCK_SELECTED', index: wrapper.dataset.blockIndex, html: html, blockLabel: blockLabel }, '*');
               } else {
-                window.parent.postMessage({ type: 'NFD_BLOCK_SELECTED', index: null, html: null }, '*');
+                window.parent.postMessage({ type: 'NFD_BLOCK_SELECTED', index: null, html: null, blockLabel: null }, '*');
               }
             });
 
