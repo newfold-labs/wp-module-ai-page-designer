@@ -62,6 +62,76 @@ const hasRemovalKeyword = ( text: string ): boolean => {
   return REMOVAL_KEYWORDS.some( ( kw ) => lower.includes( kw ) );
 };
 
+const isValidCssColor = ( value: string ): boolean => {
+  if ( ! value ) {
+    return false;
+  }
+
+  const cssApi = ( window as any )?.CSS;
+  if ( cssApi?.supports ) {
+    return cssApi.supports( 'color', value );
+  }
+
+  const probe = document.createElement( 'span' );
+  probe.style.color = '';
+  probe.style.color = value;
+  return probe.style.color !== '';
+};
+
+const extractRequestedTextColor = ( text: string ): { label: string; value: string } | null => {
+  const lower = text.toLowerCase();
+  const isColorRequest =
+    /(?:font|text)\s+color/.test( lower ) ||
+    /\bchange\b.*\bcolor\b/.test( lower ) ||
+    /\bmake\b.*\b(text|font)\b/.test( lower );
+
+  if ( ! isColorRequest ) {
+    return null;
+  }
+
+  const hexMatch = text.match( /#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})\b/i );
+  if ( hexMatch?.[0] ) {
+    return { label: hexMatch[0], value: hexMatch[0] };
+  }
+
+  const funcColorMatch = text.match( /\b(?:rgb|rgba|hsl|hsla)\([^)]+\)/i );
+  if ( funcColorMatch?.[0] && isValidCssColor( funcColorMatch[0] ) ) {
+    return { label: funcColorMatch[0], value: funcColorMatch[0] };
+  }
+
+  const phraseCandidates: string[] = [];
+  const toMatch = text.match( /\bto\s+([^.!?,\n]+)/i );
+  const colorMatch = text.match( /\bcolor\s+(?:to\s+)?([^.!?,\n]+)/i );
+  if ( toMatch?.[1] ) {
+    phraseCandidates.push( toMatch[1] );
+  }
+  if ( colorMatch?.[1] ) {
+    phraseCandidates.push( colorMatch[1] );
+  }
+
+  for ( const rawPhrase of phraseCandidates ) {
+    const cleaned = rawPhrase
+      .replace( /\b(for|in|on|within|inside)\b.*$/i, '' )
+      .replace( /[^a-zA-Z\s-]/g, ' ' )
+      .replace( /\s+/g, ' ' )
+      .trim();
+
+    if ( ! cleaned ) {
+      continue;
+    }
+
+    const parts = cleaned.split( ' ' );
+    for ( let len = Math.min( 4, parts.length ); len >= 1; len-- ) {
+      const candidate = parts.slice( 0, len ).join( ' ' ).trim();
+      if ( candidate && isValidCssColor( candidate ) ) {
+        return { label: candidate, value: candidate };
+      }
+    }
+  }
+
+  return null;
+};
+
 // Helper: parse Gutenberg markup into a top-level block array via wp.blocks global.
 const wpBlocksParse = ( markup: string ): any[] => {
   const wp = ( window as any )?.wp;
@@ -510,6 +580,89 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     try {
       setIsLoading( true );
 
+      const applySelectedTextColor = ( color: { label: string; value: string } ): boolean => {
+        const doc = iframeRef.current?.contentDocument;
+        if ( ! doc ) {
+          return false;
+        }
+        const wrapper = doc.querySelector( `.nfd-block-wrapper[data-block-index="${ selectedBlockIndex }"]` );
+        if ( ! wrapper ) {
+          return false;
+        }
+
+        const textTargets = wrapper.querySelectorAll(
+          'p, h1, h2, h3, h4, h5, h6, li, a, span, strong, em, small, blockquote, figcaption, button, label'
+        );
+
+        if ( textTargets.length === 0 ) {
+          return false;
+        }
+
+        textTargets.forEach( ( node ) => {
+          ( node as HTMLElement ).style.setProperty( 'color', color.value, 'important' );
+        } );
+
+        const root = doc.getElementById( 'nfd-preview-root' );
+        let newHtml = '';
+
+        if ( root ) {
+          const clone = root.cloneNode( true ) as HTMLElement;
+
+          clone.querySelectorAll( '.nfd-block-wrapper' ).forEach( ( w ) => {
+            while ( w.firstChild ) {
+              w.parentNode?.insertBefore( w.firstChild, w );
+            }
+            w.parentNode?.removeChild( w );
+          } );
+
+          clone.querySelectorAll( 'span' ).forEach( ( s ) => {
+            if ( s.attributes.length === 0 ) {
+              while ( s.firstChild ) {
+                s.parentNode?.insertBefore( s.firstChild, s );
+              }
+              s.parentNode?.removeChild( s );
+            }
+          } );
+
+          newHtml = clone.innerHTML;
+        } else {
+          newHtml = Array.from( doc.querySelectorAll( '.nfd-block-wrapper' ) )
+            .map( ( w ) => w.innerHTML )
+            .join( '\n\n' );
+        }
+
+        if ( ! newHtml ) {
+          return false;
+        }
+
+        const didChange = newHtml !== previewHtml;
+        setPreviewHtml( newHtml );
+        setHasAIGenerated( true );
+        if ( didChange ) {
+          const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+          const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+          const historyLabel = `Targeted edit: ${ text.substring( 0, 60 ) }`;
+          setHistoryEntries( ( prev ) => [
+            ...prev,
+            {
+              id: historyId,
+              html: newHtml,
+              label: historyLabel,
+              timestamp,
+              publishTitle,
+              metaExcerpt,
+            },
+          ] );
+        }
+
+        setMessages( [
+          ...newMessages,
+          { role: 'assistant', content: didChange ? `Updated text color to ${ color.label } for this section.` : 'No visible text color changes were applied.' },
+        ] );
+        clearSelection( iframeRef );
+        return true;
+      };
+
       // Shared helper: remove the selected block from the live iframe DOM and sync state.
       const removeSelectedBlock = () => {
         const doc = iframeRef.current?.contentDocument;
@@ -574,6 +727,13 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         setMessages( [ ...newMessages, { role: 'assistant', content: 'Section removed.' } ] );
         clearSelection( iframeRef );
         return;
+      }
+
+      if ( selectedBlockIndex !== null && selectedBlockHtml !== null ) {
+        const requestedTextColor = extractRequestedTextColor( text );
+        if ( requestedTextColor && applySelectedTextColor( requestedTextColor ) ) {
+          return;
+        }
       }
 
       // Check if this is a metadata-only request first, before follow-up edit detection.
