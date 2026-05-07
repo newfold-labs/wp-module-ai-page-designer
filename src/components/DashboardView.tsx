@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   BookOpenIcon,
   DocumentIcon,
@@ -6,6 +6,7 @@ import {
   SparklesIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import { DASHBOARD_PROMPT_CHIPS, pickRandomPromptChips } from '../promptChips';
 import type { WPItem } from '../types';
 
 type Props = {
@@ -55,6 +56,10 @@ const DashboardView = ( {
   onTogglePagesExpanded,
   onTogglePostsExpanded,
 }: Props ) => {
+  const heroPromptSuggestions = useMemo(
+    () => pickRandomPromptChips( DASHBOARD_PROMPT_CHIPS, 2 ),
+    []
+  );
   const [ heroPrompt, setHeroPrompt ] = useState( 'Create a modern homepage with a hero section, key features, and a call to action' );
 
   const normalizedPagesQuery = pagesSearchQuery.trim().toLowerCase();
@@ -115,6 +120,19 @@ const DashboardView = ( {
               <SparklesIcon className="icon-sm" />
               Generate
             </button>
+          </div>
+          <div className="ai-hero__prompt-chips">
+            <span className="ai-hero__prompt-label">Try:</span>
+            { heroPromptSuggestions.map( ( suggestion ) => (
+              <button
+                key={ suggestion }
+                type="button"
+                className="ai-hero__prompt-chip"
+                onClick={ () => setHeroPrompt( suggestion ) }
+              >
+                { suggestion }
+              </button>
+            ) ) }
           </div>
         </div>
         <div className="ai-hero__deco-icon" aria-hidden="true">

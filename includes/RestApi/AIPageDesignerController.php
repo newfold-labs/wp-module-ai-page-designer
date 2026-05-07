@@ -230,10 +230,11 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			// Redesign requests must also start a fresh conversation so the AI isn't biased
 			// by the previous page's context when generating a genuinely new design.
 			$is_redesign_request = $this->is_redesign_request( $last_user_prompt );
+			$is_single_block_edit = ! empty( $context['single_block_edit'] ) && ! empty( $context['selected_block_markup'] );
 			if ( $is_redesign_request ) {
 				delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
 			}
-			$previous_response_id = $is_redesign_request ? null : $this->load_previous_response_id( $conversation_key );
+			$previous_response_id = ( $is_redesign_request || $is_single_block_edit ) ? null : $this->load_previous_response_id( $conversation_key );
 
 			$is_new      = count( $messages ) === 1;
 			$use_pattern = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
@@ -257,6 +258,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					'current_markup'        => $current_markup,
 					'content_type'          => $content_type,
 					'selected_block_markup' => $context['selected_block_markup'] ?? null,
+					'single_block_edit'     => $is_single_block_edit,
 					'base_layout'           => $base_layout,
 				);
 
@@ -306,6 +308,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				'current_markup'        => $current_markup,
 				'content_type'          => $content_type,
 				'selected_block_markup' => $context['selected_block_markup'] ?? null,
+				'single_block_edit'     => $is_single_block_edit,
 				'base_layout'           => $base_layout,
 			);
 
@@ -540,7 +543,9 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$conversation_key = $conversation_context['conversation_key'];
 		$conversation_id  = $conversation_context['conversation_id'];
 
-		if ( ! empty( $response_id ) ) {
+		$is_single_block_edit = ! empty( $context['single_block_edit'] ) && ! empty( $context['selected_block_markup'] );
+
+		if ( ! empty( $response_id ) && ! $is_single_block_edit ) {
 			$this->store_response_id( $conversation_key, $response_id );
 		}
 
