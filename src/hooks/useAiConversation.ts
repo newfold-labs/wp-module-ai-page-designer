@@ -370,7 +370,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
     setInput( '' );
     const userMsg: Message = { role: 'user', content: text };
-    const newMessages = [ ...messages, userMsg ];
+    const newMessages = [ ...messages.filter( ( m ) => ! m.isError ), userMsg ];
     setMessages( newMessages );
 
     const applyMetadataOnlyResponse = ( responseData: any ) => {
@@ -966,12 +966,12 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         } );
 
         if ( streamError ) {
-          setMessages( [ ...newMessages, { role: 'assistant', content: streamError } ] );
+          setMessages( [ ...newMessages, { role: 'assistant', content: streamError, isError: true } ] );
           return;
         }
 
         if ( ! finalData ) {
-          setMessages( [ ...newMessages, { role: 'assistant', content: 'No response was generated. Please try again.' } ] );
+          setMessages( [ ...newMessages, { role: 'assistant', content: 'No response was generated. Please try again.', isError: true } ] );
           return;
         }
 
@@ -997,7 +997,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       // Message-only response: fast path signalled an error (e.g. Unsplash unavailable).
       // Show the message in chat without touching the preview.
       if ( ! rawContent && serverMessage ) {
-        setMessages( [ ...newMessages, { role: 'assistant', content: serverMessage } ] );
+        setMessages( [ ...newMessages, { role: 'assistant', content: serverMessage, isError: true } ] );
         return;
       }
 
@@ -1016,7 +1016,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           return;
         }
 
-        setMessages( [ ...newMessages, { role: 'assistant', content: 'No response was generated. Please try again.' } ] );
+        setMessages( [ ...newMessages, { role: 'assistant', content: 'No response was generated. Please try again.', isError: true } ] );
         return;
       }
 
@@ -1028,6 +1028,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         {
           role: 'assistant',
           content: `Error: ${ error.message || 'Failed to generate content' }`,
+          isError: true,
         },
       ] );
     } finally {

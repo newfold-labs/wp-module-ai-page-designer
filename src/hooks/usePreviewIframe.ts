@@ -105,7 +105,7 @@ export const usePreviewIframe = (
           #nfd-preview-root { padding: 10px; }
           .nfd-block-wrapper { position: relative; cursor: pointer; display: flow-root; margin-bottom: 2px; }
           .nfd-block-wrapper::before { content: ''; position: absolute; inset: 0; z-index: 100; pointer-events: none; outline: 2px solid transparent; transition: all 0.2s; outline-offset: -2px; }
-          .nfd-block-wrapper:hover::before { outline-color: #007cba; background: rgba(0, 124, 186, 0.05); }
+          .nfd-block-wrapper.nfd-block-hover::before { outline-color: #007cba; background: rgba(0, 124, 186, 0.05); }
           .nfd-block-wrapper.nfd-block-selected::before { outline: 3px solid #d63638; outline-offset: -3px; background: rgba(214, 54, 56, 0.05); z-index: 101; }
           .nfd-block-wrapper a, .nfd-block-wrapper button { pointer-events: none; }
 
@@ -215,21 +215,26 @@ export const usePreviewIframe = (
             });
           }
 
+          function _isTransparentContainer(el) {
+            return el.classList.contains('wp-site-blocks') ||
+              el.classList.contains('entry-content') ||
+              el.classList.contains('wp-block-group') ||
+              el.classList.contains('wp-block-column') ||
+              el.classList.contains('wp-block-columns') ||
+              el.classList.contains('wp-block-cover__inner-container') ||
+              el.classList.contains('wp-block-media-text__content') ||
+              el.classList.contains('wp-block-post-content');
+          }
+
           function _wrapChildren(parent, parentPath) {
             Array.from(parent.children).forEach(function(child, index) {
               if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE' || child.classList.contains('nfd-block-wrapper')) return;
+              // Skip cover background overlays — they are absolutely positioned and must not be wrapped.
+              if (child.classList.contains('wp-block-cover__background')) return;
 
               var blockIndex = parentPath ? parentPath + '-' + index : index.toString();
 
-              if (child.classList.contains('wp-site-blocks') ||
-                  child.classList.contains('entry-content') ||
-                  child.classList.contains('wp-block-group') ||
-                  child.classList.contains('wp-block-column') ||
-                  child.classList.contains('wp-block-columns') ||
-                  child.classList.contains('wp-block-cover__inner-container') ||
-                  child.classList.contains('wp-block-media-text__content') ||
-                  child.classList.contains('wp-block-post-content')) {
-
+              if (_isTransparentContainer(child)) {
                 if (child.children.length > 0) {
                   _wrapChildren(child, blockIndex);
                   return;
@@ -255,6 +260,15 @@ export const usePreviewIframe = (
 
               child.parentNode.insertBefore(wrapper, child);
               wrapper.appendChild(child);
+
+              // After wrapping, recurse into any transparent containers that are direct children
+              // of this block (e.g. wp-block-cover__inner-container inside a cover block).
+              // This exposes sub-blocks for selection without wrapping layout-critical elements.
+              Array.from(child.children).forEach(function(grandchild, gci) {
+                if (_isTransparentContainer(grandchild)) {
+                  _wrapChildren(grandchild, blockIndex + '-' + gci);
+                }
+              });
             });
           }
 
@@ -351,6 +365,16 @@ export const usePreviewIframe = (
           }
 
           document.addEventListener('DOMContentLoaded', function() {
+            document.addEventListener('mouseover', function(e) {
+              document.querySelectorAll('.nfd-block-wrapper.nfd-block-hover').forEach(function(el) { el.classList.remove('nfd-block-hover'); });
+              var wrapper = e.target.closest('.nfd-block-wrapper');
+              if (wrapper) wrapper.classList.add('nfd-block-hover');
+            });
+
+            document.addEventListener('mouseleave', function() {
+              document.querySelectorAll('.nfd-block-wrapper.nfd-block-hover').forEach(function(el) { el.classList.remove('nfd-block-hover'); });
+            });
+
             document.addEventListener('click', function(e) {
               e.preventDefault();
               var wrapper = e.target.closest('.nfd-block-wrapper');
