@@ -32,7 +32,7 @@ class AiClientWorker {
 			AIPageDesignerDebug::debug_log( 'Hiive authentication failed' );
 			return new \WP_Error(
 				'rest_forbidden',
-				__( 'You are not authorized to make this call. Hiive authentication failed.', 'wp-module-ai-page-designer' ),
+				__( 'You are not authorized to make this call.', 'wp-module-ai-page-designer' ),
 				array( 'status' => 403 )
 			);
 		}
@@ -88,11 +88,7 @@ class AiClientWorker {
 
 			return new \WP_Error(
 				'ai_service_timeout',
-				sprintf(
-					/* translators: %s is the error message from the response */
-					__( 'AI service request failed: %s', 'wp-module-ai-page-designer' ),
-					$response->get_error_message()
-				),
+				$this->get_ai_transport_error_message(),
 				array( 'status' => 408 )
 			);
 		}
@@ -156,7 +152,7 @@ class AiClientWorker {
 			AIPageDesignerDebug::debug_log( 'Hiive authentication failed for streaming' );
 			return new \WP_Error(
 				'rest_forbidden',
-				__( 'You are not authorized to make this call. Hiive authentication failed.', 'wp-module-ai-page-designer' ),
+				__( 'You are not authorized to make this call.', 'wp-module-ai-page-designer' ),
 				array( 'status' => 403 )
 			);
 		}
@@ -291,11 +287,7 @@ class AiClientWorker {
 
 			return new \WP_Error(
 				'ai_stream_error',
-				sprintf(
-					/* translators: %s is the cURL error message */
-					__( 'AI streaming request failed: %s', 'wp-module-ai-page-designer' ),
-					$curl_error ?? 'Unknown cURL error'
-				),
+				$this->get_ai_transport_error_message(),
 				array( 'status' => 500 )
 			);
 		}
@@ -310,11 +302,7 @@ class AiClientWorker {
 
 			return new \WP_Error(
 				'ai_stream_error',
-				sprintf(
-					/* translators: %d is the HTTP status code */
-					__( 'AI streaming request failed with status: %d', 'wp-module-ai-page-designer' ),
-					$response_code
-				),
+				$this->get_ai_transport_error_message(),
 				array( 'status' => $response_code )
 			);
 		}
@@ -391,7 +379,7 @@ class AiClientWorker {
 		if ( ! $hiive_token ) {
 			return new \WP_Error(
 				'rest_forbidden',
-				__( 'You are not authorized to make this call. Hiive authentication failed.', 'wp-module-ai-page-designer' ),
+				__( 'You are not authorized to make this call.', 'wp-module-ai-page-designer' ),
 				array( 'status' => 403 )
 			);
 		}
@@ -455,6 +443,18 @@ class AiClientWorker {
 		}
 
 		return $result['data'];
+	}
+
+	/**
+	 * User-facing message for AI transport failures (details remain in debug logs).
+	 *
+	 * @return string
+	 */
+	private function get_ai_transport_error_message() {
+		return __(
+			'Unable to reach the AI service. Check your network connection and try again.',
+			'wp-module-ai-page-designer'
+		);
 	}
 
 	/**
