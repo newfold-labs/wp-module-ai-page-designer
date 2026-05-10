@@ -509,8 +509,11 @@ class AiClientWorker {
 		if ( ! empty( $theme_swatches ) ) {
 			$context['colorPalette'] = array_map(
 				function ( $swatch ) {
+					$slug = $swatch['slug'] ?? '';
+					// Normalize underscores to hyphens to match WordPress's actual CSS variable output.
+					$slug = str_replace( '_', '-', $slug );
 					return array(
-						'slug'  => $swatch['slug'] ?? '',
+						'slug'  => $slug,
 						'name'  => $swatch['name'] ?? $swatch['slug'] ?? '',
 						'color' => $swatch['color'] ?? '',
 					);
