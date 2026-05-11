@@ -41,6 +41,32 @@ export type StreamEvent =
   | { type: 'result'; data: GenerateContentResponse['data'] }
   | { type: 'error'; message: string };
 
+/**
+ * WordPress REST errors return JSON: { code, message, data }. Surface `message` in the UI
+ * instead of a generic streaming failure when the stream never starts (e.g. 401/403).
+ */
+async function getStreamingHttpErrorMessage( response: Response ): Promise<string> {
+  try {
+    const text = await response.text();
+    if ( text ) {
+      const parsed = JSON.parse( text ) as { message?: string };
+      if ( typeof parsed.message === 'string' && parsed.message.trim() !== '' ) {
+        return parsed.message.trim();
+      }
+    }
+  } catch {
+    // Non-JSON body (e.g. HTML error page).
+  }
+
+  const status = response.status;
+  const statusText = response.statusText?.trim();
+  if ( statusText ) {
+    return `Request failed (${ status } ${ statusText }).`;
+  }
+
+  return `Request failed (${ status }).`;
+}
+
 export const generateContent = (
   apiUrl: string,
   messages: Message[],
@@ -83,8 +109,13 @@ export const generateContentStream = async (
     } ),
   } );
 
-  if ( ! response.ok || ! response.body ) {
-    throw new Error( 'Streaming request failed.' );
+  if ( ! response.ok ) {
+    const message = await getStreamingHttpErrorMessage( response );
+    throw new Error( message );
+  }
+
+  if ( ! response.body ) {
+    throw new Error( 'Streaming request failed: empty response body.' );
   }
 
   const reader = response.body.getReader();

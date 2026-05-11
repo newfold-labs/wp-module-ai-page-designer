@@ -4,6 +4,7 @@ export type Message = {
     summary?: string;
     code?: string;
     link?: string;
+    isError?: boolean;
 };
 export type WPItem = {
     id: number;

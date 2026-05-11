@@ -2,9 +2,8 @@ name: Build Assets
 
 on:
   push:
-    branches:
+    branches-ignore:
       - main
-      - develop
   workflow_dispatch:
 
 concurrency:
