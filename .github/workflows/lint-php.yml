@@ -27,6 +27,7 @@ jobs:
     permissions:
       contents: read       # Required to clone the repository.
       pull-requests: read # Required by technote-space/get-diff-action to look up PRs for the pushed branch on push events.
+    timeout-minutes: 30
     steps:
 
       - name: Checkout

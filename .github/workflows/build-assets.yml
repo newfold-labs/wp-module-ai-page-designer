@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # Required so the workflow can commit and git push rebuilt assets back to the branch.
+    timeout-minutes: 30
     # Skip if triggered by the bot commit to prevent an infinite loop.
     if: github.actor != 'github-actions[bot]'
     steps:
