@@ -85,10 +85,31 @@ class AIPageDesignerController extends \WP_REST_Controller {
 							'description'       => __( 'Additional context like current markup', 'wp-module-ai-page-designer' ),
 							'validate_callback' => array( $this, 'validate_context' ),
 						),
-						'stream'   => array(
-							'required'    => false,
-							'type'        => 'boolean',
-							'description' => __( 'Stream AI response as SSE', 'wp-module-ai-page-designer' ),
+					),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			$this->namespace,
+			'/' . $this->rest_base . '/stream',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'generate_content_stream' ),
+					'args'                => array(
+						'messages' => array(
+							'required'          => true,
+							'type'              => 'array',
+							'description'       => __( 'Array of conversation messages', 'wp-module-ai-page-designer' ),
+							'validate_callback' => array( $this, 'validate_messages' ),
+						),
+						'context'  => array(
+							'required'          => false,
+							'type'              => 'object',
+							'description'       => __( 'Additional context like current markup', 'wp-module-ai-page-designer' ),
+							'validate_callback' => array( $this, 'validate_context' ),
 						),
 					),
 					'permission_callback' => array( $this, 'check_permission' ),
@@ -229,7 +250,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			// into the conversation thread or they'd corrupt the next full-page context.
 			// Redesign requests must also start a fresh conversation so the AI isn't biased
 			// by the previous page's context when generating a genuinely new design.
-			$is_redesign_request = $this->is_redesign_request( $last_user_prompt );
+			$is_redesign_request  = $this->is_redesign_request( $last_user_prompt );
 			$is_single_block_edit = ! empty( $context['single_block_edit'] ) && ! empty( $context['selected_block_markup'] );
 			if ( $is_redesign_request ) {
 				delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
@@ -273,11 +294,23 @@ class AIPageDesignerController extends \WP_REST_Controller {
 						if ( 'meta' === $event['type'] && ! empty( $event['response_id'] ) ) {
 							$stream_response = $event['response_id'];
 						}
+						// Forward error events from the Worker (e.g. auth/capability failures)
+						// instead of silently dropping them, so the frontend shows the real issue.
+						if ( 'error' === $event['type'] && ! empty( $event['message'] ) ) {
+							$this->send_stream_event( 'error', array( 'message' => $event['message'] ) );
+							exit;
+						}
 					}
 				);
 
 				if ( is_wp_error( $stream_result ) ) {
 					$this->send_stream_event( 'error', array( 'message' => $stream_result->get_error_message() ) );
+					exit;
+				}
+
+				// If the stream produced no content, report an error instead of sending empty data.
+				if ( empty( $raw_content ) ) {
+					$this->send_stream_event( 'error', array( 'message' => __( 'AI generation returned no content. Please try again.', 'wp-module-ai-page-designer' ) ) );
 					exit;
 				}
 
@@ -358,6 +391,17 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				array( 'status' => 500 )
 			);
 		}
+	}
+
+	/**
+	 * Generate content via streaming (dedicated /generate/stream endpoint).
+	 *
+	 * @param \WP_REST_Request $request The REST request
+	 * @return \WP_REST_Response|\WP_Error The response or error
+	 */
+	public function generate_content_stream( \WP_REST_Request $request ) {
+		$request['stream'] = true;
+		return $this->generate_content( $request );
 	}
 
 	/**

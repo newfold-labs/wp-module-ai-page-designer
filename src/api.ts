@@ -94,7 +94,7 @@ export const generateContentStream = async (
     ? normalizedApiUrl
     : `${ apiRoot.replace( /\/?$/, '/' ) }newfold-ai-page-designer/v1`;
   const baseUrl = apiRoot.startsWith( 'http' ) ? '' : window.location.origin;
-  const streamUrl = `${ baseUrl }${ basePath }/generate?stream=1`;
+  const streamUrl = `${ baseUrl }${ basePath }/generate/stream`;
   const response = await fetch( streamUrl, {
     method: 'POST',
     credentials: 'same-origin',
@@ -105,7 +105,6 @@ export const generateContentStream = async (
     body: JSON.stringify( {
       messages,
       context,
-      stream: true,
     } ),
   } );
 
