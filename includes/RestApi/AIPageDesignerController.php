@@ -250,7 +250,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			// into the conversation thread or they'd corrupt the next full-page context.
 			// Redesign requests must also start a fresh conversation so the AI isn't biased
 			// by the previous page's context when generating a genuinely new design.
-			$is_redesign_request = $this->is_redesign_request( $last_user_prompt );
+			$is_redesign_request  = $this->is_redesign_request( $last_user_prompt );
 			$is_single_block_edit = ! empty( $context['single_block_edit'] ) && ! empty( $context['selected_block_markup'] );
 			if ( $is_redesign_request ) {
 				delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
@@ -397,7 +397,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * Generate content via streaming (dedicated /generate/stream endpoint).
 	 *
 	 * @param \WP_REST_Request $request The REST request
-	 * @return void
+	 * @return \WP_REST_Response|\WP_Error The response or error
 	 */
 	public function generate_content_stream( \WP_REST_Request $request ) {
 		$request['stream'] = true;
