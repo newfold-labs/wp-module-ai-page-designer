@@ -273,8 +273,10 @@ class AiClientWorker {
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_close
 		curl_close( $curl );
 
-		// Use the HTTP code from headers if available, otherwise from curl_getinfo
-		$response_code = $http_code ?? $final_http_code;
+		// Use the HTTP code from the parsed status line when present, otherwise
+		// fall back to curl_getinfo. Note: $http_code starts at 0, so guard on
+		// the truthy value rather than null (?? would never see 0 as missing).
+		$response_code = $http_code ? $http_code : $final_http_code;
 
 		if ( false === $curl_result ) {
 			AIPageDesignerDebug::debug_log(

@@ -308,10 +308,35 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					exit;
 				}
 
-				// If the stream produced no content, report an error instead of sending empty data.
+				// If the stream produced no content Fall back to the buffered
+				// non-streaming /generate endpoint so the user still gets a result.
 				if ( empty( $raw_content ) ) {
-					$this->send_stream_event( 'error', array( 'message' => __( 'AI generation returned no content. Please try again.', 'wp-module-ai-page-designer' ) ) );
-					exit;
+					$fallback_result = $this->ai_client->generate_content( $ai_messages, $stream_options );
+
+					// If the stored response_id was stale/expired, clear it and retry without it.
+					if ( is_wp_error( $fallback_result ) && $previous_response_id ) {
+						$error_message = $fallback_result->get_error_message();
+						if ( strpos( $error_message, 'not found' ) !== false || strpos( $error_message, 'unable to process' ) !== false ) {
+							delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
+							$retry_options                         = $stream_options;
+							$retry_options['previous_response_id'] = null;
+							$fallback_result                       = $this->ai_client->generate_content( $ai_messages, $retry_options );
+						}
+					}
+
+					if ( is_wp_error( $fallback_result ) ) {
+						$this->send_stream_event( 'error', array( 'message' => $fallback_result->get_error_message() ) );
+						exit;
+					}
+
+					$raw_content     = $fallback_result['content'] ?? '';
+					$stream_response = $fallback_result['response_id'] ?? $stream_response;
+
+					// Both the stream and the buffered fallback came back empty — genuinely no content.
+					if ( empty( $raw_content ) ) {
+						$this->send_stream_event( 'error', array( 'message' => __( 'AI generation returned no content. Please try again.', 'wp-module-ai-page-designer' ) ) );
+						exit;
+					}
 				}
 
 				$response_id   = is_string( $stream_result ) && $stream_result ? $stream_result : $stream_response;
