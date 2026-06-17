@@ -195,9 +195,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				return $conversation_context;
 			}
 
-			$conversation_key = $conversation_context['conversation_key'];
-			$conversation_id  = $conversation_context['conversation_id'];
-
 			$current_markup   = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
 			$content_type     = isset( $context['content_type'] ) && 'post' === $context['content_type'] ? 'post' : 'page';
 			$page_title       = isset( $context['page_title'] ) ? sanitize_text_field( $context['page_title'] ) : '';
@@ -225,16 +222,10 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				return $fast_path_response;
 			}
 
-			// Single-block edits return partial markup, not a full page — don't chain them
-			// into the conversation thread or they'd corrupt the next full-page context.
-			// Redesign requests must also start a fresh conversation so the AI isn't biased
-			// by the previous page's context when generating a genuinely new design.
-			$is_redesign_request = $this->is_redesign_request( $last_user_prompt );
+			// Each request is self-contained (system prompt + current markup/blueprint);
+			// the AI backend is stateless, so there is no conversation chaining.
+			$is_redesign_request  = $this->is_redesign_request( $last_user_prompt );
 			$is_single_block_edit = ! empty( $context['single_block_edit'] ) && ! empty( $context['selected_block_markup'] );
-			if ( $is_redesign_request ) {
-				delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
-			}
-			$previous_response_id = ( $is_redesign_request || $is_single_block_edit ) ? null : $this->load_previous_response_id( $conversation_key );
 
 			$is_new      = count( $messages ) === 1;
 			$use_pattern = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
@@ -254,7 +245,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 				// Prepare options for streaming (enhanced for Worker compatibility)
 				$stream_options = array(
-					'previous_response_id'  => $previous_response_id,
 					'current_markup'        => $current_markup,
 					'content_type'          => $content_type,
 					'selected_block_markup' => $context['selected_block_markup'] ?? null,
@@ -262,22 +252,58 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					'base_layout'           => $base_layout,
 				);
 
+				$stream_error      = null;
+				$processed_content = '';
+
 				$stream_result = $this->ai_client->stream_content(
 					$ai_messages,
 					$stream_options,
-					function ( $event ) use ( &$raw_content, &$stream_response ) {
-						if ( 'delta' === $event['type'] && ! empty( $event['text'] ) ) {
+					function ( $event ) use ( &$raw_content, &$stream_response, &$stream_error, &$processed_content ) {
+						$event_type = $event['type'] ?? '';
+						if ( 'delta' === $event_type && ! empty( $event['text'] ) ) {
 							$raw_content .= $event['text'];
 							$this->send_stream_event( 'delta', array( 'text' => $event['text'] ) );
 						}
-						if ( 'meta' === $event['type'] && ! empty( $event['response_id'] ) ) {
+						if ( 'meta' === $event_type && ! empty( $event['response_id'] ) ) {
 							$stream_response = $event['response_id'];
+						}
+						// The Worker's final done event carries the post-processed
+						// markup (layout/color guards applied). Prefer it over the
+						// raw delta accumulation for the published result.
+						if ( 'done' === $event_type ) {
+							if ( ! empty( $event['content'] ) ) {
+								$processed_content = $event['content'];
+							}
+							if ( ! empty( $event['response_id'] ) ) {
+								$stream_response = $event['response_id'];
+							}
+						}
+						// The Worker reports generation failures as an SSE error event
+						// on an otherwise successful (HTTP 200) stream.
+						if ( 'error' === $event_type ) {
+							$stream_error = isset( $event['message'] ) && '' !== $event['message']
+								? $event['message']
+								: __( 'AI generation failed. Please try again.', 'wp-module-ai-page-designer' );
 						}
 					}
 				);
 
+				if ( '' !== $processed_content ) {
+					$raw_content = $processed_content;
+				}
+
 				if ( is_wp_error( $stream_result ) ) {
 					$this->send_stream_event( 'error', array( 'message' => $stream_result->get_error_message() ) );
+					exit;
+				}
+
+				if ( null !== $stream_error ) {
+					$this->send_stream_event( 'error', array( 'message' => $stream_error ) );
+					exit;
+				}
+
+				if ( '' === trim( $raw_content ) ) {
+					$this->send_stream_event( 'error', array( 'message' => __( 'AI generation returned no content. Please try again.', 'wp-module-ai-page-designer' ) ) );
 					exit;
 				}
 
@@ -288,8 +314,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					$messages,
 					$context,
 					$conversation_context,
-					$last_user_prompt,
-					true
+					$last_user_prompt
 				);
 
 				if ( is_wp_error( $response_data ) ) {
@@ -304,7 +329,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 			// Prepare options for AI client (enhanced for Worker compatibility)
 			$ai_options = array(
-				'previous_response_id'  => $previous_response_id,
 				'current_markup'        => $current_markup,
 				'content_type'          => $content_type,
 				'selected_block_markup' => $context['selected_block_markup'] ?? null,
@@ -313,15 +337,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			);
 
 			$ai_result = $this->ai_client->generate_content( $ai_messages, $ai_options );
-
-			// If the stored response_id was stale/expired, clear it and retry without it.
-			if ( is_wp_error( $ai_result ) && $previous_response_id ) {
-				$error_message = $ai_result->get_error_message();
-				if ( strpos( $error_message, 'not found' ) !== false || strpos( $error_message, 'unable to process' ) !== false ) {
-					delete_transient( 'nfd_ai_pd_conv_' . $conversation_key );
-					$ai_result = $this->ai_client->generate_content( $ai_messages, array() );
-				}
-			}
 
 			if ( is_wp_error( $ai_result ) ) {
 				return $ai_result;
@@ -336,8 +351,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$messages,
 				$context,
 				$conversation_context,
-				$last_user_prompt,
-				false
+				$last_user_prompt
 			);
 
 			if ( is_wp_error( $response_data ) ) {
@@ -428,28 +442,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Load previous response ID from transient.
-	 *
-	 * @param string $conversation_key Conversation key.
-	 * @return string|null
-	 */
-	private function load_previous_response_id( $conversation_key ) {
-		$previous_response_id = get_transient( 'nfd_ai_pd_conv_' . $conversation_key );
-		return is_string( $previous_response_id ) ? $previous_response_id : null;
-	}
-
-	/**
-	 * Store response ID in transient.
-	 *
-	 * @param string $conversation_key Conversation key.
-	 * @param string $response_id Response ID.
-	 * @return void
-	 */
-	private function store_response_id( $conversation_key, $response_id ) {
-		set_transient( 'nfd_ai_pd_conv_' . $conversation_key, $response_id, DAY_IN_SECONDS );
-	}
-
-	/**
 	 * Recursively update block themes
 	 *
 	 * @param array  &$blocks Parsed blocks array
@@ -528,26 +520,13 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @param array  $context Request context.
 	 * @param array  $conversation_context Conversation key/id.
 	 * @param string $last_user_prompt Latest user prompt.
-	 * @param bool   $allow_missing_response_id Allow missing response ID.
 	 * @return array|\WP_Error
 	 */
-	private function build_response_payload( $content, $response_id, array $messages, array $context, array $conversation_context, $last_user_prompt, $allow_missing_response_id = false ) {
-		if ( empty( $response_id ) && ! $allow_missing_response_id ) {
-			return new \WP_Error(
-				'ai_generation_error',
-				__( 'AI response missing response_id', 'wp-module-ai-page-designer' ),
-				array( 'status' => 500 )
-			);
-		}
-
+	private function build_response_payload( $content, $response_id, array $messages, array $context, array $conversation_context, $last_user_prompt ) {
 		$conversation_key = $conversation_context['conversation_key'];
 		$conversation_id  = $conversation_context['conversation_id'];
 
 		$is_single_block_edit = ! empty( $context['single_block_edit'] ) && ! empty( $context['selected_block_markup'] );
-
-		if ( ! empty( $response_id ) && ! $is_single_block_edit ) {
-			$this->store_response_id( $conversation_key, $response_id );
-		}
 
 		$title_data = $this->extract_page_title( $content );
 		$final_html = $title_data['html'];

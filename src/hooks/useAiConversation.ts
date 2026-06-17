@@ -281,6 +281,36 @@ const splitTopLevelBlocks = ( markup: string ): string[] => {
     .filter( s => s.length > 0 && /<!--\s*\/?wp:/i.test( s ) );
 };
 
+// If the entire page is wrapped in a single lone wp:group (a page-wrapper pattern that
+// breaks block-level indexing), hoist its children to the top level.
+// This mirrors the worker's sanitizer guard 0 applied to AI-generated output, but also
+// handles existing pages loaded from WordPress that were saved with this structure.
+const unwrapLonePageGroup = ( markup: string ): string => {
+  const blocks = splitTopLevelBlocks( markup );
+  if ( blocks.length !== 1 || ! /<!--\s*wp:group\b/i.test( blocks[ 0 ] ) ) {
+    return markup;
+  }
+
+  const outerBlock = blocks[ 0 ];
+  // Find the end of the opening <!-- wp:group ... --> comment
+  const firstCommentEnd = outerBlock.indexOf( '-->' );
+  if ( firstCommentEnd < 0 ) return markup;
+
+  const afterOpen = outerBlock.slice( firstCommentEnd + 3 );
+  // The outermost closing tag is the LAST <!-- /wp:group --> in this block
+  const lastCloseIdx = afterOpen.lastIndexOf( '<!-- /wp:group -->' );
+  if ( lastCloseIdx < 0 ) return markup;
+
+  let inner = afterOpen.slice( 0, lastCloseIdx ).trim();
+  // Strip the HTML wrapper <div class="...wp-block-group..."> and its closing </div>
+  inner = inner.replace( /^<div\b[^>]*\bwp-block-group\b[^>]*>\s*/i, '' );
+  inner = inner.replace( /\s*<\/div>$/i, '' ).trim();
+
+  // Only proceed if the inner content contains multiple top-level blocks;
+  // a single-block inner would just recurse into the same problem.
+  return splitTopLevelBlocks( inner ).length > 1 ? inner : markup;
+};
+
 export const useAiConversation = ( options: UseAiConversationOptions ): UseAiConversationResult => {
   const {
     apiUrl,
@@ -321,6 +351,11 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
   // Refs for single-block edit state that spans handleSend → applyFinalResponse.
   const isSingleBlockRequestRef = useRef<boolean>( false );
   const pendingTopLevelIndexRef = useRef<number | null>( null );
+  // Additive single-block requests ("add X below this section"): direction to
+  // insert when the AI returns only the new content instead of selected
+  // block + new content, plus the selected block's type to tell those apart.
+  const pendingInsertDirectionRef = useRef<'before' | 'after' | null>( null );
+  const pendingSelectedTypeRef = useRef<string | null>( null );
 
   // Controls when the initial-load useEffect fires to populate the block registry.
   const parsedInitialRef = useRef<boolean>( false );
@@ -333,7 +368,16 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
   useEffect( () => {
     if ( ! parsedInitialRef.current && previewHtml ) {
       parsedInitialRef.current = true;
-      const blocks = wpBlocksParse( previewHtml );
+
+      // Strip lone page-wrapper group before first use. Existing pages may have been
+      // saved with all content nested inside one top-level wp:group, which makes every
+      // section appear as a child of DOM index 0 instead of as siblings.
+      const normalized = unwrapLonePageGroup( previewHtml );
+      if ( normalized !== previewHtml ) {
+        setPreviewHtml( normalized );
+      }
+
+      const blocks = wpBlocksParse( normalized );
       if ( blocks.length > 0 ) {
         setParsedBlocks( blocks );
       }
@@ -378,13 +422,17 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       const excerpt = responseData?.excerpt || '';
       const summary = responseData?.summary || '';
 
+      // Metadata edits are atomic: apply ONLY the field(s) the user explicitly
+      // asked for. The AI emits all three metadata lines on every response
+      // (the base prompt requires it), so without this intent gate an
+      // "add an excerpt" request would also overwrite the title, and vice versa.
       const applied: string[] = [];
-      if ( title && ( ! selectedItem || wantsTitle ) ) {
+      if ( title && wantsTitle ) {
         setPublishTitle( title );
         setMetaTitle( title );
         applied.push( 'title' );
       }
-      if ( excerpt ) {
+      if ( excerpt && wantsExcerpt ) {
         setMetaExcerpt( excerpt );
         applied.push( 'excerpt' );
       }
@@ -422,8 +470,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
             html: previewHtml,
             label: historyLabel,
             timestamp,
-            publishTitle: title || publishTitle,
-            metaExcerpt: excerpt || metaExcerpt,
+            publishTitle: ( wantsTitle && title ) ? title : publishTitle,
+            metaExcerpt: ( wantsExcerpt && excerpt ) ? excerpt : metaExcerpt,
           },
         ] );
       }
@@ -510,11 +558,31 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           const idx = pendingTopLevelIndexRef.current;
           let handled = false;
 
-          // Primary: wp.blocks parse+serialize if available.
+          // For additive requests ("add X below this section") the AI should
+          // return the selected block plus the new content. When it returns
+          // ONLY the new content (a single block of a different type than the
+          // selected one), INSERT it next to the selected block instead of
+          // replacing the selected block with it.
+          const insertDirection = pendingInsertDirectionRef.current;
+          const selectedType = pendingSelectedTypeRef.current;
+          const returnedTypeMatch = html.match( /<!--\s*wp:([a-z0-9\/-]+)/i );
+          const returnedType = returnedTypeMatch ? returnedTypeMatch[ 1 ].replace( /^core\//, '' ) : null;
+
+          // Primary: wp.blocks parse+serialize if available. Splice in ALL
+          // returned top-level blocks — additive requests ("add a section
+          // below this one") legitimately return the selected block plus new
+          // sibling blocks, and dropping all but the first loses content.
           const newBlocks = wpBlocksParse( html );
           if ( newBlocks.length > 0 && parsedBlocks.length > idx ) {
+            const shouldInsert =
+              insertDirection !== null &&
+              newBlocks.length === 1;
             const updatedBlocks = [ ...parsedBlocks ];
-            updatedBlocks[ idx ] = newBlocks[ 0 ];
+            if ( shouldInsert ) {
+              updatedBlocks.splice( insertDirection === 'before' ? idx : idx + 1, 0, ...newBlocks );
+            } else {
+              updatedBlocks.splice( idx, 1, ...newBlocks );
+            }
             const newPageMarkup = wpBlocksSerialize( updatedBlocks );
             if ( newPageMarkup ) {
               setParsedBlocks( updatedBlocks );
@@ -529,9 +597,17 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           // Fallback: string-split replacement — works without wp.blocks.
           if ( ! handled && previewHtml ) {
             const pageBlocks = splitTopLevelBlocks( previewHtml );
+            const returnedBlockCount = splitTopLevelBlocks( html ).length;
             if ( idx < pageBlocks.length ) {
+              const shouldInsert =
+                insertDirection !== null &&
+                returnedBlockCount === 1;
               const updatedPageBlocks = [ ...pageBlocks ];
-              updatedPageBlocks[ idx ] = html.trim();
+              if ( shouldInsert ) {
+                updatedPageBlocks.splice( insertDirection === 'before' ? idx : idx + 1, 0, html.trim() );
+              } else {
+                updatedPageBlocks[ idx ] = html.trim();
+              }
               const newPageMarkup = updatedPageBlocks.join( '\n\n' );
               setPreviewHtml( newPageMarkup );
               addHistoryEntry( newPageMarkup );
@@ -542,6 +618,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
           isSingleBlockRequestRef.current = false;
           pendingTopLevelIndexRef.current = null;
+          pendingInsertDirectionRef.current = null;
+          pendingSelectedTypeRef.current = null;
         } else if ( selectedBlockIndex !== null && selectedBlockHtml !== null ) {
           // Try Gutenberg block-marker replacement first; fall back to DOM patch.
           const hasBlockMarkers = /<!--\s*wp:/.test( html );
@@ -632,12 +710,20 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         } else {
           // Full-page update — also covers rendered HTML targeted edits where the AI returns
           // the full modified page. Also refresh the block registry.
-          const newBlocks = wpBlocksParse( html );
+          //
+          // Normalize a lone page-wrapper group here, not just on initial load. Newly
+          // generated pages bypass the parsedInitialRef load effect (it is consumed on the
+          // first partial stream buffer), so without this an AI-wrapped page keeps its single
+          // outer group. That collapses the block registry to length 1 and sends every
+          // subsequent additive insert ("add a pricing table below this section") to the very
+          // end of the page instead of beside the selected section.
+          const normalizedHtml = unwrapLonePageGroup( html );
+          const newBlocks = wpBlocksParse( normalizedHtml );
           if ( newBlocks.length > 0 ) {
             setParsedBlocks( newBlocks );
           }
-          setPreviewHtml( html );
-          addHistoryEntry( html );
+          setPreviewHtml( normalizedHtml );
+          addHistoryEntry( normalizedHtml );
           setLastGeneratedHtml( null );
           if ( selectedBlockIndex !== null ) {
             clearSelection( iframeRef );
@@ -898,6 +984,20 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       const isSingleBlockEdit = selectedBlockGutenbergMarkup !== null;
       isSingleBlockRequestRef.current = isSingleBlockEdit;
       pendingTopLevelIndexRef.current = isSingleBlockEdit ? topLevelBlockIndex : null;
+
+      // Detect additive intent so the response can be INSERTED next to the
+      // selected block when the AI returns only the new content.
+      const additiveVerb = /\b(add|insert|create|put|place)\b/i.test( text );
+      const positionBefore = /\b(above|before|on top of)\b/i.test( text );
+      const positionAfter = /\b(below|under|underneath|beneath|after)\b/i.test( text );
+      pendingInsertDirectionRef.current =
+        isSingleBlockEdit && additiveVerb && ( positionBefore || positionAfter )
+          ? ( positionBefore ? 'before' : 'after' )
+          : null;
+      const selectedTypeMatch = isSingleBlockEdit
+        ? selectedBlockGutenbergMarkup!.match( /<!--\s*wp:([a-z0-9\/-]+)/i )
+        : null;
+      pendingSelectedTypeRef.current = selectedTypeMatch ? selectedTypeMatch[ 1 ].replace( /^core\//, '' ) : null;
 
       // For single-block edits: send only the selected block — no full page markup.
       // For all other cases: use existing context logic.
