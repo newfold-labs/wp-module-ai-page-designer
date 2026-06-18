@@ -85,10 +85,31 @@ class AIPageDesignerController extends \WP_REST_Controller {
 							'description'       => __( 'Additional context like current markup', 'wp-module-ai-page-designer' ),
 							'validate_callback' => array( $this, 'validate_context' ),
 						),
-						'stream'   => array(
-							'required'    => false,
-							'type'        => 'boolean',
-							'description' => __( 'Stream AI response as SSE', 'wp-module-ai-page-designer' ),
+					),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			$this->namespace,
+			'/' . $this->rest_base . '/stream',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'generate_content_stream' ),
+					'args'                => array(
+						'messages' => array(
+							'required'          => true,
+							'type'              => 'array',
+							'description'       => __( 'Array of conversation messages', 'wp-module-ai-page-designer' ),
+							'validate_callback' => array( $this, 'validate_messages' ),
+						),
+						'context'  => array(
+							'required'          => false,
+							'type'              => 'object',
+							'description'       => __( 'Additional context like current markup', 'wp-module-ai-page-designer' ),
+							'validate_callback' => array( $this, 'validate_context' ),
 						),
 					),
 					'permission_callback' => array( $this, 'check_permission' ),
@@ -372,6 +393,17 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				array( 'status' => 500 )
 			);
 		}
+	}
+
+	/**
+	 * Generate content via streaming (dedicated /generate/stream endpoint).
+	 *
+	 * @param \WP_REST_Request $request The REST request
+	 * @return \WP_REST_Response|\WP_Error The response or error
+	 */
+	public function generate_content_stream( \WP_REST_Request $request ) {
+		$request['stream'] = true;
+		return $this->generate_content( $request );
 	}
 
 	/**
