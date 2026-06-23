@@ -1,6 +1,6 @@
 {
   "name": "wp-module-ai-page-designer",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "private": true,
   "description": "AI-powered page designer React app",
   "scripts": {

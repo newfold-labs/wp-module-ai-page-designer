@@ -24,7 +24,7 @@ if ( function_exists( 'add_action' ) ) {
 			}
 
 			if ( ! defined( 'NFD_MODULE_AI_PAGE_DESIGNER_VERSION' ) ) {
-				define( 'NFD_MODULE_AI_PAGE_DESIGNER_VERSION', '1.0.0' );
+				define( 'NFD_MODULE_AI_PAGE_DESIGNER_VERSION', '1.0.5' );
 			}
 
 			if ( ! defined( 'NFD_MODULE_AI_PAGE_DESIGNER_URL' ) ) {

@@ -22,7 +22,7 @@ class AiClientWorker {
 	 * Request generated content from the Worker.
 	 *
 	 * @param array $ai_messages Message payload for the AI service.
-	 * @param array $options Optional settings (previous_response_id, current_markup, etc.).
+	 * @param array $options Optional settings (current_markup, selected_block_markup, etc.).
 	 * @return array|\WP_Error
 	 */
 	public function generate_content( array $ai_messages, array $options = array() ) {
@@ -472,15 +472,11 @@ class AiClientWorker {
 	/**
 	 * Build context array from options for Worker request.
 	 *
-	 * @param array $options Optional settings (previous_response_id, selected_block_markup).
+	 * @param array $options Optional settings (selected_block_markup, single_block_edit).
 	 * @return array Context array for the Worker request.
 	 */
 	private function build_context_from_options( $options ) {
 		$context = array();
-
-		if ( ! empty( $options['previous_response_id'] ) ) {
-			$context['previous_response_id'] = $options['previous_response_id'];
-		}
 
 		if ( ! empty( $options['selected_block_markup'] ) ) {
 			$context['selected_block_markup'] = $options['selected_block_markup'];
