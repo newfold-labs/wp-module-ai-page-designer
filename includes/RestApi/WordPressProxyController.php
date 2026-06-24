@@ -8,6 +8,7 @@
 namespace NewfoldLabs\WP\Module\AIPageDesigner\RestApi;
 
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Harness;
 
 /**
  * REST API Controller for WordPress Content Operations
@@ -243,9 +244,12 @@ class WordPressProxyController extends \WP_REST_Controller {
 		$type      = $request['type'];
 		$post_type = 'pages' === $type ? 'page' : 'post';
 
+		// Idempotent re-conform on save: a no-op for already-conformed preview
+		// markup, but guarantees correctness for any markup that reached save
+		// without passing through the generate path (WYSIWYG + defense).
 		$post_data = array(
 			'post_title'   => sanitize_text_field( $request['title'] ),
-			'post_content' => wp_kses_post( $request['content'] ),
+			'post_content' => wp_kses_post( ( new Harness() )->conform( (string) $request['content'] ) ),
 			'post_status'  => sanitize_text_field( $request['status'] ),
 			'post_type'    => $post_type,
 		);
@@ -308,7 +312,9 @@ class WordPressProxyController extends \WP_REST_Controller {
 		}
 
 		if ( isset( $request['content'] ) ) {
-			$post_data['post_content'] = wp_kses_post( $request['content'] );
+			// Idempotent re-conform on save (WYSIWYG + defense); no-op for
+			// already-conformed preview markup.
+			$post_data['post_content'] = wp_kses_post( ( new Harness() )->conform( (string) $request['content'] ) );
 		}
 
 		if ( isset( $request['status'] ) ) {

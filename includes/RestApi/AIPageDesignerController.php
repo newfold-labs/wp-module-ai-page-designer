@@ -12,6 +12,7 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\FastPathHandler;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\ImageService;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PatternLayoutProvider;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Harness;
 use Web\AIPageDesignerDebug;
 
 /**
@@ -648,6 +649,13 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					$final_html .= serialize_blocks( array( $block ) );
 				}
 			}
+		}
+
+		// Conform the markup to the active theme before it is previewed. The
+		// harness is idempotent, so the same pass runs again on save without the
+		// saved page ever diverging from what was previewed (WYSIWYG).
+		if ( ! empty( $final_html ) ) {
+			$final_html = ( new Harness() )->conform( $final_html );
 		}
 
 		// Handle metadata-only responses (e.g., when user asks for excerpt generation)

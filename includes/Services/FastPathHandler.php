@@ -7,6 +7,8 @@
 
 namespace NewfoldLabs\WP\Module\AIPageDesigner\Services;
 
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Harness;
+
 /**
  * Handles requests that can be resolved without calling the AI service.
  */
@@ -369,10 +371,12 @@ class FastPathHandler {
 	 * @return \WP_REST_Response
 	 */
 	private function build_response( $html ) {
+		// Conform fast-path output before preview, same as the AI path (WYSIWYG).
+		$conformed = ( new Harness() )->conform( trim( $html ) );
 		return new \WP_REST_Response(
 			array(
 				'data' => array(
-					'content' => trim( $html ) . '<!-- fastpath_cb=' . time() . ' -->',
+					'content' => $conformed . '<!-- fastpath_cb=' . time() . ' -->',
 					'title'   => '',
 				),
 			),

@@ -4,3 +4,7 @@ vendor/
 
 .claude/*
 .gitnexus/*
+
+# PHPUnit
+.phpunit.cache/
+.phpunit.result.cache
