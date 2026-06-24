@@ -502,8 +502,21 @@ class AiClientWorker {
 		$settings = wp_get_global_settings();
 		$context  = array();
 
-		// Color palette
+		// Color palette — only pass solid, usable colors. Functional tokens
+		// (color-mix(), var(), gradients, transparent, alpha'd values) cannot be
+		// used as a solid background or text color; when handed to the AI they
+		// get applied as section backgrounds / text and render invisible. For
+		// example, Twenty Twenty-Five's accent-6 is
+		// `color-mix(in srgb, currentColor 20%, transparent)`.
 		$theme_swatches = $settings['color']['palette']['theme'] ?? array();
+		$theme_swatches = array_values(
+			array_filter(
+				$theme_swatches,
+				function ( $swatch ) {
+					return $this->is_solid_color( $swatch['color'] ?? '' );
+				}
+			)
+		);
 		if ( ! empty( $theme_swatches ) ) {
 			$context['colorPalette'] = array_map(
 				function ( $swatch ) {
@@ -541,5 +554,59 @@ class AiClientWorker {
 		}
 
 		return $context;
+	}
+
+	/**
+	 * Whether a CSS color value is a solid, opaque color usable as a background
+	 * or text color. Rejects functional tokens (color-mix(), var(), gradients),
+	 * transparent, and alpha'd values that would render invisible.
+	 *
+	 * @param string $color CSS color value from the theme palette.
+	 * @return bool
+	 */
+	private function is_solid_color( $color ) {
+		$color = strtolower( trim( (string) $color ) );
+
+		if ( '' === $color ) {
+			return false;
+		}
+
+		// Reject functional / non-solid expressions outright.
+		if ( false !== strpos( $color, 'color-mix' )
+			|| false !== strpos( $color, 'var(' )
+			|| false !== strpos( $color, 'gradient' )
+			|| false !== strpos( $color, 'currentcolor' )
+			|| 'transparent' === $color ) {
+			return false;
+		}
+
+		// Solid 3 or 6 digit hex.
+		if ( preg_match( '/^#([0-9a-f]{3}|[0-9a-f]{6})$/', $color ) ) {
+			return true;
+		}
+
+		// 4 or 8 digit hex carries alpha — keep only if effectively opaque.
+		if ( preg_match( '/^#([0-9a-f]{4}|[0-9a-f]{8})$/', $color ) ) {
+			$hex   = ltrim( $color, '#' );
+			$alpha = 4 === strlen( $hex )
+				? hexdec( str_repeat( substr( $hex, 3, 1 ), 2 ) )
+				: hexdec( substr( $hex, 6, 2 ) );
+			return $alpha >= 0xF0;
+		}
+
+		// rgb()/hsl() are solid; rgba()/hsla() only if alpha is near opaque.
+		if ( preg_match( '/^(rgb|hsl)\(/', $color ) ) {
+			return true;
+		}
+		if ( preg_match( '/^(rgba|hsla)\(.*,\s*([0-9.]+)\s*\)$/', $color, $matches ) ) {
+			return (float) $matches[2] >= 0.9;
+		}
+
+		// Named CSS colors (e.g. "navy", "tomato"); "transparent" handled above.
+		if ( preg_match( '/^[a-z]+$/', $color ) ) {
+			return true;
+		}
+
+		return false;
 	}
 }
