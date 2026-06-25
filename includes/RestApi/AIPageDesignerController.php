@@ -155,15 +155,15 @@ class AIPageDesignerController extends \WP_REST_Controller {
 							'required'          => true,
 							'type'              => 'string',
 							'description'       => __( 'Generation ID', 'wp-module-ai-page-designer' ),
-							'validate_callback' => function( $value ) {
+							'validate_callback' => function ( $value ) {
 								return (bool) preg_match( '/^[a-f0-9-]+$/', $value );
 							},
 						),
-						'offset' => array(
-							'required'          => false,
-							'type'              => 'integer',
-							'default'           => 0,
-							'description'       => __( 'Chunk offset', 'wp-module-ai-page-designer' ),
+						'offset'.       => array(
+							'required'    => false,
+							'type'        => 'integer',
+							'default'     => 0,
+							'description' => __( 'Chunk offset', 'wp-module-ai-page-designer' ),
 						),
 					),
 					'permission_callback' => array( $this, 'check_permission' ),
@@ -176,7 +176,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 							'required'          => true,
 							'type'              => 'string',
 							'description'       => __( 'Generation ID', 'wp-module-ai-page-designer' ),
-							'validate_callback' => function( $value ) {
+							'validate_callback' => function ( $value ) {
 								return (bool) preg_match( '/^[a-f0-9-]+$/', $value );
 							},
 						),
@@ -686,12 +686,12 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		// all images were re-fetched and replaced. A request is an edit when it
 		// references existing content in any form — full-page markup OR a selected
 		// block (single-block edits send only the selected block, not current_markup).
-		$is_redesign        = $this->is_redesign_request( $last_user_prompt );
-		$is_edit            = ! empty( $current_markup )
+		$is_redesign      = $this->is_redesign_request( $last_user_prompt );
+		$is_edit          = ! empty( $current_markup )
 			|| ! empty( $context['selected_block_markup'] )
 			|| ! empty( $context['single_block_edit'] );
-		$is_new_request     = $is_redesign || ( ! $is_edit && empty( $context['post_id'] ) );
-		$has_placeholders   = strpos( $final_html, 'placehold.co' ) !== false;
+		$is_new_request   = $is_redesign || ( ! $is_edit && empty( $context['post_id'] ) );
+		$has_placeholders = strpos( $final_html, 'placehold.co' ) !== false;
 
 		// Fallback: if we have placeholders but didn't detect image blocks,
 		// there might be images in non-standard blocks or malformed markup
@@ -799,7 +799,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 		// Send padding to fill both PHP's output buffer and Apache's proxy
 		// buffer on the first write, triggering an immediate transport flush.
-		echo ': ' . str_repeat( ' ', 16384 ) . "\n\n";
+		echo ': ' . str_repeat( ' ', 16384 ) . "\n\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		flush();
 	}
 
@@ -1102,10 +1102,10 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			);
 
 			// Extract options (mirrors generate_content logic)
-			$current_markup   = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
-			$content_type     = isset( $context['content_type'] ) && 'post' === $context['content_type'] ? 'post' : 'page';
-			$page_title       = isset( $context['page_title'] ) ? sanitize_text_field( $context['page_title'] ) : '';
-			$page_excerpt     = isset( $context['page_excerpt'] ) ? sanitize_textarea_field( $context['page_excerpt'] ) : '';
+			$current_markup = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
+			$content_type   = isset( $context['content_type'] ) && 'post' === $context['content_type'] ? 'post' : 'page';
+			$page_title     = isset( $context['page_title'] ) ? sanitize_text_field( $context['page_title'] ) : '';
+			$page_excerpt   = isset( $context['page_excerpt'] ) ? sanitize_textarea_field( $context['page_excerpt'] ) : '';
 
 			$last_user_prompt = '';
 			for ( $index = count( $messages ) - 1; $index >= 0; $index-- ) {
@@ -1153,7 +1153,10 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$messages,
 				$stream_options,
 				function ( $event ) use (
-					&$raw_content, &$stream_response, &$stream_error, &$processed_content,
+					&$raw_content,
+					&$stream_response,
+					&$stream_error,
+					&$processed_content,
 					$generation_id
 				) {
 					$event_type = $event['type'] ?? '';
@@ -1295,6 +1298,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			}
 			return new \WP_Error(
 				'server_error',
+				// translators: %s is the error message.
 				sprintf( __( 'AI generation failed: %s', 'wp-module-ai-page-designer' ), $e->getMessage() ),
 				array( 'status' => 500 )
 			);
@@ -1388,7 +1392,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		status_header( 200 );
 		header( 'Content-Type: application/json' );
 		header( 'Content-Length: ' . strlen( $response_body ) );
-		echo $response_body;
+		echo $response_body; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 
 		fastcgi_finish_request();
 		return true;
