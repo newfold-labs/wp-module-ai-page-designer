@@ -257,7 +257,10 @@ class AiClientWorker {
 				CURLOPT_SSL_VERIFYPEER => true,
 				CURLOPT_SSL_VERIFYHOST => 2,
 				CURLOPT_USERAGENT      => 'WordPress/' . get_bloginfo( 'version' ) . '; ' . home_url(),
-				CURLOPT_ENCODING       => '', // Accept all encodings
+				// SSE must stay uncompressed: gzip/br buffer many events into a
+				// single compression block, so the preview updates in large
+				// batches instead of streaming token-by-token. Request identity.
+				CURLOPT_ENCODING       => 'identity',
 			)
 		);
 
