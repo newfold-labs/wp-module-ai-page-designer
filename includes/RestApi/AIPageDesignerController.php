@@ -116,6 +116,75 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				),
 			)
 		);
+
+		register_rest_route(
+			$this->namespace,
+			'/' . $this->rest_base . '/poll/start',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'start_polling_generation' ),
+					'args'                => array(
+						'messages' => array(
+							'required'          => true,
+							'type'              => 'array',
+							'description'       => __( 'Array of conversation messages', 'wp-module-ai-page-designer' ),
+							'validate_callback' => array( $this, 'validate_messages' ),
+						),
+						'context'  => array(
+							'required'          => false,
+							'type'              => 'object',
+							'description'       => __( 'Additional context like current markup', 'wp-module-ai-page-designer' ),
+							'validate_callback' => array( $this, 'validate_context' ),
+						),
+					),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			$this->namespace,
+			'/' . $this->rest_base . '/poll/(?P<generation_id>[a-f0-9-]+)',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'poll_generation' ),
+					'args'                => array(
+						'generation_id' => array(
+							'required'          => true,
+							'type'              => 'string',
+							'description'       => __( 'Generation ID', 'wp-module-ai-page-designer' ),
+							'validate_callback' => function( $value ) {
+								return (bool) preg_match( '/^[a-f0-9-]+$/', $value );
+							},
+						),
+						'offset' => array(
+							'required'          => false,
+							'type'              => 'integer',
+							'default'           => 0,
+							'description'       => __( 'Chunk offset', 'wp-module-ai-page-designer' ),
+						),
+					),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+				array(
+					'methods'             => \WP_REST_Server::DELETABLE,
+					'callback'            => array( $this, 'delete_generation' ),
+					'args'                => array(
+						'generation_id' => array(
+							'required'          => true,
+							'type'              => 'string',
+							'description'       => __( 'Generation ID', 'wp-module-ai-page-designer' ),
+							'validate_callback' => function( $value ) {
+								return (bool) preg_match( '/^[a-f0-9-]+$/', $value );
+							},
+						),
+					),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -689,25 +758,48 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @return void
 	 */
 	private function init_streaming_response() {
+		// Disable any PHP-level compression that might buffer output.
+		ini_set( 'zlib.output_compression', 'Off' );
+		// Attempt to disable output buffering at the PHP level.
+		// May be blocked on restricted hosting, but harmless to try.
+		@ini_set( 'output_buffering', '0' );
+		// Auto-flush after every echo/print — belt-and-suspenders.
+		ob_implicit_flush( true );
+
 		header( 'Content-Type: text/event-stream' );
-		header( 'Cache-Control: no-cache' );
+		header( 'Cache-Control: no-cache, no-store, must-revalidate' );
+		header( 'Pragma: no-cache' );
 		header( 'X-Accel-Buffering: no' ); // nginx; harmless on Apache
 		header( 'Content-Encoding: identity' ); // prevent Apache mod_deflate buffering
-		header( 'Connection: keep-alive' );
+
+		// Connection: close prevents Apache from buffering the response to
+		// determine keep-alive size. With keep-alive, Apache sometimes waits
+		// for Content-Length before sending, which defeats streaming.
+		header( 'Connection: close' );
 
 		// Apache-specific: tell mod_deflate not to compress this response.
 		// Compression forces buffering, which breaks SSE streaming.
+		// Note: with PHP-FPM (fpm-fcgi), apache_setenv() is unavailable;
+		// the Content-Encoding: identity header handles this instead.
 		if ( function_exists( 'apache_setenv' ) ) {
 			apache_setenv( 'no-gzip', '1' );
 		}
 
-		while ( ob_get_level() > 0 ) {
-			ob_end_flush();
+		// Close the session if one is open. Session locks can block
+		// concurrent requests and interfere with streaming output.
+		if ( session_status() === PHP_SESSION_ACTIVE ) {
+			session_write_close();
 		}
 
-		// Send an SSE comment padded to ~4 KB to force PHP's output buffer to
-		// flush on the first write.
-		echo ': ' . str_repeat( ' ', 4096 ) . "\n\n";
+		// Strip all output buffers — use ob_end_clean() so stale data
+		// from WordPress/plugins isn't dumped into our SSE stream.
+		while ( ob_get_level() > 0 ) {
+			ob_end_clean();
+		}
+
+		// Send padding to fill both PHP's output buffer and Apache's proxy
+		// buffer on the first write, triggering an immediate transport flush.
+		echo ': ' . str_repeat( ' ', 16384 ) . "\n\n";
 		flush();
 	}
 
@@ -721,6 +813,13 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	private function send_stream_event( $event, array $data ) {
 		echo 'event: ' . sanitize_key( $event ) . "\n";
 		echo 'data: ' . wp_json_encode( $data ) . "\n\n";
+		// Aggressively flush ALL buffer levels. Even with ob_implicit_flush,
+		// some buffers may not auto-flush (e.g., those started after init).
+		// This ensures PHP buffers are emptied before we call flush().
+		while ( ob_get_level() > 0 ) {
+			ob_end_flush();
+		}
+		// Send a FastCGI FLUSH packet to tell Apache to forward data now.
 		flush();
 	}
 
@@ -965,6 +1064,351 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		}
 
 		return $content;
+	}
+
+	/**
+	 * Start a polling-based generation process.
+	 *
+	 * Stores initial state, returns the generation_id immediately,
+	 * then processes the Worker stream in the background.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return \WP_REST_Response|\WP_Error The response.
+	 */
+	public function start_polling_generation( \WP_REST_Request $request ) {
+		try {
+			$messages = $request['messages'];
+			$context  = is_array( $request['context'] ?? null ) ? $request['context'] : array();
+
+			$conversation_context = $this->get_conversation_context( $context );
+			if ( is_wp_error( $conversation_context ) ) {
+				return $conversation_context;
+			}
+
+			$generation_id = wp_generate_uuid4();
+
+			set_transient(
+				"nfd_ai_poll_{$generation_id}_meta",
+				array(
+					'status'     => 'in_progress',
+					'created_at' => time(),
+				),
+				HOUR_IN_SECONDS
+			);
+			set_transient(
+				"nfd_ai_poll_{$generation_id}_chunks",
+				array(),
+				HOUR_IN_SECONDS
+			);
+
+			// Extract options (mirrors generate_content logic)
+			$current_markup   = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
+			$content_type     = isset( $context['content_type'] ) && 'post' === $context['content_type'] ? 'post' : 'page';
+			$page_title       = isset( $context['page_title'] ) ? sanitize_text_field( $context['page_title'] ) : '';
+			$page_excerpt     = isset( $context['page_excerpt'] ) ? sanitize_textarea_field( $context['page_excerpt'] ) : '';
+
+			$last_user_prompt = '';
+			for ( $index = count( $messages ) - 1; $index >= 0; $index-- ) {
+				if ( isset( $messages[ $index ]['role'] ) && 'user' === $messages[ $index ]['role'] ) {
+					$last_user_prompt = $messages[ $index ]['content'] ?? '';
+					break;
+				}
+			}
+
+			$is_redesign_request  = $this->is_redesign_request( $last_user_prompt );
+			$is_single_block_edit = ! empty( $context['single_block_edit'] ) && ! empty( $context['selected_block_markup'] );
+
+			$is_new      = count( $messages ) === 1;
+			$use_pattern = ( $is_new && empty( $current_markup ) && 'post' !== $content_type )
+				|| ( $is_redesign_request && 'post' !== $content_type );
+
+			$base_layout = '';
+			if ( $use_pattern && \NewfoldLabs\WP\Module\AIPageDesigner\AIPageDesigner::PATTERN_PROVIDER === 'wonderblocks' ) {
+				$base_layout = $this->pattern_layout_provider->get_random_pattern_layout( $last_user_prompt );
+			}
+
+			$stream_options = array(
+				'current_markup'        => $current_markup,
+				'content_type'          => $content_type,
+				'selected_block_markup' => $context['selected_block_markup'] ?? null,
+				'single_block_edit'     => $is_single_block_edit,
+				'base_layout'           => $base_layout,
+			);
+
+			// Try to close connection before background processing
+			$connection_closed = $this->try_close_connection(
+				wp_json_encode( array( 'generation_id' => $generation_id ) )
+			);
+
+			// Background processing
+			ignore_user_abort( true );
+			@set_time_limit( 0 );
+
+			$raw_content       = '';
+			$processed_content = '';
+			$stream_response   = null;
+			$stream_error      = null;
+
+			$stream_result = $this->ai_client->stream_content(
+				$messages,
+				$stream_options,
+				function ( $event ) use (
+					&$raw_content, &$stream_response, &$stream_error, &$processed_content,
+					$generation_id
+				) {
+					$event_type = $event['type'] ?? '';
+					if ( 'delta' === $event_type && ! empty( $event['text'] ) ) {
+						$raw_content .= $event['text'];
+						$this->store_poll_chunk( $generation_id, $event['text'] );
+					}
+					if ( 'meta' === $event_type && ! empty( $event['response_id'] ) ) {
+						$stream_response = $event['response_id'];
+					}
+					if ( 'done' === $event_type ) {
+						if ( ! empty( $event['content'] ) ) {
+							$processed_content = $event['content'];
+						}
+						if ( ! empty( $event['response_id'] ) ) {
+							$stream_response = $event['response_id'];
+						}
+					}
+					if ( 'error' === $event_type ) {
+						$stream_error = isset( $event['message'] ) && '' !== $event['message']
+							? $event['message']
+							: __( 'AI generation failed. Please try again.', 'wp-module-ai-page-designer' );
+					}
+				}
+			);
+
+			if ( '' !== $processed_content ) {
+				$raw_content = $processed_content;
+			}
+
+			// Check for errors
+			if ( is_wp_error( $stream_result ) ) {
+				set_transient(
+					"nfd_ai_poll_{$generation_id}_meta",
+					array(
+						'status'        => 'error',
+						'error_message' => $stream_result->get_error_message(),
+						'created_at'    => time(),
+					),
+					HOUR_IN_SECONDS
+				);
+				if ( $connection_closed ) {
+					exit;
+				}
+				return $stream_result;
+			}
+
+			if ( null !== $stream_error ) {
+				set_transient(
+					"nfd_ai_poll_{$generation_id}_meta",
+					array(
+						'status'        => 'error',
+						'error_message' => $stream_error,
+						'created_at'    => time(),
+					),
+					HOUR_IN_SECONDS
+				);
+				if ( $connection_closed ) {
+					exit;
+				}
+				return new \WP_Error( 'ai_generation_error', $stream_error, array( 'status' => 500 ) );
+			}
+
+			if ( '' === trim( $raw_content ) ) {
+				set_transient(
+					"nfd_ai_poll_{$generation_id}_meta",
+					array(
+						'status'        => 'error',
+						'error_message' => __( 'AI generation returned no content. Please try again.', 'wp-module-ai-page-designer' ),
+						'created_at'    => time(),
+					),
+					HOUR_IN_SECONDS
+				);
+				if ( $connection_closed ) {
+					exit;
+				}
+				return new \WP_Error(
+					'ai_empty_content',
+					__( 'AI generation returned no content. Please try again.', 'wp-module-ai-page-designer' ),
+					array( 'status' => 500 )
+				);
+			}
+
+			$response_id   = is_string( $stream_result ) && $stream_result ? $stream_result : $stream_response;
+			$response_data = $this->build_response_payload(
+				$raw_content,
+				$response_id,
+				$messages,
+				$context,
+				$conversation_context,
+				$last_user_prompt
+			);
+
+			if ( is_wp_error( $response_data ) ) {
+				set_transient(
+					"nfd_ai_poll_{$generation_id}_meta",
+					array(
+						'status'        => 'error',
+						'error_message' => $response_data->get_error_message(),
+						'created_at'    => time(),
+					),
+					HOUR_IN_SECONDS
+				);
+				if ( $connection_closed ) {
+					exit;
+				}
+				return $response_data;
+			}
+
+			set_transient(
+				"nfd_ai_poll_{$generation_id}_meta",
+				array(
+					'status'     => 'completed',
+					'result'     => $response_data,
+					'created_at' => time(),
+				),
+				HOUR_IN_SECONDS
+			);
+
+			if ( $connection_closed ) {
+				exit;
+			}
+
+			return new \WP_REST_Response(
+				array( 'generation_id' => $generation_id ),
+				200
+			);
+		} catch ( \Exception $e ) {
+			if ( isset( $generation_id ) ) {
+				set_transient(
+					"nfd_ai_poll_{$generation_id}_meta",
+					array(
+						'status'        => 'error',
+						'error_message' => $e->getMessage(),
+						'created_at'    => time(),
+					),
+					HOUR_IN_SECONDS
+				);
+			}
+			return new \WP_Error(
+				'server_error',
+				sprintf( __( 'AI generation failed: %s', 'wp-module-ai-page-designer' ), $e->getMessage() ),
+				array( 'status' => 500 )
+			);
+		}
+	}
+
+	/**
+	 * Poll for generation chunks.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return \WP_REST_Response|\WP_Error The response.
+	 */
+	public function poll_generation( \WP_REST_Request $request ) {
+		$generation_id = $request['generation_id'];
+		$offset        = (int) $request->get_param( 'offset' );
+
+		$meta = get_transient( "nfd_ai_poll_{$generation_id}_meta" );
+		if ( false === $meta ) {
+			return new \WP_Error(
+				'generation_not_found',
+				__( 'Generation not found.', 'wp-module-ai-page-designer' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$chunks       = get_transient( "nfd_ai_poll_{$generation_id}_chunks" );
+		$chunks       = is_array( $chunks ) ? $chunks : array();
+		$chunks_count = count( $chunks );
+
+		$new_chunks = array();
+		for ( $i = $offset; $i < $chunks_count; $i++ ) {
+			$new_chunks[] = $chunks[ $i ];
+		}
+
+		$response = array(
+			'status' => $meta['status'],
+			'chunks' => $new_chunks,
+			'offset' => $chunks_count,
+		);
+
+		if ( 'completed' === $meta['status'] && isset( $meta['result'] ) ) {
+			$response['result'] = $meta['result'];
+		}
+
+		if ( 'error' === $meta['status'] && isset( $meta['error_message'] ) ) {
+			$response['error_message'] = $meta['error_message'];
+		}
+
+		return new \WP_REST_Response( $response, 200 );
+	}
+
+	/**
+	 * Delete generation data (cleanup).
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return \WP_REST_Response|\WP_Error The response.
+	 */
+	public function delete_generation( \WP_REST_Request $request ) {
+		$generation_id = $request['generation_id'];
+
+		$meta = get_transient( "nfd_ai_poll_{$generation_id}_meta" );
+		if ( false === $meta ) {
+			return new \WP_Error(
+				'generation_not_found',
+				__( 'Generation not found.', 'wp-module-ai-page-designer' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		delete_transient( "nfd_ai_poll_{$generation_id}_meta" );
+		delete_transient( "nfd_ai_poll_{$generation_id}_chunks" );
+
+		return new \WP_REST_Response( array( 'success' => true ), 200 );
+	}
+
+	/**
+	 * Try to close the HTTP connection early using fastcgi_finish_request().
+	 *
+	 * @param string $response_body The JSON body to send before closing.
+	 * @return bool True if the connection was closed, false otherwise.
+	 */
+	private function try_close_connection( $response_body ) {
+		if ( ! function_exists( 'fastcgi_finish_request' ) ) {
+			return false;
+		}
+
+		while ( ob_get_level() > 0 ) {
+			ob_end_clean();
+		}
+
+		status_header( 200 );
+		header( 'Content-Type: application/json' );
+		header( 'Content-Length: ' . strlen( $response_body ) );
+		echo $response_body;
+
+		fastcgi_finish_request();
+		return true;
+	}
+
+	/**
+	 * Atomically store a generation chunk for polling.
+	 *
+	 * @param string $generation_id The generation ID.
+	 * @param string $text The chunk text to store.
+	 * @return void
+	 */
+	private function store_poll_chunk( $generation_id, $text ) {
+		$key    = "nfd_ai_poll_{$generation_id}_chunks";
+		$chunks = get_transient( $key );
+		if ( ! is_array( $chunks ) ) {
+			$chunks = array();
+		}
+		$chunks[] = $text;
+		set_transient( $key, $chunks, HOUR_IN_SECONDS );
 	}
 
 	/**

@@ -94,84 +94,70 @@ export const generateContentStream = async (
     ? normalizedApiUrl
     : `${ apiRoot.replace( /\/?$/, '/' ) }newfold-ai-page-designer/v1`;
   const baseUrl = apiRoot.startsWith( 'http' ) ? '' : window.location.origin;
-  const streamUrl = `${ baseUrl }${ basePath }/generate/stream`;
-  const response = await fetch( streamUrl, {
+  const nonce = ( window as any )?.nfdAIPageDesigner?.nonce || '';
+
+  const startUrl = `${ baseUrl }${ basePath }/generate/poll/start`;
+  const startResponse = await fetch( startUrl, {
     method: 'POST',
     credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      'X-WP-Nonce': ( window as any )?.nfdAIPageDesigner?.nonce || '',
+      'X-WP-Nonce': nonce,
     },
-    body: JSON.stringify( {
-      messages,
-      context,
-    } ),
+    body: JSON.stringify( { messages, context } ),
   } );
 
-  if ( ! response.ok ) {
-    const message = await getStreamingHttpErrorMessage( response );
-    throw new Error( message );
+  if ( ! startResponse.ok ) {
+    const message = await getStreamingHttpErrorMessage( startResponse );
+    onEvent( { type: 'error', message } );
+    return;
   }
 
-  if ( ! response.body ) {
-    throw new Error( 'Streaming request failed: empty response body.' );
-  }
+  const { generation_id } = await startResponse.json();
+  const authHeaders = { 'X-WP-Nonce': nonce };
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+  let offset = 0;
+  let attempts = 0;
+  const maxAttempts = 360;
 
-  while ( true ) {
-    const { value, done } = await reader.read();
-    if ( done ) {
-      break;
+  while ( attempts < maxAttempts ) {
+    await new Promise( ( resolve ) => setTimeout( resolve, 500 ) );
+    attempts++;
+
+    const pollUrl = `${ baseUrl }${ basePath }/generate/poll/${ generation_id }?offset=${ offset }`;
+    const pollResponse = await fetch( pollUrl, { credentials: 'same-origin', headers: authHeaders } );
+
+    if ( ! pollResponse.ok ) {
+      const message = await getStreamingHttpErrorMessage( pollResponse );
+      onEvent( { type: 'error', message } );
+      fetch( `${ baseUrl }${ basePath }/generate/poll/${ generation_id }`, { method: 'DELETE', credentials: 'same-origin', headers: authHeaders } );
+      return;
     }
-    buffer += decoder.decode( value, { stream: true } );
 
-    let boundaryIndex;
-    while ( ( boundaryIndex = buffer.indexOf( '\n\n' ) ) !== -1 ) {
-      const eventBlock = buffer.slice( 0, boundaryIndex ).trim();
-      buffer = buffer.slice( boundaryIndex + 2 );
+    const data = await pollResponse.json();
 
-      if ( ! eventBlock ) {
-        continue;
+    for ( const chunk of data.chunks ) {
+      onEvent( { type: 'delta', text: chunk } );
+      offset++;
+    }
+
+    if ( data.status === 'completed' ) {
+      if ( data.result ) {
+        onEvent( { type: 'result', data: data.result } );
       }
+      fetch( `${ baseUrl }${ basePath }/generate/poll/${ generation_id }`, { method: 'DELETE', credentials: 'same-origin', headers: authHeaders } );
+      return;
+    }
 
-      const lines = eventBlock.split( /\r?\n/ );
-      let eventType = 'message';
-      const dataLines: string[] = [];
-
-      lines.forEach( ( line ) => {
-        if ( line.startsWith( 'event:' ) ) {
-          eventType = line.replace( 'event:', '' ).trim();
-          return;
-        }
-        if ( line.startsWith( 'data:' ) ) {
-          dataLines.push( line.replace( 'data:', '' ).trim() );
-        }
-      } );
-
-      if ( dataLines.length === 0 ) {
-        continue;
-      }
-
-      const dataPayload = dataLines.join( '\n' );
-      try {
-        const parsed = JSON.parse( dataPayload );
-        if ( eventType === 'delta' ) {
-          onEvent( { type: 'delta', text: parsed.text || '' } );
-        } else if ( eventType === 'snapshot' ) {
-          onEvent( { type: 'snapshot', text: parsed.text || '' } );
-        } else if ( eventType === 'result' ) {
-          onEvent( { type: 'result', data: parsed } );
-        } else if ( eventType === 'error' ) {
-          onEvent( { type: 'error', message: parsed.message || 'Streaming error.' } );
-        }
-      } catch ( err ) {
-        onEvent( { type: 'error', message: 'Streaming parse error.' } );
-      }
+    if ( data.status === 'error' ) {
+      onEvent( { type: 'error', message: data.error_message || 'Generation failed.' } );
+      fetch( `${ baseUrl }${ basePath }/generate/poll/${ generation_id }`, { method: 'DELETE', credentials: 'same-origin', headers: authHeaders } );
+      return;
     }
   }
+
+  onEvent( { type: 'error', message: 'Generation timed out.' } );
+  fetch( `${ baseUrl }${ basePath }/generate/poll/${ generation_id }`, { method: 'DELETE', credentials: 'same-origin', headers: authHeaders } );
 };
 
 export const publishNewContent = (
