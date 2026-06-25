@@ -691,25 +691,23 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	private function init_streaming_response() {
 		header( 'Content-Type: text/event-stream' );
 		header( 'Cache-Control: no-cache' );
-		header( 'X-Accel-Buffering: no' );
+		header( 'X-Accel-Buffering: no' ); // nginx; harmless on Apache
+		header( 'Content-Encoding: identity' ); // prevent Apache mod_deflate buffering
 		header( 'Connection: keep-alive' );
 
-		// Disable PHP's built-in output buffer so every echo hits the transport
-		// layer immediately. Without this, PHP re-creates a new output buffer
-		// after ob_end_flush() when output_buffering is ON in php.ini (common on
-		// production), causing SSE events to accumulate until the buffer fills up.
-		if ( ini_get( 'output_buffering' ) ) {
-			ini_set( 'output_buffering', '0' );
+		// Apache-specific: tell mod_deflate not to compress this response.
+		// Compression forces buffering, which breaks SSE streaming.
+		if ( function_exists( 'apache_setenv' ) ) {
+			apache_setenv( 'no-gzip', '1' );
 		}
 
 		while ( ob_get_level() > 0 ) {
 			ob_end_flush();
 		}
 
-		// Instruct PHP to auto-flush after every echo/print so send_stream_event
-		// does not need to clear output buffers itself on each call.
-		ob_implicit_flush( true );
-
+		// Send an SSE comment padded to ~4 KB to force PHP's output buffer to
+		// flush on the first write.
+		echo ': ' . str_repeat( ' ', 4096 ) . "\n\n";
 		flush();
 	}
 
@@ -721,13 +719,6 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	 * @return void
 	 */
 	private function send_stream_event( $event, array $data ) {
-		// Guard: plugins or WordPress may have opened new output buffers since
-		// init_streaming_response. Flush them so data reaches the client now,
-		// not when the buffer fills up.
-		while ( ob_get_level() > 0 ) {
-			ob_end_flush();
-		}
-
 		echo 'event: ' . sanitize_key( $event ) . "\n";
 		echo 'data: ' . wp_json_encode( $data ) . "\n\n";
 		flush();
