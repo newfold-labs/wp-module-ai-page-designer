@@ -159,7 +159,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 								return (bool) preg_match( '/^[a-f0-9-]+$/', $value );
 							},
 						),
-						'offset'.       => array(
+						'offset'        => array(
 							'required'    => false,
 							'type'        => 'integer',
 							'default'     => 0,
