@@ -718,12 +718,39 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           // subsequent additive insert ("add a pricing table below this section") to the very
           // end of the page instead of beside the selected section.
           const normalizedHtml = unwrapLonePageGroup( html );
-          const newBlocks = wpBlocksParse( normalizedHtml );
-          if ( newBlocks.length > 0 ) {
-            setParsedBlocks( newBlocks );
+
+          // Guard against a partial response wiping the page. On an additive edit
+          // ("add a testimonials section") with nothing selected, the model sometimes
+          // returns ONLY the new section instead of the whole page. Replacing the page
+          // with that fragment deletes everything else. If the response has fewer
+          // top-level sections than the current page, append it instead of replacing.
+          const currentTop = previewHtml ? splitTopLevelBlocks( unwrapLonePageGroup( previewHtml ) ) : [];
+          const returnedTop = splitTopLevelBlocks( normalizedHtml );
+          // Additive verbs only — this naturally excludes redesign/regenerate prompts.
+          const isAdditive = /\b(add|insert|include|append|put|place)\b/i.test( text );
+          const isAdditiveFragment =
+            hasAIGenerated &&
+            isAdditive &&
+            currentTop.length > 1 &&
+            returnedTop.length > 0 &&
+            returnedTop.length < currentTop.length;
+
+          if ( isAdditiveFragment ) {
+            const mergedHtml = unwrapLonePageGroup( [ ...currentTop, ...returnedTop ].join( '\n\n' ) );
+            const mergedBlocks = wpBlocksParse( mergedHtml );
+            if ( mergedBlocks.length > 0 ) {
+              setParsedBlocks( mergedBlocks );
+            }
+            setPreviewHtml( mergedHtml );
+            addHistoryEntry( mergedHtml );
+          } else {
+            const newBlocks = wpBlocksParse( normalizedHtml );
+            if ( newBlocks.length > 0 ) {
+              setParsedBlocks( newBlocks );
+            }
+            setPreviewHtml( normalizedHtml );
+            addHistoryEntry( normalizedHtml );
           }
-          setPreviewHtml( normalizedHtml );
-          addHistoryEntry( normalizedHtml );
           setLastGeneratedHtml( null );
           if ( selectedBlockIndex !== null ) {
             clearSelection( iframeRef );
