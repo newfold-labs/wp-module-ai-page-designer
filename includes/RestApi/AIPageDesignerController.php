@@ -612,12 +612,16 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$wants_images       = (bool) preg_match( '/\b(image|images|photo|photos|picture|pictures|gallery|replace image|replace images|swap image|swap images|change image|change images)\b/i', $last_user_prompt );
 		$current_markup     = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
 		// Fetch fresh imagery only for a first generation or an explicit redesign.
-		// An edit of existing markup must preserve its images. Keying solely on
-		// post_id treated every edit of an unsaved page (which has no post_id) as a
-		// new request, so all images were re-fetched and replaced. The presence of
-		// current_markup is the reliable signal that this is an edit, not a new page.
+		// An edit of existing markup must preserve its images. Keying on post_id (or
+		// just current_markup) treated edits of an unsaved page as new requests, so
+		// all images were re-fetched and replaced. A request is an edit when it
+		// references existing content in any form — full-page markup OR a selected
+		// block (single-block edits send only the selected block, not current_markup).
 		$is_redesign        = $this->is_redesign_request( $last_user_prompt );
-		$is_new_request     = $is_redesign || ( empty( $context['post_id'] ) && empty( $current_markup ) );
+		$is_edit            = ! empty( $current_markup )
+			|| ! empty( $context['selected_block_markup'] )
+			|| ! empty( $context['single_block_edit'] );
+		$is_new_request     = $is_redesign || ( ! $is_edit && empty( $context['post_id'] ) );
 		$has_placeholders   = strpos( $final_html, 'placehold.co' ) !== false;
 
 		// Fallback: if we have placeholders but didn't detect image blocks,
