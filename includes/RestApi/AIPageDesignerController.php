@@ -611,7 +611,13 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		$featured_image_url = '';
 		$wants_images       = (bool) preg_match( '/\b(image|images|photo|photos|picture|pictures|gallery|replace image|replace images|swap image|swap images|change image|change images)\b/i', $last_user_prompt );
 		$current_markup     = isset( $context['current_markup'] ) ? trim( $context['current_markup'] ) : '';
-		$is_new_request     = empty( $context['post_id'] );
+		// Fetch fresh imagery only for a first generation or an explicit redesign.
+		// An edit of existing markup must preserve its images. Keying solely on
+		// post_id treated every edit of an unsaved page (which has no post_id) as a
+		// new request, so all images were re-fetched and replaced. The presence of
+		// current_markup is the reliable signal that this is an edit, not a new page.
+		$is_redesign        = $this->is_redesign_request( $last_user_prompt );
+		$is_new_request     = $is_redesign || ( empty( $context['post_id'] ) && empty( $current_markup ) );
 		$has_placeholders   = strpos( $final_html, 'placehold.co' ) !== false;
 
 		// Fallback: if we have placeholders but didn't detect image blocks,
