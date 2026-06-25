@@ -10,6 +10,10 @@
  * @package NewfoldLabs\WP\Module\AIPageDesigner
  */
 
+// Provide parse_blocks()/serialize_blocks() from WordPress's standalone parser
+// when available, so parse_blocks-based rules can be tested.
+require __DIR__ . '/wp-block-polyfill.php';
+
 spl_autoload_register(
 	static function ( $class ) {
 		// Test classes live under tests/ — map this sub-namespace first.

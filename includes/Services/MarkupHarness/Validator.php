@@ -35,6 +35,7 @@ class Validator {
 		$this->check_bare_units( $markup, $violations );
 		$this->check_vertical_only_padding( $markup, $violations );
 		$this->check_unstyled_form_buttons( $markup, $ctx, $violations );
+		$this->check_non_solid_colors( $markup, $ctx, $violations );
 
 		return $violations;
 	}
@@ -150,6 +151,36 @@ class Validator {
 			if ( ! $has_background ) {
 				$violations[] = 'unstyled_form_button:<' . $tag . '>';
 				return;
+			}
+		}
+	}
+
+	/**
+	 * No block uses a non-solid palette slug (e.g. a color-mix token) as its
+	 * text or background color — those render invisible.
+	 *
+	 * @param string             $markup     Block markup.
+	 * @param Context            $ctx        Conformance context.
+	 * @param array<int, string> $violations Violation accumulator (by reference).
+	 * @return void
+	 */
+	private function check_non_solid_colors( string $markup, Context $ctx, array &$violations ) {
+		if ( ! $ctx->has_palette() ) {
+			return;
+		}
+		if ( ! preg_match_all( '/<!-- wp:[a-z0-9-]+(?:\/[a-z0-9-]+)? (\{.*?\}) -->/', $markup, $matches ) ) {
+			return;
+		}
+		foreach ( $matches[1] as $json ) {
+			$attrs = json_decode( $json, true );
+			if ( ! is_array( $attrs ) ) {
+				continue;
+			}
+			foreach ( array( 'textColor', 'backgroundColor' ) as $key ) {
+				if ( ! empty( $attrs[ $key ] ) && ! $ctx->is_solid_slug( $attrs[ $key ] ) && null !== $ctx->color_for_slug( $attrs[ $key ] ) ) {
+					$violations[] = 'non_solid_color:' . $attrs[ $key ];
+					return;
+				}
 			}
 		}
 	}

@@ -12,6 +12,7 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\SanitizeCs
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnwrapLoneGroup;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\GroupPaddingSymmetry;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\StyleRawFormButtons;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\ColorLegibility;
 
 /**
  * Runs an ordered, idempotent rule pipeline against block markup, then asserts
@@ -67,6 +68,7 @@ class Harness {
 			new UnwrapLoneGroup(),
 			new GroupPaddingSymmetry(),
 			new StyleRawFormButtons(),
+			new ColorLegibility(),
 		);
 	}
 

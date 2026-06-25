@@ -59,11 +59,19 @@ class Context {
 	public function __construct( array $palette = array() ) {
 		$this->palette = $this->deduplicate_palette(
 			array_values(
-				array_filter(
-					$palette,
+				array_map(
 					static function ( $swatch ) {
-						return ! empty( $swatch['slug'] ) && ! empty( $swatch['color'] );
-					}
+						// Normalize underscores to hyphens so lookups match the
+						// rendered `has-<slug>-color` classes WordPress emits.
+						$swatch['slug'] = str_replace( '_', '-', $swatch['slug'] );
+						return $swatch;
+					},
+					array_filter(
+						$palette,
+						static function ( $swatch ) {
+							return ! empty( $swatch['slug'] ) && ! empty( $swatch['color'] );
+						}
+					)
 				)
 			)
 		);
@@ -105,7 +113,23 @@ class Context {
 			return;
 		}
 
-		$sorted = $this->palette;
+		// Only SOLID colors can serve as a role. Functional tokens (color-mix,
+		// var, transparent) render invisible when applied as a solid text or
+		// background color, so they must never be chosen as dark/light/accent —
+		// e.g. Twenty Twenty-Five's accent-6 = color-mix(... 20%, transparent).
+		$solid = array_values(
+			array_filter(
+				$this->palette,
+				static function ( $swatch ) {
+					return self::is_solid_color( $swatch['color'] );
+				}
+			)
+		);
+		if ( empty( $solid ) ) {
+			return;
+		}
+
+		$sorted = $solid;
 		usort(
 			$sorted,
 			function ( $a, $b ) {
@@ -162,14 +186,112 @@ class Context {
 	 * @return float
 	 */
 	private function hex_brightness( string $hex ): float {
-		$clean = ltrim( $hex, '#' );
-		if ( strlen( $clean ) < 6 ) {
+		$clean = ltrim( strtolower( trim( $hex ) ), '#' );
+		// Expand 3-digit shorthand (#fff -> ffffff).
+		if ( 3 === strlen( $clean ) || 4 === strlen( $clean ) ) {
+			$clean = preg_replace( '/(.)/', '$1$1', substr( $clean, 0, 3 ) );
+		}
+		if ( strlen( $clean ) < 6 || ! ctype_xdigit( substr( $clean, 0, 6 ) ) ) {
 			return 128.0;
 		}
 		$r = hexdec( substr( $clean, 0, 2 ) );
 		$g = hexdec( substr( $clean, 2, 2 ) );
 		$b = hexdec( substr( $clean, 4, 2 ) );
 		return ( $r * 299 + $g * 587 + $b * 114 ) / 1000;
+	}
+
+	/**
+	 * Whether a CSS color value is a solid, opaque color usable as a background
+	 * or text color. Rejects functional tokens (color-mix, var, gradients),
+	 * transparent, and alpha'd values that would render invisible.
+	 *
+	 * @param string $color CSS color value.
+	 * @return bool
+	 */
+	public static function is_solid_color( string $color ): bool {
+		$color = strtolower( trim( $color ) );
+
+		if ( '' === $color ) {
+			return false;
+		}
+		if ( false !== strpos( $color, 'color-mix' )
+			|| false !== strpos( $color, 'var(' )
+			|| false !== strpos( $color, 'gradient' )
+			|| false !== strpos( $color, 'currentcolor' )
+			|| 'transparent' === $color ) {
+			return false;
+		}
+		if ( preg_match( '/^#([0-9a-f]{3}|[0-9a-f]{6})$/', $color ) ) {
+			return true;
+		}
+		if ( preg_match( '/^#([0-9a-f]{4}|[0-9a-f]{8})$/', $color ) ) {
+			$hex   = ltrim( $color, '#' );
+			$alpha = 4 === strlen( $hex )
+				? hexdec( str_repeat( substr( $hex, 3, 1 ), 2 ) )
+				: hexdec( substr( $hex, 6, 2 ) );
+			return $alpha >= 0xF0;
+		}
+		if ( preg_match( '/^(rgb|hsl)\(/', $color ) ) {
+			return true;
+		}
+		if ( preg_match( '/^(rgba|hsla)\(.*,\s*([0-9.]+)\s*\)$/', $color, $matches ) ) {
+			return (float) $matches[2] >= 0.9;
+		}
+		if ( preg_match( '/^[a-z]+$/', $color ) ) {
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Resolve a palette slug to its color value.
+	 *
+	 * @param string $slug Palette slug (hyphenated).
+	 * @return string|null Color value, or null when the slug is unknown.
+	 */
+	public function color_for_slug( string $slug ) {
+		$slug = str_replace( '_', '-', $slug );
+		foreach ( $this->palette as $swatch ) {
+			if ( $swatch['slug'] === $slug ) {
+				return $swatch['color'];
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Whether a palette slug resolves to a solid, usable color.
+	 *
+	 * @param string $slug Palette slug.
+	 * @return bool
+	 */
+	public function is_solid_slug( string $slug ): bool {
+		$color = $this->color_for_slug( $slug );
+		return null !== $color && self::is_solid_color( $color );
+	}
+
+	/**
+	 * Whether a palette slug resolves to a dark color (brightness < 128).
+	 *
+	 * @param string $slug Palette slug.
+	 * @return bool
+	 */
+	public function is_dark_slug( string $slug ): bool {
+		$color = $this->color_for_slug( $slug );
+		if ( null === $color ) {
+			return false;
+		}
+		return $this->hex_brightness( $color ) < 128;
+	}
+
+	/**
+	 * Perceived brightness (0-255) of a color value (hex; non-hex returns 128).
+	 *
+	 * @param string $color Color value.
+	 * @return float
+	 */
+	public function brightness( string $color ): float {
+		return $this->hex_brightness( $color );
 	}
 
 	/**
