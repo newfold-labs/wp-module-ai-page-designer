@@ -138,6 +138,15 @@ export const usePreviewIframe = (
           #nfd-preview-root [data-aos] { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
           #nfd-preview-root [data-aos].aos-animate { opacity: 1; transform: translateY(0); }
 
+          /* Flex layout fallback: WordPress's layout-support flex styles arrive via the
+             async global/frontend stylesheet, so on the first paint a wp-block-buttons row
+             can render without flex and (with the scale-in transform) overlap. Pin the
+             buttons row to flex here so it never depends on that timing. */
+          #nfd-preview-root .wp-block-buttons.is-layout-flex,
+          #nfd-preview-root .wp-block-buttons-is-layout-flex {
+            display: flex; flex-wrap: wrap; gap: 0.5em; align-items: center;
+          }
+
           /* Suppress entrance animations while streaming — they play once on final content */
           #nfd-preview-root[data-nfd-streaming] .fade-in,
           #nfd-preview-root[data-nfd-streaming] .slide-up,
