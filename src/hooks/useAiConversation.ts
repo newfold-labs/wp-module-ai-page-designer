@@ -134,11 +134,14 @@ const extractRequestedTextColor = ( text: string ): { label: string; value: stri
 
 const extractRequestedBackgroundColor = ( text: string ): { label: string; value: string; adjustText: boolean } | null => {
   const lower = text.toLowerCase();
+  // A background request is any "background"/"bg" mention that is not about an image. The
+  // colour itself is resolved below; if none is found the function returns null, so phrases
+  // like "remove the background" simply fall through.
   const isBackgroundRequest =
-    /\bbackground\b/.test( lower ) &&
-    /\b(color|darker|dark|black|shade|bg)\b/.test( lower );
+    /\bbackground\b|\bbg\b/.test( lower ) &&
+    ! /\bimage|photo|picture\b/.test( lower );
 
-  if ( ! isBackgroundRequest || /\bimage|photo|picture\b/.test( lower ) ) {
+  if ( ! isBackgroundRequest ) {
     return null;
   }
 
@@ -180,8 +183,16 @@ const extractRequestedBackgroundColor = ( text: string ): { label: string; value
     const parts = cleaned.split( ' ' );
     for ( let len = Math.min( 4, parts.length ); len >= 1; len-- ) {
       const candidate = parts.slice( 0, len ).join( ' ' ).trim();
-      if ( candidate && isValidCssColor( candidate ) ) {
+      if ( ! candidate ) {
+        continue;
+      }
+      if ( isValidCssColor( candidate ) ) {
         return { label: candidate, value: candidate, adjustText: false };
+      }
+      // Multi-word CSS named colours have no space ("light blue" -> "lightblue").
+      const collapsed = candidate.replace( /\s+/g, '' );
+      if ( collapsed !== candidate && isValidCssColor( collapsed ) ) {
+        return { label: candidate, value: collapsed, adjustText: false };
       }
     }
   }
@@ -281,6 +292,43 @@ const splitTopLevelBlocks = ( markup: string ): string[] => {
     .filter( s => s.length > 0 && /<!--\s*\/?wp:/i.test( s ) );
 };
 
+// During streaming the buffer almost always ends mid-block — a tag or a class name cut
+// in half (e.g. `<div class="wp-block-colu`). Injecting that truncated tail into innerHTML
+// mangles the unclosed element AND leaves partial class names that no longer match the
+// theme's layout selectors (`.wp-block-columns.is-layout-flex`, `.wp-block-cover`, …), so
+// the section renders unstyled — looking like "CSS is missing" when it is really just
+// unmatchable markup. Return only the markup up to the last fully-closed top-level block so
+// every intermediate preview is well-formed and themed; the trailing partial block appears
+// once its closing delimiter arrives.
+const completeBlocksPrefix = ( markup: string ): string => {
+  const lines = markup.split( '\n' );
+  let lastCompleteLine = -1;
+
+  for ( let i = 0; i < lines.length; i++ ) {
+    const trimmed = lines[ i ].trim();
+    // Only treat a delimiter as a safe cut point if it fully arrived (ends with `-->`),
+    // so we never slice through a half-written block comment.
+    const isComplete = /-->$/.test( trimmed );
+    const isSelfClosing = isComplete && /^<!--\s*wp:[^ ].*?\/-->/i.test( trimmed );
+    const isClosing = isComplete && /^<!--\s*\/wp:/i.test( trimmed );
+
+    // Cut at the last completed block delimiter at ANY depth — not just top-level. Inner
+    // blocks that have closed are HTML-balanced; any still-open ancestor wrapper (e.g. a
+    // cover or columns) already has its full opening tag + class names, so innerHTML
+    // auto-closes it cleanly and the theme's layout selectors still match. This reveals
+    // each inner block the moment it finishes instead of stalling until the whole
+    // top-level section (often a large hero) closes.
+    if ( isClosing || isSelfClosing ) {
+      lastCompleteLine = i;
+    }
+  }
+
+  if ( lastCompleteLine === -1 ) {
+    return '';
+  }
+  return lines.slice( 0, lastCompleteLine + 1 ).join( '\n' );
+};
+
 // If the entire page is wrapped in a single lone wp:group (a page-wrapper pattern that
 // breaks block-level indexing), hoist its children to the top level.
 // This mirrors the worker's sanitizer guard 0 applied to AI-generated output, but also
@@ -288,6 +336,12 @@ const splitTopLevelBlocks = ( markup: string ): string[] => {
 const unwrapLonePageGroup = ( markup: string ): string => {
   const blocks = splitTopLevelBlocks( markup );
   if ( blocks.length !== 1 || ! /<!--\s*wp:group\b/i.test( blocks[ 0 ] ) ) {
+    return markup;
+  }
+
+  // Keep an intentional page-background wrapper (added by applyPageBackgroundColor) — it
+  // carries page styling, not just structure, so unwrapping it would drop the background.
+  if ( /nfd-page-background/i.test( blocks[ 0 ] ) ) {
     return markup;
   }
 
@@ -718,12 +772,39 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           // subsequent additive insert ("add a pricing table below this section") to the very
           // end of the page instead of beside the selected section.
           const normalizedHtml = unwrapLonePageGroup( html );
-          const newBlocks = wpBlocksParse( normalizedHtml );
-          if ( newBlocks.length > 0 ) {
-            setParsedBlocks( newBlocks );
+
+          // Guard against a partial response wiping the page. On an additive edit
+          // ("add a testimonials section") with nothing selected, the model sometimes
+          // returns ONLY the new section instead of the whole page. Replacing the page
+          // with that fragment deletes everything else. If the response has fewer
+          // top-level sections than the current page, append it instead of replacing.
+          const currentTop = previewHtml ? splitTopLevelBlocks( unwrapLonePageGroup( previewHtml ) ) : [];
+          const returnedTop = splitTopLevelBlocks( normalizedHtml );
+          // Additive verbs only — this naturally excludes redesign/regenerate prompts.
+          const isAdditive = /\b(add|insert|include|append|put|place)\b/i.test( text );
+          const isAdditiveFragment =
+            hasAIGenerated &&
+            isAdditive &&
+            currentTop.length > 1 &&
+            returnedTop.length > 0 &&
+            returnedTop.length < currentTop.length;
+
+          if ( isAdditiveFragment ) {
+            const mergedHtml = unwrapLonePageGroup( [ ...currentTop, ...returnedTop ].join( '\n\n' ) );
+            const mergedBlocks = wpBlocksParse( mergedHtml );
+            if ( mergedBlocks.length > 0 ) {
+              setParsedBlocks( mergedBlocks );
+            }
+            setPreviewHtml( mergedHtml );
+            addHistoryEntry( mergedHtml );
+          } else {
+            const newBlocks = wpBlocksParse( normalizedHtml );
+            if ( newBlocks.length > 0 ) {
+              setParsedBlocks( newBlocks );
+            }
+            setPreviewHtml( normalizedHtml );
+            addHistoryEntry( normalizedHtml );
           }
-          setPreviewHtml( normalizedHtml );
-          addHistoryEntry( normalizedHtml );
           setLastGeneratedHtml( null );
           if ( selectedBlockIndex !== null ) {
             clearSelection( iframeRef );
@@ -735,7 +816,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           setPublishTitle( title );
           setMetaTitle( title );
         }
-        if ( wantsExcerpt ) {
+        // Apply the excerpt on a fresh generation too (not just explicit "add an excerpt"
+        // requests) so title and excerpt land together when a new page is created.
+        if ( isFirstGeneration || wantsExcerpt ) {
           const excerpt = responseData?.excerpt || '';
           if ( excerpt ) {
             setMetaExcerpt( excerpt );
@@ -865,6 +948,66 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         return true;
       };
 
+      // Apply a background colour to the WHOLE page deterministically (no AI round-trip — the
+      // AI tends to mangle a full page on a style edit). The page content is wrapped in a
+      // single group carrying the colour; a marker class (nfd-page-background) lets us update
+      // it in place on a repeat change and keeps unwrapLonePageGroup from stripping it.
+      const applyPageBackgroundColor = ( color: { label: string; value: string; adjustText: boolean } ): boolean => {
+        if ( ! previewHtml ) {
+          return false;
+        }
+
+        const tops = splitTopLevelBlocks( previewHtml );
+        const alreadyWrapped =
+          tops.length === 1 && /class="[^"]*\bnfd-page-background\b/i.test( tops[ 0 ] );
+
+        let newHtml: string;
+        if ( alreadyWrapped ) {
+          // Swap the colour on the existing wrapper rather than nesting another group.
+          newHtml = previewHtml
+            .replace( /("background"\s*:\s*")[^"]*(")/, `$1${ color.value }$2` )
+            .replace( /(background-color\s*:\s*)[^;"]*/i, `$1${ color.value }` );
+        } else {
+          // align:full so the colour spans the whole page width behind every section,
+          // not just a centred column.
+          const open = `<!-- wp:group {"align":"full","style":{"color":{"background":"${ color.value }"}},"className":"nfd-page-background"} -->`;
+          const div = `<div class="wp-block-group alignfull nfd-page-background has-background" style="background-color:${ color.value }">`;
+          newHtml = `${ open }\n${ div }\n${ previewHtml }\n</div>\n<!-- /wp:group -->`;
+        }
+
+        if ( newHtml === previewHtml ) {
+          return false;
+        }
+
+        const parsed = wpBlocksParse( newHtml );
+        if ( parsed.length > 0 ) {
+          setParsedBlocks( parsed );
+        }
+        setPreviewHtml( newHtml );
+        setHasAIGenerated( true );
+
+        const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+        const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+        setHistoryEntries( ( prev ) => [
+          ...prev,
+          {
+            id: historyId,
+            html: newHtml,
+            label: `Page background: ${ color.label }`,
+            timestamp,
+            publishTitle,
+            metaExcerpt,
+          },
+        ] );
+
+        setMessages( [
+          ...newMessages,
+          { role: 'assistant', content: `Updated the page background to ${ color.label }.` },
+        ] );
+        clearSelection( iframeRef );
+        return true;
+      };
+
       // Shared helper: remove the selected block from the live iframe DOM and sync state.
       const removeSelectedBlock = () => {
         const doc = iframeRef.current?.contentDocument;
@@ -943,6 +1086,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         }
       }
 
+      // No block selected: a background-colour request targets the whole page. Apply it
+      // deterministically instead of sending it to the AI (which mangles full-page edits).
+      if ( selectedBlockIndex === null ) {
+        const requestedPageBackground = extractRequestedBackgroundColor( text );
+        if ( requestedPageBackground && applyPageBackgroundColor( requestedPageBackground ) ) {
+          return;
+        }
+      }
+
       // Check if this is a metadata-only request first, before follow-up edit detection.
       // Metadata requests (excerpt, title, summary) should never send page content as context.
       const isMetadataRequest = /\b(add|create|generate|write)\s+(an?\s+)?(excerpt|title|summary)\b|^(excerpt|title|summary)$/i.test(text);
@@ -1007,6 +1159,21 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           ? ( previewHtml || '' )
           : ( isFollowUpEdit ? lastGeneratedHtml : ( isMetadataRequest ? '' : previewHtml ) ) || '';
 
+      // When the clicked selection is a single image (one <img>), capture its src so an image
+      // replacement swaps only that image — not every image in the top-level block that gets
+      // sent as selected_block_markup (e.g. a 3-image gallery/columns group).
+      const selectedImageUrl = ( () => {
+        if ( ! isSingleBlockEdit || selectedBlockHtml === null ) {
+          return undefined;
+        }
+        const imgCount = ( selectedBlockHtml.match( /<img\b/gi ) || [] ).length;
+        if ( imgCount !== 1 ) {
+          return undefined;
+        }
+        const srcMatch = selectedBlockHtml.match( /<img[^>]+src=["']([^"']+)["']/i );
+        return srcMatch ? srcMatch[ 1 ] : undefined;
+      } )();
+
       const context: import('../api').GenerateContentContext = {
         current_markup: contextMarkup,
         post_id: selectedItem?.id,
@@ -1019,6 +1186,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           : selectedBlockIndex !== null && selectedBlockHtml !== null
             ? { selected_block_markup: selectedBlockHtml }
             : {} ),
+        ...( selectedImageUrl ? { selected_image_url: selectedImageUrl } : {} ),
       };
 
       const shouldStream =
@@ -1035,19 +1203,24 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           if ( event.type === 'delta' ) {
             streamBuffer += event.text;
 
+            // Render only the complete blocks so far — never the half-arrived trailing
+            // block, which would inject truncated tags/class names and break the layout.
+            const safeBuffer = completeBlocksPrefix( streamBuffer );
+
             // If it's a follow up edit, we need to show the stream in context
             if ( isFollowUpEdit && lastGeneratedHtml && previewHtml ) {
-              setPreviewHtml( previewHtml.replace( lastGeneratedHtml, streamBuffer ) );
+              setPreviewHtml( previewHtml.replace( lastGeneratedHtml, safeBuffer ) );
             } else if ( selectedBlockIndex === null ) {
-              setPreviewHtml( streamBuffer );
+              setPreviewHtml( safeBuffer );
             }
           }
           if ( event.type === 'snapshot' ) {
             streamBuffer = event.text;
+            const safeBuffer = completeBlocksPrefix( streamBuffer );
             if ( isFollowUpEdit && lastGeneratedHtml && previewHtml ) {
-              setPreviewHtml( previewHtml.replace( lastGeneratedHtml, streamBuffer ) );
+              setPreviewHtml( previewHtml.replace( lastGeneratedHtml, safeBuffer ) );
             } else if ( selectedBlockIndex === null ) {
-              setPreviewHtml( streamBuffer );
+              setPreviewHtml( safeBuffer );
             }
           }
           if ( event.type === 'result' ) {

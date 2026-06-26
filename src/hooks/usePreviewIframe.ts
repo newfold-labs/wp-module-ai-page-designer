@@ -13,9 +13,14 @@ type UsePreviewIframeResult = {
 export const usePreviewIframe = (
   previewHtml: string | null,
   previewUrl: string,
-  previewStylesheets?: PreviewStylesheets
+  previewStylesheets?: PreviewStylesheets,
+  isStreaming: boolean = false,
+  externalIframeRef?: RefObject<HTMLIFrameElement>
 ): UsePreviewIframeResult => {
-  const iframeRef = useRef<HTMLIFrameElement>( null );
+  const localIframeRef = useRef<HTMLIFrameElement>( null );
+  // Allow the caller to own the ref so it can be shared with other hooks
+  // (e.g. useAiConversation) without a declaration-order cycle.
+  const iframeRef = externalIframeRef ?? localIframeRef;
   const [ frontendStyles, setFrontendStyles ] = useState( '' );
   const [ frontendBodyClass, setFrontendBodyClass ] = useState( '' );
   const [ frontendShellHtml, setFrontendShellHtml ] = useState( '' );
@@ -24,6 +29,10 @@ export const usePreviewIframe = (
   const iframeReadyRef = useRef( false );
   // Holds the latest previewHtml so the onLoad handler can inject it after shell init.
   const pendingHtmlRef = useRef<string | null>( null );
+  // Mirrors isStreaming so the ready-handler (Effect 1, which excludes content
+  // deps to avoid reloads) can read the current streaming state when it injects.
+  const isStreamingRef = useRef( isStreaming );
+  isStreamingRef.current = isStreaming;
 
   useEffect( () => {
     // Fetch frontend styles once so the preview matches the actual site.
@@ -109,36 +118,25 @@ export const usePreviewIframe = (
           .nfd-block-wrapper.nfd-block-selected::before { outline: 3px solid #d63638; outline-offset: -3px; background: rgba(214, 54, 56, 0.05); z-index: 101; }
           .nfd-block-wrapper a, .nfd-block-wrapper button { pointer-events: none; }
 
-          /* Animation keyframes */
-          @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-          @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
-          @keyframes bounceIn {
-            0% { opacity: 0; transform: scale(0.3); }
-            50% { opacity: 1; transform: scale(1.05); }
-            70% { transform: scale(0.9); }
-            100% { opacity: 1; transform: scale(1); }
+          /* Flex layout fallback: WordPress's layout-support flex styles arrive via the
+             async global/frontend stylesheet, so on the first paint a wp-block-buttons row
+             can render without flex and (with the scale-in transform) overlap. Pin the
+             buttons row to flex here so it never depends on that timing. */
+          #nfd-preview-root .wp-block-buttons.is-layout-flex,
+          #nfd-preview-root .wp-block-buttons-is-layout-flex {
+            display: flex; flex-wrap: wrap; gap: 0.5em; align-items: center;
           }
-          @keyframes scaleIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
-          @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 
-          /* Scoped to content area only — excludes header/footer in the shell */
-          #nfd-preview-root .fade-in { animation: fadeIn 0.8s ease-out forwards; }
-          #nfd-preview-root .slide-up { animation: slideUp 0.8s ease-out forwards; }
-          #nfd-preview-root .bounce-in { animation: bounceIn 0.8s ease-out forwards; }
-          #nfd-preview-root .scale-in { animation: scaleIn 0.8s ease-out forwards; }
-          #nfd-preview-root .fade-in-delay-1 { animation: fadeIn 0.8s ease-out 0.2s forwards; opacity: 0; }
-          #nfd-preview-root .fade-in-delay-2 { animation: fadeIn 0.8s ease-out 0.4s forwards; opacity: 0; }
-          #nfd-preview-root .fade-in-delay-3 { animation: fadeIn 0.8s ease-out 0.6s forwards; opacity: 0; }
-          #nfd-preview-root .pulse-hover { transition: all 0.3s ease; }
-          #nfd-preview-root .pulse-hover:hover { animation: pulse 1s infinite; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
-          #nfd-preview-root .glow-hover { transition: all 0.3s ease; }
-          #nfd-preview-root .glow-hover:hover { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6), 0 0 60px rgba(59, 130, 246, 0.4); }
-          #nfd-preview-root .card-hover-lift { transition: all 0.3s ease; }
-          #nfd-preview-root .card-hover-lift:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
-          #nfd-preview-root [data-aos] { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
-          #nfd-preview-root [data-aos].aos-animate { opacity: 1; transform: translateY(0); }
-
-          /* Suppress entrance animations while streaming — they play once on final content */
+          /* Override ALL transitions and animations during streaming.
+             The AIPageDesigner.php enqueues animation rules via
+             wp_add_inline_style('wp-block-library', ...) which end up in
+             frontendStyles. This blanket * rule also suppresses
+             .nfd-block-wrapper::before { transition: all 0.2s } which fires
+             on every DOM replacement. These MUST NOT fire during streaming. */
+          #nfd-preview-root[data-nfd-streaming] * {
+            transition: none !important;
+            animation: none !important;
+          }
           #nfd-preview-root[data-nfd-streaming] .fade-in,
           #nfd-preview-root[data-nfd-streaming] .slide-up,
           #nfd-preview-root[data-nfd-streaming] .bounce-in,
@@ -146,11 +144,12 @@ export const usePreviewIframe = (
           #nfd-preview-root[data-nfd-streaming] .fade-in-delay-1,
           #nfd-preview-root[data-nfd-streaming] .fade-in-delay-2,
           #nfd-preview-root[data-nfd-streaming] .fade-in-delay-3,
-          #nfd-preview-root[data-nfd-streaming] [data-aos] {
-            animation: none !important;
+          #nfd-preview-root[data-nfd-streaming] [data-aos],
+          #nfd-preview-root[data-nfd-streaming] .pulse-hover,
+          #nfd-preview-root[data-nfd-streaming] .glow-hover,
+          #nfd-preview-root[data-nfd-streaming] .card-hover-lift {
             opacity: 1 !important;
             transform: none !important;
-            transition: none !important;
           }
 
           /* Safety net: reset accidental white text; restore it inside any block that has an explicit background */
@@ -200,9 +199,7 @@ export const usePreviewIframe = (
           #nfd-preview-root [style*="background:"] [style*="color: #ffffff"] { color: #fff !important; }
         </style>
         <script>
-          // Module-level so nfdSetContent can re-run them on each content update.
-          var _animObserver = null;
-          var _streamingTimer = null;
+          // Module-level state for nfdSetContent.
           var _lastHtml = '';
 
           function _wrapTextNodes(container) {
@@ -315,53 +312,102 @@ export const usePreviewIframe = (
             return 'Section';
           }
 
+          // Inject animation CSS (once) + (re)attach the IntersectionObserver.
+          // Called only on finalize (stream complete / non-streamed update), never
+          // during streaming — so no animation can fire while deltas are arriving.
+          function _enableAnimations() {
+            if (!document.getElementById('nfd-anim-style')) {
+            var style = document.createElement('style');
+            style.id = 'nfd-anim-style';
+            style.textContent = [
+              '@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }',
+              '@keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }',
+              '@keyframes bounceIn { 0% { opacity: 0; transform: scale(0.3); } 50% { opacity: 1; transform: scale(1.05); } 70% { transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }',
+              '@keyframes scaleIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }',
+              '@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }',
+              '#nfd-preview-root .fade-in { animation: fadeIn 0.8s ease-out forwards; }',
+              '#nfd-preview-root .slide-up { animation: slideUp 0.8s ease-out forwards; }',
+              '#nfd-preview-root .bounce-in { animation: bounceIn 0.8s ease-out forwards; }',
+              '#nfd-preview-root .scale-in { animation: scaleIn 0.8s ease-out forwards; }',
+              '#nfd-preview-root .fade-in-delay-1 { animation: fadeIn 0.8s ease-out 0.2s forwards; opacity: 0; }',
+              '#nfd-preview-root .fade-in-delay-2 { animation: fadeIn 0.8s ease-out 0.4s forwards; opacity: 0; }',
+              '#nfd-preview-root .fade-in-delay-3 { animation: fadeIn 0.8s ease-out 0.6s forwards; opacity: 0; }',
+              '#nfd-preview-root .pulse-hover { transition: all 0.3s ease; }',
+              '#nfd-preview-root .pulse-hover:hover { animation: pulse 1s infinite; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }',
+              '#nfd-preview-root .glow-hover { transition: all 0.3s ease; }',
+              '#nfd-preview-root .glow-hover:hover { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6), 0 0 60px rgba(59, 130, 246, 0.4); }',
+              '#nfd-preview-root .card-hover-lift { transition: all 0.3s ease; }',
+              '#nfd-preview-root .card-hover-lift:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }',
+              '#nfd-preview-root [data-aos] { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }',
+              '#nfd-preview-root [data-aos].aos-animate { opacity: 1; transform: translateY(0); }'
+            ].join('\\n');
+            document.head.appendChild(style);
+            }
+
+            // (Re)attach the IntersectionObserver on every finalize so data-aos
+            // elements from a fresh generation get observed even when the style
+            // tag already exists from a prior run.
+            var observer = new IntersectionObserver(function(entries) {
+              entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                  var delay = parseInt(entry.target.getAttribute('data-aos-delay') || '0', 10);
+                  setTimeout(function() { entry.target.classList.add('aos-animate'); }, delay);
+                  observer.unobserve(entry.target);
+                }
+              });
+            }, { threshold: 0 });
+            document.querySelectorAll('#nfd-preview-root [data-aos]').forEach(function(el) { observer.observe(el); });
+          }
+
           // Called by the parent frame to inject or update content without reloading the iframe.
-          // Animations are suppressed while calls arrive rapidly (streaming); 300 ms after the
-          // last call the content is re-rendered without the flag so animations play once.
-          window.nfdSetContent = function(html) {
+          // The parent passes finalize=true only when streaming has actually ended (driven by
+          // the conversation's isLoading flag), not a time-based guess — so animations fire
+          // exactly once on the settled result regardless of how chunks are delivered.
+          //   finalize falsy  -> streaming delta: set the streaming flag and strip entrance
+          //                      animation classes so nothing animates while content churns.
+          //   finalize true   -> stream complete (or a non-streamed update): clear the flag,
+          //                      enable animations, and render once with classes intact.
+          window.nfdSetContent = function(html, finalize) {
             var root = document.getElementById('nfd-preview-root');
             if (!root) return;
 
             _lastHtml = html;
 
-            // Suppress animations immediately — every rapid delta starts from opacity:0 otherwise.
+            if (finalize) {
+              root.removeAttribute('data-nfd-streaming');
+              _enableAnimations();
+              _applyContent(root, html, true);
+              return;
+            }
+
             root.setAttribute('data-nfd-streaming', '');
-
-            // Reset debounce: 300 ms after the last call, re-render without the flag
-            // so entrance animations play on the settled final content.
-            if (_streamingTimer) clearTimeout(_streamingTimer);
-            _streamingTimer = setTimeout(function() {
-              _streamingTimer = null;
-              var r = document.getElementById('nfd-preview-root');
-              if (!r) return;
-              r.removeAttribute('data-nfd-streaming');
-              _applyContent(r, _lastHtml);
-            }, 300);
-
             _applyContent(root, html);
           };
 
-          // Shared: set innerHTML and re-run all wrapping + animation observer setup.
-          function _applyContent(root, html) {
+          // Shared: set innerHTML and re-run all wrapping.
+          // During streaming (data-nfd-streaming is set), animation classes
+          // are stripped from the live DOM synchronously after innerHTML —
+          // the browser never sees them, so no CSS can animate. A truthy
+          // third argument skips stripping for the final debounce render.
+          function _applyContent(root, html, skipAnimStrip) {
             root.innerHTML = html;
+
+            if (!skipAnimStrip && root.hasAttribute('data-nfd-streaming')) {
+              var animClasses = ['fade-in', 'slide-up', 'bounce-in', 'scale-in',
+                'fade-in-delay-1', 'fade-in-delay-2', 'fade-in-delay-3',
+                'pulse-hover', 'glow-hover', 'card-hover-lift'];
+              for (var i = 0; i < animClasses.length; i++) {
+                var els = root.querySelectorAll('.' + animClasses[i]);
+                for (var j = 0; j < els.length; j++) {
+                  els[j].classList.remove(animClasses[i]);
+                }
+              }
+            }
 
             _wrapTextNodes(root);
             var containersToWrap = root.querySelectorAll('.wp-site-blocks, .entry-content, .wp-block-group, .wp-block-column, .wp-block-cover__inner-container, .wp-block-media-text__content, .wp-block-post-content');
             containersToWrap.forEach(function(container) { _wrapTextNodes(container); });
             _wrapChildren(root, '');
-
-            // Reset scroll-triggered animation observer for new elements.
-            if (_animObserver) _animObserver.disconnect();
-            _animObserver = new IntersectionObserver(function(entries) {
-              entries.forEach(function(entry) {
-                if (entry.isIntersecting) {
-                  var delay = parseInt(entry.target.getAttribute('data-aos-delay') || '0', 10);
-                  setTimeout(function() { entry.target.classList.add('aos-animate'); }, delay);
-                  _animObserver.unobserve(entry.target);
-                }
-              });
-            }, { threshold: 0 });
-            root.querySelectorAll('[data-aos]').forEach(function(el) { _animObserver.observe(el); });
           }
 
           document.addEventListener('DOMContentLoaded', function() {
@@ -437,7 +483,7 @@ export const usePreviewIframe = (
         iframeReadyRef.current = true;
         const html = pendingHtmlRef.current;
         if ( html && iframe.contentWindow ) {
-          ( iframe.contentWindow as any ).nfdSetContent?.( html );
+          ( iframe.contentWindow as any ).nfdSetContent?.( html, ! isStreamingRef.current );
         }
       };
 
@@ -467,8 +513,8 @@ export const usePreviewIframe = (
   // Throttled with rAF: cleanup cancels the previous pending frame so that rapid streaming
   // deltas coalesce into at most one DOM update per animation frame (~16 ms).
   // isStreaming is in deps so that when streaming ends, Effect 2 re-runs one final time
-  // with streaming=false, triggering nfdSetContent to remove data-nfd-streaming and let
-  // entrance animations play on the completed content.
+  // with finalize=true, triggering nfdSetContent to remove data-nfd-streaming, enable
+  // animations, and play entrance animations exactly once on the completed content.
   useEffect( () => {
     if ( ! previewHtml ) {
       return;
@@ -490,14 +536,16 @@ export const usePreviewIframe = (
     }
 
     const win = iframeRef.current.contentWindow;
+    // finalize only when the stream is no longer active — animations play once here.
+    const finalize = ! isStreaming;
     const rafId = requestAnimationFrame( () => {
       // Use pendingHtmlRef so we always inject the latest delta, not the stale closure value.
-      ( win as any ).nfdSetContent?.( pendingHtmlRef.current );
+      ( win as any ).nfdSetContent?.( pendingHtmlRef.current, finalize );
     } );
 
     // Cleanup cancels this frame if another delta arrives before the next paint.
     return () => cancelAnimationFrame( rafId );
-  }, [ previewHtml ] );
+  }, [ previewHtml, isStreaming ] );
 
   return { iframeRef };
 };
