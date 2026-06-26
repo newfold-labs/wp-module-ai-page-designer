@@ -270,6 +270,33 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Decide which markup the fast path should operate on.
+	 *
+	 * If a single image/cover block is selected, the fast path targets just that block so an
+	 * image replacement changes only the selection (and the returned single block splices back
+	 * at the selected index on the frontend). Otherwise it operates on the whole-page markup.
+	 *
+	 * @param array  $context        Request context.
+	 * @param string $current_markup Whole-page block markup.
+	 * @return array{0:string,1:bool,2:string} [ markup to fast-path, whether it is a selected
+	 *                                         image block, specific target image URL (or '') ].
+	 */
+	private function resolve_fast_path_target( $context, $current_markup ) {
+		$is_single_block_edit = ! empty( $context['single_block_edit'] ) && ! empty( $context['selected_block_markup'] );
+		if ( $is_single_block_edit ) {
+			$selected_markup = trim( (string) $context['selected_block_markup'] );
+			$is_image_block  = (bool) preg_match( '/<img\b|<!--\s*wp:(image|cover)\b/i', $selected_markup );
+			if ( $is_image_block ) {
+				// When a single image was clicked inside a multi-image block, the frontend sends
+				// its URL so only that image is swapped.
+				$target_url = isset( $context['selected_image_url'] ) ? esc_url_raw( (string) $context['selected_image_url'] ) : '';
+				return array( $selected_markup, true, $target_url );
+			}
+		}
+		return array( $current_markup, false, '' );
+	}
+
+	/**
 	 * Generate content using AI
 	 *
 	 * @param \WP_REST_Request $request The REST request
@@ -300,7 +327,11 @@ class AIPageDesignerController extends \WP_REST_Controller {
 
 			$stream = (bool) $request->get_param( 'stream' );
 
-			$fast_path_response = $this->fast_path_handler->maybe_handle_fast_path( $current_markup, $last_user_prompt, $page_title, $page_excerpt );
+			// When a single image/cover block is selected, run the fast path against just that
+			// block (and return only that block) so the edit targets the selection instead of
+			// every image on the page — and so the single-block splice on the frontend works.
+			list( $fast_path_markup, $fast_path_is_selected_image, $fast_path_target_url ) = $this->resolve_fast_path_target( $context, $current_markup );
+			$fast_path_response = $this->fast_path_handler->maybe_handle_fast_path( $fast_path_markup, $last_user_prompt, $page_title, $page_excerpt, $fast_path_is_selected_image, $fast_path_target_url );
 			if ( $fast_path_response ) {
 				if ( $stream ) {
 					$this->init_streaming_response();
@@ -1113,6 +1144,29 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					$last_user_prompt = $messages[ $index ]['content'] ?? '';
 					break;
 				}
+			}
+
+			// Image add/replace requests are resolved without an AI round-trip. Store the result
+			// directly as a completed generation so the first poll returns it. (Mirrors the
+			// fast path in generate_content; without it, image requests fall through to the AI,
+			// which leaves the block unchanged.)
+			list( $fast_path_markup, $fast_path_is_selected_image, $fast_path_target_url ) = $this->resolve_fast_path_target( $context, $current_markup );
+			$fast_path_response = $this->fast_path_handler->maybe_handle_fast_path( $fast_path_markup, $last_user_prompt, $page_title, $page_excerpt, $fast_path_is_selected_image, $fast_path_target_url );
+			if ( $fast_path_response ) {
+				$fast_path_data = $fast_path_response->get_data();
+				set_transient(
+					"nfd_ai_poll_{$generation_id}_meta",
+					array(
+						'status'     => 'completed',
+						'result'     => $fast_path_data['data'] ?? $fast_path_data,
+						'created_at' => time(),
+					),
+					HOUR_IN_SECONDS
+				);
+				return new \WP_REST_Response(
+					array( 'generation_id' => $generation_id ),
+					200
+				);
 			}
 
 			$is_redesign_request  = $this->is_redesign_request( $last_user_prompt );

@@ -134,11 +134,14 @@ const extractRequestedTextColor = ( text: string ): { label: string; value: stri
 
 const extractRequestedBackgroundColor = ( text: string ): { label: string; value: string; adjustText: boolean } | null => {
   const lower = text.toLowerCase();
+  // A background request is any "background"/"bg" mention that is not about an image. The
+  // colour itself is resolved below; if none is found the function returns null, so phrases
+  // like "remove the background" simply fall through.
   const isBackgroundRequest =
-    /\bbackground\b/.test( lower ) &&
-    /\b(color|darker|dark|black|shade|bg)\b/.test( lower );
+    /\bbackground\b|\bbg\b/.test( lower ) &&
+    ! /\bimage|photo|picture\b/.test( lower );
 
-  if ( ! isBackgroundRequest || /\bimage|photo|picture\b/.test( lower ) ) {
+  if ( ! isBackgroundRequest ) {
     return null;
   }
 
@@ -180,8 +183,16 @@ const extractRequestedBackgroundColor = ( text: string ): { label: string; value
     const parts = cleaned.split( ' ' );
     for ( let len = Math.min( 4, parts.length ); len >= 1; len-- ) {
       const candidate = parts.slice( 0, len ).join( ' ' ).trim();
-      if ( candidate && isValidCssColor( candidate ) ) {
+      if ( ! candidate ) {
+        continue;
+      }
+      if ( isValidCssColor( candidate ) ) {
         return { label: candidate, value: candidate, adjustText: false };
+      }
+      // Multi-word CSS named colours have no space ("light blue" -> "lightblue").
+      const collapsed = candidate.replace( /\s+/g, '' );
+      if ( collapsed !== candidate && isValidCssColor( collapsed ) ) {
+        return { label: candidate, value: collapsed, adjustText: false };
       }
     }
   }
@@ -325,6 +336,12 @@ const completeBlocksPrefix = ( markup: string ): string => {
 const unwrapLonePageGroup = ( markup: string ): string => {
   const blocks = splitTopLevelBlocks( markup );
   if ( blocks.length !== 1 || ! /<!--\s*wp:group\b/i.test( blocks[ 0 ] ) ) {
+    return markup;
+  }
+
+  // Keep an intentional page-background wrapper (added by applyPageBackgroundColor) — it
+  // carries page styling, not just structure, so unwrapping it would drop the background.
+  if ( /nfd-page-background/i.test( blocks[ 0 ] ) ) {
     return markup;
   }
 
@@ -931,6 +948,66 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         return true;
       };
 
+      // Apply a background colour to the WHOLE page deterministically (no AI round-trip — the
+      // AI tends to mangle a full page on a style edit). The page content is wrapped in a
+      // single group carrying the colour; a marker class (nfd-page-background) lets us update
+      // it in place on a repeat change and keeps unwrapLonePageGroup from stripping it.
+      const applyPageBackgroundColor = ( color: { label: string; value: string; adjustText: boolean } ): boolean => {
+        if ( ! previewHtml ) {
+          return false;
+        }
+
+        const tops = splitTopLevelBlocks( previewHtml );
+        const alreadyWrapped =
+          tops.length === 1 && /class="[^"]*\bnfd-page-background\b/i.test( tops[ 0 ] );
+
+        let newHtml: string;
+        if ( alreadyWrapped ) {
+          // Swap the colour on the existing wrapper rather than nesting another group.
+          newHtml = previewHtml
+            .replace( /("background"\s*:\s*")[^"]*(")/, `$1${ color.value }$2` )
+            .replace( /(background-color\s*:\s*)[^;"]*/i, `$1${ color.value }` );
+        } else {
+          // align:full so the colour spans the whole page width behind every section,
+          // not just a centred column.
+          const open = `<!-- wp:group {"align":"full","style":{"color":{"background":"${ color.value }"}},"className":"nfd-page-background"} -->`;
+          const div = `<div class="wp-block-group alignfull nfd-page-background has-background" style="background-color:${ color.value }">`;
+          newHtml = `${ open }\n${ div }\n${ previewHtml }\n</div>\n<!-- /wp:group -->`;
+        }
+
+        if ( newHtml === previewHtml ) {
+          return false;
+        }
+
+        const parsed = wpBlocksParse( newHtml );
+        if ( parsed.length > 0 ) {
+          setParsedBlocks( parsed );
+        }
+        setPreviewHtml( newHtml );
+        setHasAIGenerated( true );
+
+        const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+        const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+        setHistoryEntries( ( prev ) => [
+          ...prev,
+          {
+            id: historyId,
+            html: newHtml,
+            label: `Page background: ${ color.label }`,
+            timestamp,
+            publishTitle,
+            metaExcerpt,
+          },
+        ] );
+
+        setMessages( [
+          ...newMessages,
+          { role: 'assistant', content: `Updated the page background to ${ color.label }.` },
+        ] );
+        clearSelection( iframeRef );
+        return true;
+      };
+
       // Shared helper: remove the selected block from the live iframe DOM and sync state.
       const removeSelectedBlock = () => {
         const doc = iframeRef.current?.contentDocument;
@@ -1009,6 +1086,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         }
       }
 
+      // No block selected: a background-colour request targets the whole page. Apply it
+      // deterministically instead of sending it to the AI (which mangles full-page edits).
+      if ( selectedBlockIndex === null ) {
+        const requestedPageBackground = extractRequestedBackgroundColor( text );
+        if ( requestedPageBackground && applyPageBackgroundColor( requestedPageBackground ) ) {
+          return;
+        }
+      }
+
       // Check if this is a metadata-only request first, before follow-up edit detection.
       // Metadata requests (excerpt, title, summary) should never send page content as context.
       const isMetadataRequest = /\b(add|create|generate|write)\s+(an?\s+)?(excerpt|title|summary)\b|^(excerpt|title|summary)$/i.test(text);
@@ -1073,6 +1159,21 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           ? ( previewHtml || '' )
           : ( isFollowUpEdit ? lastGeneratedHtml : ( isMetadataRequest ? '' : previewHtml ) ) || '';
 
+      // When the clicked selection is a single image (one <img>), capture its src so an image
+      // replacement swaps only that image — not every image in the top-level block that gets
+      // sent as selected_block_markup (e.g. a 3-image gallery/columns group).
+      const selectedImageUrl = ( () => {
+        if ( ! isSingleBlockEdit || selectedBlockHtml === null ) {
+          return undefined;
+        }
+        const imgCount = ( selectedBlockHtml.match( /<img\b/gi ) || [] ).length;
+        if ( imgCount !== 1 ) {
+          return undefined;
+        }
+        const srcMatch = selectedBlockHtml.match( /<img[^>]+src=["']([^"']+)["']/i );
+        return srcMatch ? srcMatch[ 1 ] : undefined;
+      } )();
+
       const context: import('../api').GenerateContentContext = {
         current_markup: contextMarkup,
         post_id: selectedItem?.id,
@@ -1085,6 +1186,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           : selectedBlockIndex !== null && selectedBlockHtml !== null
             ? { selected_block_markup: selectedBlockHtml }
             : {} ),
+        ...( selectedImageUrl ? { selected_image_url: selectedImageUrl } : {} ),
       };
 
       const shouldStream =

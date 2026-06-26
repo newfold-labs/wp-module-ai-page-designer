@@ -16,6 +16,8 @@ export type GenerateContentContext = {
   content_type?: 'page' | 'post';
   selected_block_markup?: string;
   single_block_edit?: boolean;
+  // src of the specific image clicked inside a multi-image block, so only it is replaced.
+  selected_image_url?: string;
   page_title?: string;
   page_excerpt?: string;
 };

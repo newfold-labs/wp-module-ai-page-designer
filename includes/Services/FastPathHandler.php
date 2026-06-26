@@ -44,20 +44,43 @@ class FastPathHandler {
 	 * @param string $last_user_prompt Latest user prompt.
 	 * @param string $page_title Page title from the editor (for keyword targeting).
 	 * @param string $page_excerpt Page excerpt from the editor (for keyword targeting).
+	 * @param bool   $is_selected_image Whether $current_markup is a single selected image/cover
+	 *                                  block. When true the "image" keyword gate is relaxed (the
+	 *                                  selection already establishes image context) and the result
+	 *                                  is returned without the cache-buster comment so it splices
+	 *                                  cleanly back into the selected block.
+	 * @param string $target_image_url When set, only the image whose src matches this URL is
+	 *                                  replaced (a specific image was clicked inside a multi-image
+	 *                                  block), instead of every image in the markup.
 	 * @return \WP_REST_Response|null
 	 */
-	public function maybe_handle_fast_path( $current_markup, $last_user_prompt, $page_title = '', $page_excerpt = '' ) {
+	public function maybe_handle_fast_path( $current_markup, $last_user_prompt, $page_title = '', $page_excerpt = '', $is_selected_image = false, $target_image_url = '' ) {
 		if ( empty( $current_markup ) ) {
 			return null;
 		}
 
 		$prompt_lower = strtolower( $last_user_prompt );
 
-		$has_image_word   = (bool) preg_match( '/\b(images?|pictures?|photos?|pics?|backgrounds?)\b/i', $prompt_lower );
+		$has_image_noun   = (bool) preg_match( '/\b(images?|pictures?|photos?|pics?)\b/i', $prompt_lower );
+		$has_background    = (bool) preg_match( '/\bbackgrounds?\b/i', $prompt_lower );
 		$has_replace_verb = (bool) preg_match( '/\b(change|update|replace|swap|regenerate|refresh|new|different)\b/i', $prompt_lower );
 		$has_add_verb     = (bool) preg_match( '/\b(add|insert|include|put|place|append)\b/i', $prompt_lower );
 
-		if ( ! $has_image_word ) {
+		// A colour/style change is never an image operation. "Change the background to light blue"
+		// must not be hijacked as an image swap just because it mentions "background"; route it to
+		// the AI (or the client-side colour handler) instead. Only treat it as colour intent when
+		// no explicit image noun is present ("replace the background photo" stays an image op).
+		$has_color_intent = (bool) preg_match( '/\b(colou?rs?|gradient|light|dark|blue|red|green|yellow|orange|purple|pink|black|white|gr[ae]y|brown|teal|cyan|magenta|violet|indigo|navy|maroon|beige|gold|silver)\b|#[0-9a-f]{3,6}\b|\brgba?\(/i', $prompt_lower );
+		if ( $has_color_intent && ! $has_image_noun ) {
+			return null;
+		}
+
+		// "background" only counts as image intent for an actual image swap (not a colour change).
+		$has_image_word = $has_image_noun || ( $has_background && ! $has_color_intent );
+
+		// When an image block is selected, the user need not repeat the word "image"
+		// ("replace this", "change it") — the selection already supplies the context.
+		if ( ! $has_image_word && ! $is_selected_image ) {
 			return null;
 		}
 
@@ -71,8 +94,15 @@ class FastPathHandler {
 			$search_context  = $this->generate_image_keywords( $last_user_prompt, $heading_title );
 			$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
 			if ( ! empty( $unsplash_images ) ) {
-				$new_html = $this->image_service->replace_images_in_html( $current_markup, $unsplash_images );
-				return $this->build_response( $new_html );
+				if ( '' !== $target_image_url ) {
+					// Only the specific image the user clicked — leave the block's other images alone.
+					$new_html = $this->replace_single_image_url( $current_markup, $target_image_url, $unsplash_images[0] );
+				} else {
+					$new_html = $this->image_service->replace_images_in_html( $current_markup, $unsplash_images );
+				}
+				// Single-block edits splice the returned markup back at the selected index, so
+				// the cache-buster comment must be omitted (it would become a stray freeform block).
+				return $this->build_response( $new_html, ! $is_selected_image );
 			}
 			// Unsplash unavailable — return a message so the request doesn't fall through to AI,
 			// which would ignore the image request due to its system prompt.
@@ -214,6 +244,54 @@ class FastPathHandler {
 		}
 
 		return implode( "\n\n", $blocks );
+	}
+
+	/**
+	 * Replace only the image whose src matches $old_url with $new_url, leaving every other
+	 * image in the markup untouched. Used when a specific image inside a multi-image block
+	 * (e.g. a 3-column gallery) is selected for replacement.
+	 *
+	 * Matching ignores query strings (cache busters etc.) so a DOM-sourced URL still matches
+	 * the markup-sourced one. If no image matches, the markup is returned unchanged rather than
+	 * falling back to replacing everything.
+	 *
+	 * @param string $markup  Block markup containing one or more images.
+	 * @param string $old_url The src of the image to replace.
+	 * @param string $new_url The replacement Unsplash URL.
+	 * @return string Updated markup.
+	 */
+	private function replace_single_image_url( $markup, $old_url, $new_url ) {
+		$old_base = preg_replace( '/\?.*$/', '', (string) $old_url );
+
+		$final_url = $new_url;
+		if ( strpos( $final_url, 'cb=' ) === false ) {
+			$final_url .= ( strpos( $final_url, '?' ) !== false ? '&' : '?' ) . 'cb=' . wp_rand( 1, 999999 );
+		}
+
+		if ( ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
+			// Fallback: simple string swap of the exact URL (no query-string normalisation).
+			$count  = 0;
+			$result = str_replace( $old_url, $final_url, $markup, $count );
+			return $count > 0 ? $result : $markup;
+		}
+
+		$tags     = new \WP_HTML_Tag_Processor( $markup );
+		$replaced = false;
+		while ( $tags->next_tag( 'img' ) ) {
+			$src      = (string) $tags->get_attribute( 'src' );
+			$src_base = preg_replace( '/\?.*$/', '', $src );
+			if ( $src === $old_url || ( '' !== $old_base && $src_base === $old_base ) ) {
+				$tags->set_attribute( 'src', $final_url );
+				$tags->remove_attribute( 'srcset' );
+				$replaced = true;
+				break;
+			}
+		}
+
+		if ( ! $replaced ) {
+			return $markup;
+		}
+		return $tags->get_updated_html();
 	}
 
 	/**
@@ -366,13 +444,20 @@ class FastPathHandler {
 	 * Build the shared fast-path response payload.
 	 *
 	 * @param string $html HTML content.
+	 * @param bool   $append_cache_buster Append a unique trailing comment so the frontend always
+	 *                                    detects a change. Omit for single-block splices where the
+	 *                                    comment would become a stray freeform block.
 	 * @return \WP_REST_Response
 	 */
-	private function build_response( $html ) {
+	private function build_response( $html, $append_cache_buster = true ) {
+		$content = trim( $html );
+		if ( $append_cache_buster ) {
+			$content .= '<!-- fastpath_cb=' . time() . ' -->';
+		}
 		return new \WP_REST_Response(
 			array(
 				'data' => array(
-					'content' => trim( $html ) . '<!-- fastpath_cb=' . time() . ' -->',
+					'content' => $content,
 					'title'   => '',
 				),
 			),
