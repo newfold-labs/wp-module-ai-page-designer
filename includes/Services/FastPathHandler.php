@@ -86,10 +86,16 @@ class FastPathHandler {
 
 		$has_images_in_markup = (bool) preg_match( '/<img\b|<!--\s*wp:(image|cover)\b/i', $current_markup );
 
+		// A selected cover/image block treats "add a background image" as setting that block's
+		// image (it already "contains" a cover, so the insertion branch below never fires). This
+		// only applies to genuine image intent — "add a pricing table below this section" has no
+		// image word and must fall through to the AI, not swap the selected block's image.
+		$wants_set_image = $has_replace_verb || ( $is_selected_image && $has_add_verb && $has_image_word );
+
 		// 1. Image Replacement Intent — images already exist in markup.
 		// Check separately so articles/filler words between verb and noun don't prevent matching
 		// e.g. "change the images", "replace all photos", "update background images".
-		if ( $has_replace_verb && $has_images_in_markup ) {
+		if ( $wants_set_image && $has_images_in_markup ) {
 			$heading_title   = $this->extract_page_title( $current_markup );
 			$search_context  = $this->generate_image_keywords( $last_user_prompt, $heading_title );
 			$unsplash_images = $this->image_service->get_unsplash_images( $search_context );
