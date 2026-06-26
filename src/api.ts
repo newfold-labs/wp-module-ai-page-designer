@@ -118,10 +118,13 @@ export const generateContentStream = async (
 
   let offset = 0;
   let attempts = 0;
-  const maxAttempts = 360;
+  // 250 ms cadence keeps the preview filling in quickly; maxAttempts holds the overall
+  // timeout at ~3 min (720 * 250 ms).
+  const pollIntervalMs = 250;
+  const maxAttempts = 720;
 
   while ( attempts < maxAttempts ) {
-    await new Promise( ( resolve ) => setTimeout( resolve, 500 ) );
+    await new Promise( ( resolve ) => setTimeout( resolve, pollIntervalMs ) );
     attempts++;
 
     const pollUrl = `${ baseUrl }${ basePath }/generate/poll/${ generation_id }?offset=${ offset }`;

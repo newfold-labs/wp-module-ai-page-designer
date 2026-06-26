@@ -281,6 +281,43 @@ const splitTopLevelBlocks = ( markup: string ): string[] => {
     .filter( s => s.length > 0 && /<!--\s*\/?wp:/i.test( s ) );
 };
 
+// During streaming the buffer almost always ends mid-block — a tag or a class name cut
+// in half (e.g. `<div class="wp-block-colu`). Injecting that truncated tail into innerHTML
+// mangles the unclosed element AND leaves partial class names that no longer match the
+// theme's layout selectors (`.wp-block-columns.is-layout-flex`, `.wp-block-cover`, …), so
+// the section renders unstyled — looking like "CSS is missing" when it is really just
+// unmatchable markup. Return only the markup up to the last fully-closed top-level block so
+// every intermediate preview is well-formed and themed; the trailing partial block appears
+// once its closing delimiter arrives.
+const completeBlocksPrefix = ( markup: string ): string => {
+  const lines = markup.split( '\n' );
+  let lastCompleteLine = -1;
+
+  for ( let i = 0; i < lines.length; i++ ) {
+    const trimmed = lines[ i ].trim();
+    // Only treat a delimiter as a safe cut point if it fully arrived (ends with `-->`),
+    // so we never slice through a half-written block comment.
+    const isComplete = /-->$/.test( trimmed );
+    const isSelfClosing = isComplete && /^<!--\s*wp:[^ ].*?\/-->/i.test( trimmed );
+    const isClosing = isComplete && /^<!--\s*\/wp:/i.test( trimmed );
+
+    // Cut at the last completed block delimiter at ANY depth — not just top-level. Inner
+    // blocks that have closed are HTML-balanced; any still-open ancestor wrapper (e.g. a
+    // cover or columns) already has its full opening tag + class names, so innerHTML
+    // auto-closes it cleanly and the theme's layout selectors still match. This reveals
+    // each inner block the moment it finishes instead of stalling until the whole
+    // top-level section (often a large hero) closes.
+    if ( isClosing || isSelfClosing ) {
+      lastCompleteLine = i;
+    }
+  }
+
+  if ( lastCompleteLine === -1 ) {
+    return '';
+  }
+  return lines.slice( 0, lastCompleteLine + 1 ).join( '\n' );
+};
+
 // If the entire page is wrapped in a single lone wp:group (a page-wrapper pattern that
 // breaks block-level indexing), hoist its children to the top level.
 // This mirrors the worker's sanitizer guard 0 applied to AI-generated output, but also
@@ -762,7 +799,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           setPublishTitle( title );
           setMetaTitle( title );
         }
-        if ( wantsExcerpt ) {
+        // Apply the excerpt on a fresh generation too (not just explicit "add an excerpt"
+        // requests) so title and excerpt land together when a new page is created.
+        if ( isFirstGeneration || wantsExcerpt ) {
           const excerpt = responseData?.excerpt || '';
           if ( excerpt ) {
             setMetaExcerpt( excerpt );
@@ -1062,19 +1101,24 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           if ( event.type === 'delta' ) {
             streamBuffer += event.text;
 
+            // Render only the complete blocks so far — never the half-arrived trailing
+            // block, which would inject truncated tags/class names and break the layout.
+            const safeBuffer = completeBlocksPrefix( streamBuffer );
+
             // If it's a follow up edit, we need to show the stream in context
             if ( isFollowUpEdit && lastGeneratedHtml && previewHtml ) {
-              setPreviewHtml( previewHtml.replace( lastGeneratedHtml, streamBuffer ) );
+              setPreviewHtml( previewHtml.replace( lastGeneratedHtml, safeBuffer ) );
             } else if ( selectedBlockIndex === null ) {
-              setPreviewHtml( streamBuffer );
+              setPreviewHtml( safeBuffer );
             }
           }
           if ( event.type === 'snapshot' ) {
             streamBuffer = event.text;
+            const safeBuffer = completeBlocksPrefix( streamBuffer );
             if ( isFollowUpEdit && lastGeneratedHtml && previewHtml ) {
-              setPreviewHtml( previewHtml.replace( lastGeneratedHtml, streamBuffer ) );
+              setPreviewHtml( previewHtml.replace( lastGeneratedHtml, safeBuffer ) );
             } else if ( selectedBlockIndex === null ) {
-              setPreviewHtml( streamBuffer );
+              setPreviewHtml( safeBuffer );
             }
           }
           if ( event.type === 'result' ) {
