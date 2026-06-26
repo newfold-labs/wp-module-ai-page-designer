@@ -333,6 +333,17 @@ const completeBlocksPrefix = ( markup: string ): string => {
 // breaks block-level indexing), hoist its children to the top level.
 // This mirrors the worker's sanitizer guard 0 applied to AI-generated output, but also
 // handles existing pages loaded from WordPress that were saved with this structure.
+// Approximate the human-visible text length of block markup: drop block-delimiter comments,
+// HTML tags and entities, then collapse whitespace. Used to detect an AI full-page response
+// that would render (near-)blank so it can be rejected instead of wiping the page.
+const visibleTextLength = ( markup: string ): number =>
+  markup
+    .replace( /<!--[\s\S]*?-->/g, ' ' )
+    .replace( /<[^>]+>/g, ' ' )
+    .replace( /&[a-z0-9#]+;/gi, ' ' )
+    .replace( /\s+/g, ' ' )
+    .trim().length;
+
 const unwrapLonePageGroup = ( markup: string ): string => {
   const blocks = splitTopLevelBlocks( markup );
   if ( blocks.length !== 1 || ! /<!--\s*wp:group\b/i.test( blocks[ 0 ] ) ) {
@@ -341,7 +352,8 @@ const unwrapLonePageGroup = ( markup: string ): string => {
 
   // Keep an intentional page-background wrapper (added by applyPageBackgroundColor) — it
   // carries page styling, not just structure, so unwrapping it would drop the background.
-  if ( /nfd-page-background/i.test( blocks[ 0 ] ) ) {
+  // The theme-colour wrapper (added by applyThemeColors) is the same case.
+  if ( /nfd-page-background|nfd-page-theme/i.test( blocks[ 0 ] ) ) {
     return markup;
   }
 
@@ -363,6 +375,34 @@ const unwrapLonePageGroup = ( markup: string ): string => {
   // Only proceed if the inner content contains multiple top-level blocks;
   // a single-block inner would just recurse into the same problem.
   return splitTopLevelBlocks( inner ).length > 1 ? inner : markup;
+};
+
+// Elements that never render running text, so a colour change should skip them.
+const NON_TEXT_TAGS = /^(?:IMG|SVG|PICTURE|SOURCE|VIDEO|AUDIO|CANVAS|IFRAME|EMBED|OBJECT|HR|BR|INPUT|SELECT|TEXTAREA|SCRIPT|STYLE|TEMPLATE)$/;
+
+// Collect every element under (optionally including) `root` that directly renders text — i.e.
+// has a non-whitespace direct text-node child — plus links/buttons, whose colour is set on the
+// element itself. Detecting text at runtime avoids a hand-maintained tag list that keeps missing
+// elements (tables, definition lists, code, figure captions, …); any current or future text tag
+// is covered automatically.
+const collectTextElements = ( root: Element, includeRoot: boolean ): HTMLElement[] => {
+  const candidates = includeRoot
+    ? [ root, ...Array.from( root.querySelectorAll( '*' ) ) ]
+    : Array.from( root.querySelectorAll( '*' ) );
+
+  const result: HTMLElement[] = [];
+  for ( const el of candidates ) {
+    if ( NON_TEXT_TAGS.test( el.tagName ) ) {
+      continue;
+    }
+    const hasDirectText = Array.from( el.childNodes ).some(
+      ( node ) => node.nodeType === Node.TEXT_NODE && ( node.textContent || '' ).trim() !== ''
+    );
+    if ( hasDirectText || 'A' === el.tagName || 'BUTTON' === el.tagName ) {
+      result.push( el as HTMLElement );
+    }
+  }
+  return result;
 };
 
 export const useAiConversation = ( options: UseAiConversationOptions ): UseAiConversationResult => {
@@ -799,6 +839,31 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
             addHistoryEntry( mergedHtml );
           } else {
             const newBlocks = wpBlocksParse( normalizedHtml );
+
+            // Blank-output safety net: a full-page edit (e.g. "change the colors to match the
+            // theme") sometimes comes back as mangled/empty markup that renders blank. If the
+            // page already had real content and the response would parse to no blocks or to
+            // (near-)nothing visible, reject it — keep the current preview and tell the user —
+            // instead of wiping the page.
+            const currentVisible = previewHtml ? visibleTextLength( previewHtml ) : 0;
+            const returnedVisible = visibleTextLength( normalizedHtml );
+            const wouldBlankPage =
+              hasAIGenerated &&
+              currentVisible > 50 &&
+              ( newBlocks.length === 0 || returnedVisible < Math.max( 20, currentVisible * 0.1 ) );
+
+            if ( wouldBlankPage ) {
+              setMessages( [
+                ...newMessages,
+                {
+                  role: 'assistant',
+                  content:
+                    "I couldn't apply that change cleanly — it would have emptied the page, so I kept the current version. Try rephrasing, or select a specific section to edit.",
+                },
+              ] );
+              return;
+            }
+
             if ( newBlocks.length > 0 ) {
               setParsedBlocks( newBlocks );
             }
@@ -846,16 +911,14 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           return false;
         }
 
-        const textTargets = wrapper.querySelectorAll(
-          'p, h1, h2, h3, h4, h5, h6, li, a, span, strong, em, small, blockquote, figcaption, button, label'
-        );
+        const textTargets = collectTextElements( wrapper, false );
 
         if ( textTargets.length === 0 ) {
           return false;
         }
 
         textTargets.forEach( ( node ) => {
-          ( node as HTMLElement ).style.setProperty( 'color', color.value, 'important' );
+          node.style.setProperty( 'color', color.value, 'important' );
         } );
 
         const newHtml = getPreviewHtmlFromDocument( doc );
@@ -905,13 +968,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
         target.style.setProperty( 'background-color', color.value, 'important' );
         if ( color.adjustText ) {
-          const textSelector = 'p, h1, h2, h3, h4, h5, h6, li, a, span, strong, em, small, blockquote, figcaption, button, label';
-          const textTargets = target.matches( textSelector )
-            ? [ target, ...Array.from( target.querySelectorAll( textSelector ) ) ]
-            : Array.from( target.querySelectorAll( textSelector ) );
-
-          textTargets.forEach( ( node ) => {
-            ( node as HTMLElement ).style.setProperty( 'color', '#ffffff', 'important' );
+          collectTextElements( target, true ).forEach( ( node ) => {
+            node.style.setProperty( 'color', '#ffffff', 'important' );
           } );
         }
 
@@ -1008,6 +1066,92 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         return true;
       };
 
+      // Re-skin the WHOLE page to the active theme's palette deterministically (no AI — the
+      // AI mangles a full page on a colour edit, which previously blanked the preview). We wrap
+      // the page in a single group that carries the theme's background + text colour SLUGS, so
+      // colours come from the theme's own CSS (true "match the theme"), not hardcoded hex. A
+      // marker class (nfd-page-theme) lets unwrapLonePageGroup keep it and lets us detect a
+      // repeat request. Returns false to fall through to the AI when the palette is unavailable.
+      const applyThemeColors = (): boolean => {
+        if ( ! previewHtml ) {
+          return false;
+        }
+        const palette = ( window as any )?.nfdAIPageDesigner?.colorPalette as
+          | Array<{ slug: string; name: string; color: string }>
+          | undefined;
+        if ( ! palette || palette.length === 0 ) {
+          return false;
+        }
+
+        // Pick the theme's background + text slugs by common conventions, falling back to the
+        // first/last swatch so any palette yields a usable pair.
+        const findSlug = ( prefs: string[], fallback: string ): string => {
+          for ( const pref of prefs ) {
+            const hit = palette.find(
+              ( s ) => s.slug?.toLowerCase() === pref || s.name?.toLowerCase() === pref
+            );
+            if ( hit?.slug ) {
+              return hit.slug;
+            }
+          }
+          return fallback;
+        };
+        const bgSlug = findSlug( [ 'base', 'background', 'white' ], palette[ 0 ]?.slug || '' );
+        const textSlug = findSlug(
+          [ 'contrast', 'foreground', 'text', 'black' ],
+          palette[ palette.length - 1 ]?.slug || ''
+        );
+        if ( ! bgSlug || ! textSlug || bgSlug === textSlug ) {
+          return false;
+        }
+
+        const tops = splitTopLevelBlocks( previewHtml );
+        const alreadyThemed =
+          tops.length === 1 && /class="[^"]*\bnfd-page-theme\b/i.test( tops[ 0 ] );
+        if ( alreadyThemed ) {
+          setMessages( [
+            ...newMessages,
+            { role: 'assistant', content: 'The page already uses the theme colors.' },
+          ] );
+          clearSelection( iframeRef );
+          return true;
+        }
+
+        // align:full so the theme background spans the full page width. Slug-based attributes
+        // (backgroundColor/textColor + has-*-color classes) keep it theme-driven, not inline hex.
+        const open = `<!-- wp:group {"align":"full","backgroundColor":"${ bgSlug }","textColor":"${ textSlug }","className":"nfd-page-theme"} -->`;
+        const div = `<div class="wp-block-group alignfull nfd-page-theme has-${ textSlug }-color has-text-color has-${ bgSlug }-background-color has-background">`;
+        const newHtml = `${ open }\n${ div }\n${ previewHtml }\n</div>\n<!-- /wp:group -->`;
+
+        const parsed = wpBlocksParse( newHtml );
+        if ( parsed.length > 0 ) {
+          setParsedBlocks( parsed );
+        }
+        setPreviewHtml( newHtml );
+        setHasAIGenerated( true );
+
+        const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+        const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+        setHistoryEntries( ( prev ) => [
+          ...prev,
+          {
+            id: historyId,
+            html: newHtml,
+            label: 'Matched page to theme colors',
+            timestamp,
+            publishTitle,
+            metaExcerpt,
+          },
+        ] );
+
+        setMessages( [
+          ...newMessages,
+          { role: 'assistant', content: 'Updated the page colors to match the theme.' },
+        ] );
+        clearSelection( iframeRef );
+        return true;
+      };
+
       // Shared helper: remove the selected block from the live iframe DOM and sync state.
       const removeSelectedBlock = () => {
         const doc = iframeRef.current?.contentDocument;
@@ -1091,6 +1235,16 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       if ( selectedBlockIndex === null ) {
         const requestedPageBackground = extractRequestedBackgroundColor( text );
         if ( requestedPageBackground && applyPageBackgroundColor( requestedPageBackground ) ) {
+          return;
+        }
+
+        // "match the theme colors", "use the theme palette" — recolour the whole page from the
+        // theme palette deterministically. Requires both a theme word and a colour/palette word
+        // so it never swallows unrelated prompts. Falls through to the AI only if no palette.
+        const lowerText = text.toLowerCase();
+        const wantsThemeColorMatch =
+          /\btheme('s)?\b/.test( lowerText ) && /\bcolou?rs?\b|\bpalette\b/.test( lowerText );
+        if ( wantsThemeColorMatch && applyThemeColors() ) {
           return;
         }
       }
