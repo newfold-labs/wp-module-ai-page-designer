@@ -598,7 +598,12 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       finalHtml = finalHtml.replace( /<!--(?![\s\S]*?-->)[\s\S]*$/u, '' );
 
       const stack: string[] = [];
-      const regex = /<!--\s*(\/?)wp:([\w\/-]+)(?:\s[^-]*)?\s*(\/?)-->/gi;
+      // Match the optional block attributes with a non-greedy "any char up to -->" rather than
+      // [^-]* — Gutenberg attributes are full of hyphens ("slide-up", "accent-4",
+      // "contrast-midtone", image URLs like photo-1513…), and [^-]* stopped at the first hyphen,
+      // so most opening delimiters went untracked. That made the stack wrong and appended
+      // spurious closing tags below, collapsing the page structure on every edit.
+      const regex = /<!--\s*(\/?)wp:([\w\/-]+)(?:\s+[\s\S]*?)?\s*(\/?)-->/gi;
       let match;
 
       while ( ( match = regex.exec( finalHtml ) ) !== null ) {
