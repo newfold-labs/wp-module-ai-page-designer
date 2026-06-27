@@ -20,6 +20,18 @@ use Web\AIPageDesignerDebug;
 class AIPageDesignerController extends \WP_REST_Controller {
 
 	/**
+	 * Maximum combined characters of page + selected-block markup sent to the AI backend.
+	 *
+	 * A structurally broken page can collapse into one oversized block (e.g. every section
+	 * nested inside the hero), so a single-block edit would ship the whole page and overflow
+	 * the Worker/model budget — surfacing as an opaque 500. ~40k chars (~10k tokens) leaves
+	 * room for the system prompt and theme context.
+	 *
+	 * @var int
+	 */
+	const MAX_AI_MARKUP_CHARS = 40000;
+
+	/**
 	 * The namespace of this controller's route.
 	 *
 	 * @var string
@@ -297,6 +309,83 @@ class AIPageDesignerController extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Build the messages array sent to the (stateless) AI backend.
+	 *
+	 * The backend is stateless: it receives the current markup and system prompt on every call,
+	 * so the page state is already supplied out of band. Replaying the whole transcript adds
+	 * nothing and bloats the payload — the assistant messages in particular carry the full
+	 * generated page HTML in a `code` field, which can push the request large enough for the
+	 * Worker to reject it (500). Send only the latest user instruction, sanitized to the
+	 * { role, content } shape the backend expects (dropping code/summary/link/isError fields).
+	 *
+	 * @param array $messages Raw messages from the request.
+	 * @return array<int, array<string, string>>
+	 */
+	/**
+	 * Reject an edit whose markup is too large to send to the AI backend.
+	 *
+	 * Guards against a malformed page collapsing into one oversized block: rather than letting
+	 * the Worker fail with an opaque 500, return a clear, actionable error. See
+	 * self::MAX_AI_MARKUP_CHARS for the rationale.
+	 *
+	 * @param string $current_markup        Whole-page markup being sent.
+	 * @param string $selected_block_markup Selected-block markup being sent.
+	 * @return \WP_Error|null WP_Error when the markup is too large, otherwise null.
+	 */
+	private function check_markup_size( $current_markup, $selected_block_markup ) {
+		$markup_chars = strlen( (string) $current_markup ) + strlen( (string) $selected_block_markup );
+
+		if ( $markup_chars > self::MAX_AI_MARKUP_CHARS ) {
+			AIPageDesignerDebug::debug_log(
+				'Edit markup exceeds size limit',
+				array(
+					'markup_chars' => $markup_chars,
+					'limit'        => self::MAX_AI_MARKUP_CHARS,
+				)
+			);
+
+			return new \WP_Error(
+				'ai_payload_too_large',
+				__( 'This section is too large to edit in one request — the page structure may be malformed. Try selecting a smaller block, or regenerate the page.', 'wp-module-ai-page-designer' ),
+				array( 'status' => 413 )
+			);
+		}
+
+		return null;
+	}
+
+	private function build_ai_messages( $messages ) {
+		if ( ! is_array( $messages ) ) {
+			return array();
+		}
+
+		for ( $index = count( $messages ) - 1; $index >= 0; $index-- ) {
+			if ( isset( $messages[ $index ]['role'], $messages[ $index ]['content'] )
+				&& 'user' === $messages[ $index ]['role'] ) {
+				return array(
+					array(
+						'role'    => 'user',
+						'content' => (string) $messages[ $index ]['content'],
+					),
+				);
+			}
+		}
+
+		// Fallback: no user message found — sanitize whatever is present to role + content.
+		return array_values(
+			array_map(
+				function ( $message ) {
+					return array(
+						'role'    => isset( $message['role'] ) ? (string) $message['role'] : 'user',
+						'content' => isset( $message['content'] ) ? (string) $message['content'] : '',
+					);
+				},
+				$messages
+			)
+		);
+	}
+
+	/**
 	 * Generate content using AI
 	 *
 	 * @param \WP_REST_Request $request The REST request
@@ -357,7 +446,14 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				$base_layout = $this->pattern_layout_provider->get_random_pattern_layout( $last_user_prompt );
 			}
 
-			$ai_messages = $messages;
+			// Reject an oversized edit (e.g. a malformed page collapsed into one giant block)
+			// before it reaches the Worker, where it surfaces as an opaque 500.
+			$size_error = $this->check_markup_size( $current_markup, $context['selected_block_markup'] ?? '' );
+			if ( is_wp_error( $size_error ) ) {
+				return $size_error;
+			}
+
+			$ai_messages = $this->build_ai_messages( $messages );
 
 			if ( $stream ) {
 				$this->init_streaming_response();
@@ -1169,6 +1265,15 @@ class AIPageDesignerController extends \WP_REST_Controller {
 				);
 			}
 
+			// Reject an oversized edit before it reaches the Worker (opaque 500). Done after the
+			// fast path so local image edits still work; clean up the transients we reserved.
+			$size_error = $this->check_markup_size( $current_markup, $context['selected_block_markup'] ?? '' );
+			if ( is_wp_error( $size_error ) ) {
+				delete_transient( "nfd_ai_poll_{$generation_id}_meta" );
+				delete_transient( "nfd_ai_poll_{$generation_id}_chunks" );
+				return $size_error;
+			}
+
 			$is_redesign_request  = $this->is_redesign_request( $last_user_prompt );
 			$is_single_block_edit = ! empty( $context['single_block_edit'] ) && ! empty( $context['selected_block_markup'] );
 
@@ -1204,7 +1309,7 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$stream_error      = null;
 
 			$stream_result = $this->ai_client->stream_content(
-				$messages,
+				$this->build_ai_messages( $messages ),
 				$stream_options,
 				function ( $event ) use (
 					&$raw_content,
