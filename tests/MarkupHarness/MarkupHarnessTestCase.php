@@ -73,4 +73,25 @@ abstract class MarkupHarnessTestCase extends TestCase {
 	protected function bare_button(): string {
 		return '<button>Confirm participation</button>';
 	}
+
+	/**
+	 * Four columns each declaring 50% — they sum to 200% and overflow.
+	 *
+	 * @return string
+	 */
+	protected function four_fifty_columns(): string {
+		$column = function ( $letter ) {
+			return '<!-- wp:column {"width":"50%"} -->' . "\n"
+				. '<div class="wp-block-column" style="flex-basis:50%"><p>' . $letter . '</p></div>' . "\n"
+				. '<!-- /wp:column -->';
+		};
+		return '<!-- wp:columns -->' . "\n"
+			. '<div class="wp-block-columns">' . "\n"
+			. $column( 'a' ) . "\n"
+			. $column( 'b' ) . "\n"
+			. $column( 'c' ) . "\n"
+			. $column( 'd' ) . "\n"
+			. '</div>' . "\n"
+			. '<!-- /wp:columns -->';
+	}
 }

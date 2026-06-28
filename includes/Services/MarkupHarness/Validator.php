@@ -34,6 +34,7 @@ class Validator {
 		$this->check_run_together_grid( $markup, $violations );
 		$this->check_bare_units( $markup, $violations );
 		$this->check_vertical_only_padding( $markup, $violations );
+		$this->check_column_widths( $markup, $violations );
 		$this->check_unstyled_form_buttons( $markup, $ctx, $violations );
 		$this->check_non_solid_colors( $markup, $ctx, $violations );
 
@@ -117,6 +118,86 @@ class Validator {
 				return;
 			}
 		}
+	}
+
+	/**
+	 * No columns block whose percentage child widths fail to form a ~100% layout.
+	 *
+	 * Mirrors {@see ColumnWidthNormalize}: a columns block is a violation when its
+	 * columns mix present and missing percentage widths, or when all are present
+	 * but do not sum to ~100%. Columns using a non-percentage width (deliberate
+	 * px/calc layouts) are skipped, as is a fully auto-distributed (all missing) set.
+	 *
+	 * @param string             $markup     Block markup.
+	 * @param array<int, string> $violations Violation accumulator (by reference).
+	 * @return void
+	 */
+	private function check_column_widths( string $markup, array &$violations ) {
+		if ( ! function_exists( 'parse_blocks' ) ) {
+			return;
+		}
+		if ( $this->has_invalid_columns( parse_blocks( $markup ) ) ) {
+			$violations[] = 'invalid_column_widths';
+		}
+	}
+
+	/**
+	 * Whether any columns block in the tree has an invalid width distribution.
+	 *
+	 * @param array<int, array<string, mixed>> $blocks Parsed blocks.
+	 * @return bool
+	 */
+	private function has_invalid_columns( array $blocks ): bool {
+		foreach ( $blocks as $block ) {
+			if ( isset( $block['blockName'] ) && 'core/columns' === $block['blockName']
+				&& $this->columns_block_invalid( $block ) ) {
+				return true;
+			}
+			if ( ! empty( $block['innerBlocks'] ) && $this->has_invalid_columns( $block['innerBlocks'] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether a single columns block's direct column widths are invalid.
+	 *
+	 * @param array<string, mixed> $columns_block Columns block.
+	 * @return bool
+	 */
+	private function columns_block_invalid( array $columns_block ): bool {
+		$inner = isset( $columns_block['innerBlocks'] ) ? $columns_block['innerBlocks'] : array();
+
+		$count   = 0;
+		$present = 0;
+		$missing = 0;
+		$sum     = 0.0;
+		foreach ( $inner as $child ) {
+			if ( ! isset( $child['blockName'] ) || 'core/column' !== $child['blockName'] ) {
+				continue;
+			}
+			++$count;
+			$width = isset( $child['attrs']['width'] ) ? $child['attrs']['width'] : '';
+			if ( '' === $width || null === $width ) {
+				++$missing;
+				continue;
+			}
+			if ( ! is_string( $width ) || ! preg_match( '/^\s*([0-9]+(?:\.[0-9]+)?)%\s*$/', $width, $matches ) ) {
+				// Non-percentage width: deliberate layout, not a violation.
+				return false;
+			}
+			++$present;
+			$sum += (float) $matches[1];
+		}
+
+		if ( $count < 2 || 0 === $present ) {
+			return false;
+		}
+		if ( $missing > 0 ) {
+			return true;
+		}
+		return abs( $sum - 100.0 ) > 1.5;
 	}
 
 	/**
