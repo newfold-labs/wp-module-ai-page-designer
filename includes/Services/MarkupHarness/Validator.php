@@ -36,6 +36,7 @@ class Validator {
 		$this->check_vertical_only_padding( $markup, $violations );
 		$this->check_column_widths( $markup, $violations );
 		$this->check_cover_images( $markup, $violations );
+		$this->check_button_bg_collision( $markup, $ctx, $violations );
 		$this->check_unstyled_form_buttons( $markup, $ctx, $violations );
 		$this->check_non_solid_colors( $markup, $ctx, $violations );
 
@@ -248,6 +249,51 @@ class Validator {
 				}
 			}
 			if ( ! empty( $block['innerBlocks'] ) && $this->has_cover_without_image( $block['innerBlocks'] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * No button whose background slug matches the section behind it (invisible button).
+	 *
+	 * Mirrors {@see ButtonBackgroundCollision}: walking the tree, a core/button whose
+	 * backgroundColor equals the nearest ancestor's solid background slug is a violation.
+	 *
+	 * @param string             $markup     Block markup.
+	 * @param Context            $ctx        Conformance context.
+	 * @param array<int, string> $violations Violation accumulator (by reference).
+	 * @return void
+	 */
+	private function check_button_bg_collision( string $markup, Context $ctx, array &$violations ) {
+		if ( ! function_exists( 'parse_blocks' ) || ! $ctx->has_palette() ) {
+			return;
+		}
+		if ( $this->has_button_collision( parse_blocks( $markup ), null, $ctx ) ) {
+			$violations[] = 'button_bg_collision';
+		}
+	}
+
+	/**
+	 * Whether any button collides with its inherited section background.
+	 *
+	 * @param array<int, array<string, mixed>> $blocks       Parsed blocks.
+	 * @param string|null                      $inherited_bg Nearest ancestor solid bg slug.
+	 * @param Context                          $ctx          Context.
+	 * @return bool
+	 */
+	private function has_button_collision( array $blocks, $inherited_bg, Context $ctx ): bool {
+		foreach ( $blocks as $block ) {
+			$own_bg = isset( $block['attrs']['backgroundColor'] ) ? $block['attrs']['backgroundColor'] : null;
+
+			if ( isset( $block['blockName'] ) && 'core/button' === $block['blockName']
+				&& null !== $own_bg && null !== $inherited_bg && $own_bg === $inherited_bg ) {
+				return true;
+			}
+
+			$applied_bg = ( null !== $own_bg && $ctx->is_solid_slug( $own_bg ) ) ? $own_bg : $inherited_bg;
+			if ( ! empty( $block['innerBlocks'] ) && $this->has_button_collision( $block['innerBlocks'], $applied_bg, $ctx ) ) {
 				return true;
 			}
 		}

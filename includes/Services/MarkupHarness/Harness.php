@@ -14,6 +14,7 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\GroupPaddi
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\ColumnWidthNormalize;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\CoverImage;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\StyleRawFormButtons;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\ButtonBackgroundCollision;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\ColorLegibility;
 
 /**
@@ -72,6 +73,7 @@ class Harness {
 			new ColumnWidthNormalize(),
 			new CoverImage(),
 			new StyleRawFormButtons(),
+			new ButtonBackgroundCollision(),
 			new ColorLegibility(),
 		);
 	}

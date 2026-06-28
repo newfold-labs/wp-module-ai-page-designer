@@ -80,6 +80,25 @@ abstract class MarkupHarnessTestCase extends TestCase {
 	 * @return string
 	 */
 	/**
+	 * An accent button sitting inside an accent-background section (invisible).
+	 *
+	 * @return string
+	 */
+	protected function accent_button_on_accent_section(): string {
+		return '<!-- wp:group {"backgroundColor":"accent-4"} -->' . "\n"
+			. '<div class="wp-block-group has-accent-4-background-color has-background">' . "\n"
+			. '<!-- wp:buttons -->' . "\n"
+			. '<div class="wp-block-buttons">' . "\n"
+			. '<!-- wp:button {"backgroundColor":"accent-4","textColor":"base"} -->' . "\n"
+			. '<div class="wp-block-button"><a class="wp-block-button__link has-base-color has-accent-4-background-color has-text-color has-background wp-element-button" style="color:var(--wp--preset--color--base);background-color:var(--wp--preset--color--accent-4)">Click</a></div>' . "\n"
+			. '<!-- /wp:button -->' . "\n"
+			. '</div>' . "\n"
+			. '<!-- /wp:buttons -->' . "\n"
+			. '</div>' . "\n"
+			. '<!-- /wp:group -->';
+	}
+
+	/**
 	 * A cover declaring a background image url but rendering no image element.
 	 *
 	 * @return string
