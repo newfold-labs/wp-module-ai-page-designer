@@ -35,6 +35,7 @@ class Validator {
 		$this->check_bare_units( $markup, $violations );
 		$this->check_vertical_only_padding( $markup, $violations );
 		$this->check_column_widths( $markup, $violations );
+		$this->check_cover_images( $markup, $violations );
 		$this->check_unstyled_form_buttons( $markup, $ctx, $violations );
 		$this->check_non_solid_colors( $markup, $ctx, $violations );
 
@@ -198,6 +199,59 @@ class Validator {
 			return true;
 		}
 		return abs( $sum - 100.0 ) > 1.5;
+	}
+
+	/**
+	 * No cover block that declares a background image url but renders no image.
+	 *
+	 * Mirrors {@see CoverImage}: a cover with a `url` attribute must contain a
+	 * rendered <img class="wp-block-cover__image-background"> (or a background-image
+	 * style), otherwise the directly-rendered preview/front-end shows no image.
+	 *
+	 * @param string             $markup     Block markup.
+	 * @param array<int, string> $violations Violation accumulator (by reference).
+	 * @return void
+	 */
+	private function check_cover_images( string $markup, array &$violations ) {
+		if ( ! function_exists( 'parse_blocks' ) ) {
+			return;
+		}
+		if ( $this->has_cover_without_image( parse_blocks( $markup ) ) ) {
+			$violations[] = 'cover_missing_image';
+		}
+	}
+
+	/**
+	 * Whether any cover in the tree declares a url but renders no image.
+	 *
+	 * @param array<int, array<string, mixed>> $blocks Parsed blocks.
+	 * @return bool
+	 */
+	private function has_cover_without_image( array $blocks ): bool {
+		foreach ( $blocks as $block ) {
+			if ( isset( $block['blockName'] ) && 'core/cover' === $block['blockName'] ) {
+				$url = isset( $block['attrs']['url'] ) ? $block['attrs']['url'] : '';
+				if ( is_string( $url ) && '' !== $url ) {
+					$html = '';
+					if ( ! empty( $block['innerContent'] ) ) {
+						foreach ( $block['innerContent'] as $chunk ) {
+							if ( is_string( $chunk ) ) {
+								$html .= $chunk;
+							}
+						}
+					}
+					$renders = false !== stripos( $html, 'wp-block-cover__image-background' )
+						|| preg_match( '/background-image\s*:\s*url\(/i', $html );
+					if ( ! $renders ) {
+						return true;
+					}
+				}
+			}
+			if ( ! empty( $block['innerBlocks'] ) && $this->has_cover_without_image( $block['innerBlocks'] ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

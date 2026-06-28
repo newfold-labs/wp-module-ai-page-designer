@@ -12,6 +12,7 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\SanitizeCs
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnwrapLoneGroup;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\GroupPaddingSymmetry;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\ColumnWidthNormalize;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\CoverImage;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\StyleRawFormButtons;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\ColorLegibility;
 
@@ -69,6 +70,7 @@ class Harness {
 			new UnwrapLoneGroup(),
 			new GroupPaddingSymmetry(),
 			new ColumnWidthNormalize(),
+			new CoverImage(),
 			new StyleRawFormButtons(),
 			new ColorLegibility(),
 		);

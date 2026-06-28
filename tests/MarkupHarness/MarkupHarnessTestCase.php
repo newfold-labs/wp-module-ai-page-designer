@@ -79,6 +79,28 @@ abstract class MarkupHarnessTestCase extends TestCase {
 	 *
 	 * @return string
 	 */
+	/**
+	 * A cover declaring a background image url but rendering no image element.
+	 *
+	 * @return string
+	 */
+	protected function cover_missing_image(): string {
+		return '<!-- wp:cover {"url":"https://images.unsplash.com/photo-123","dimRatio":60} -->' . "\n"
+			. '<div class="wp-block-cover has-background-dim">' . "\n"
+			. '<div class="wp-block-cover__inner-container">' . "\n"
+			. '<!-- wp:heading -->' . "\n"
+			. '<h2 class="wp-block-heading">Welcome</h2>' . "\n"
+			. '<!-- /wp:heading -->' . "\n"
+			. '</div>' . "\n"
+			. '</div>' . "\n"
+			. '<!-- /wp:cover -->';
+	}
+
+	/**
+	 * Four columns each declaring 50% — they sum to 200% and overflow.
+	 *
+	 * @return string
+	 */
 	protected function four_fifty_columns(): string {
 		$column = function ( $letter ) {
 			return '<!-- wp:column {"width":"50%"} -->' . "\n"
