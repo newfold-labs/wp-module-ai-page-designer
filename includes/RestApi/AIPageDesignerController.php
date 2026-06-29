@@ -354,6 +354,16 @@ class AIPageDesignerController extends \WP_REST_Controller {
 		return null;
 	}
 
+	/**
+	 * Extract the messages to send to the AI backend.
+	 *
+	 * Returns only the most recent user message when one is present;
+	 * otherwise falls back to a sanitized copy of all messages
+	 * (each reduced to 'role' and 'content').
+	 *
+	 * @param array $messages Raw messages from the request.
+	 * @return array<int, array<string, string>>
+	 */
 	private function build_ai_messages( $messages ) {
 		if ( ! is_array( $messages ) ) {
 			return array();
