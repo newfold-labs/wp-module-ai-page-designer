@@ -13,6 +13,7 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnwrapLone
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\GroupPaddingSymmetry;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\ColumnWidthNormalize;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\CoverImage;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\CoverDefaults;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\StyleRawFormButtons;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\ButtonBackgroundCollision;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\ColorLegibility;
@@ -72,6 +73,7 @@ class Harness {
 			new GroupPaddingSymmetry(),
 			new ColumnWidthNormalize(),
 			new CoverImage(),
+			new CoverDefaults(),
 			new StyleRawFormButtons(),
 			new ButtonBackgroundCollision(),
 			new ColorLegibility(),

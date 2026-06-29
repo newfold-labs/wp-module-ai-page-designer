@@ -100,12 +100,31 @@ abstract class MarkupHarnessTestCase extends TestCase {
 
 	/**
 	 * A cover declaring a background image url but rendering no image element.
+	 * Carries the other cover defaults so it violates only the image concern.
 	 *
 	 * @return string
 	 */
 	protected function cover_missing_image(): string {
-		return '<!-- wp:cover {"url":"https://images.unsplash.com/photo-123","dimRatio":60} -->' . "\n"
-			. '<div class="wp-block-cover has-background-dim">' . "\n"
+		return '<!-- wp:cover {"url":"https://images.unsplash.com/photo-123","dimRatio":60,"minHeight":520,"minHeightUnit":"px","backgroundColor":"contrast"} -->' . "\n"
+			. '<div class="wp-block-cover has-background-dim has-contrast-background-color has-background" style="min-height:520px">' . "\n"
+			. '<div class="wp-block-cover__inner-container">' . "\n"
+			. '<!-- wp:heading -->' . "\n"
+			. '<h2 class="wp-block-heading">Welcome</h2>' . "\n"
+			. '<!-- /wp:heading -->' . "\n"
+			. '</div>' . "\n"
+			. '</div>' . "\n"
+			. '<!-- /wp:cover -->';
+	}
+
+	/**
+	 * A cover that renders its image but is missing minHeight / dimRatio / background.
+	 *
+	 * @return string
+	 */
+	protected function cover_missing_defaults(): string {
+		return '<!-- wp:cover {"url":"https://images.unsplash.com/photo-123"} -->' . "\n"
+			. '<div class="wp-block-cover">' . "\n"
+			. '<img class="wp-block-cover__image-background" alt="" src="https://images.unsplash.com/photo-123" data-object-fit="cover"/>' . "\n"
 			. '<div class="wp-block-cover__inner-container">' . "\n"
 			. '<!-- wp:heading -->' . "\n"
 			. '<h2 class="wp-block-heading">Welcome</h2>' . "\n"

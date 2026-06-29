@@ -36,6 +36,7 @@ class Validator {
 		$this->check_vertical_only_padding( $markup, $violations );
 		$this->check_column_widths( $markup, $violations );
 		$this->check_cover_images( $markup, $violations );
+		$this->check_cover_defaults( $markup, $ctx, $violations );
 		$this->check_button_bg_collision( $markup, $ctx, $violations );
 		$this->check_unstyled_form_buttons( $markup, $ctx, $violations );
 		$this->check_non_solid_colors( $markup, $ctx, $violations );
@@ -249,6 +250,51 @@ class Validator {
 				}
 			}
 			if ( ! empty( $block['innerBlocks'] ) && $this->has_cover_without_image( $block['innerBlocks'] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Every cover declares the conformance defaults (minHeight, dimRatio, and —
+	 * when a palette is available — a background color fallback).
+	 *
+	 * Mirrors {@see CoverDefaults}.
+	 *
+	 * @param string             $markup     Block markup.
+	 * @param Context            $ctx        Conformance context.
+	 * @param array<int, string> $violations Violation accumulator (by reference).
+	 * @return void
+	 */
+	private function check_cover_defaults( string $markup, Context $ctx, array &$violations ) {
+		if ( ! function_exists( 'parse_blocks' ) ) {
+			return;
+		}
+		if ( $this->has_cover_missing_defaults( parse_blocks( $markup ), $ctx ) ) {
+			$violations[] = 'cover_missing_defaults';
+		}
+	}
+
+	/**
+	 * Whether any cover is missing a conformance default.
+	 *
+	 * @param array<int, array<string, mixed>> $blocks Parsed blocks.
+	 * @param Context                          $ctx    Context.
+	 * @return bool
+	 */
+	private function has_cover_missing_defaults( array $blocks, Context $ctx ): bool {
+		foreach ( $blocks as $block ) {
+			if ( isset( $block['blockName'] ) && 'core/cover' === $block['blockName'] ) {
+				$attrs = isset( $block['attrs'] ) ? $block['attrs'] : array();
+				if ( empty( $attrs['minHeight'] ) || ! isset( $attrs['dimRatio'] ) ) {
+					return true;
+				}
+				if ( $ctx->has_palette() && empty( $attrs['backgroundColor'] ) ) {
+					return true;
+				}
+			}
+			if ( ! empty( $block['innerBlocks'] ) && $this->has_cover_missing_defaults( $block['innerBlocks'], $ctx ) ) {
 				return true;
 			}
 		}
