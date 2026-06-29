@@ -10,6 +10,7 @@ namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\Rule;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\SanitizeCss;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnwrapLoneGroup;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\SectionGroupPattern;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\GroupPaddingSymmetry;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\ColumnWidthNormalize;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\CoverImage;
@@ -70,6 +71,7 @@ class Harness {
 		return array(
 			new SanitizeCss(),
 			new UnwrapLoneGroup(),
+			new SectionGroupPattern(),
 			new GroupPaddingSymmetry(),
 			new ColumnWidthNormalize(),
 			new CoverImage(),
