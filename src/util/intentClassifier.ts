@@ -95,3 +95,27 @@ export const classifyIntent = async (
     return FREEFORM;
   }
 };
+
+/**
+ * Harness-owned metadata generation. Asks our own /metadata endpoint (which
+ * prompts the model via the analyze pass-through) for a clean excerpt/title
+ * derived from the page content. Returns the value, or null on any failure so
+ * the caller can fall back gracefully.
+ */
+export const generateMetadata = async (
+  apiUrl: string,
+  field: 'excerpt' | 'title',
+  markup: string
+): Promise<string | null> => {
+  try {
+    const result = await apiFetch<{ field: string; value: string }>( {
+      path: `${ apiUrl }/metadata`,
+      method: 'POST',
+      data: { field, markup },
+    } );
+    const value = result?.value ? result.value.trim() : '';
+    return value || null;
+  } catch {
+    return null;
+  }
+};

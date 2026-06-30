@@ -93,6 +93,31 @@ class IntentClassifierController {
 				),
 			)
 		);
+
+		register_rest_route(
+			$this->namespace,
+			'/metadata',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'generate_metadata' ),
+					'args'                => array(
+						'field'  => array(
+							'required'          => true,
+							'type'              => 'string',
+							'description'       => __( 'Which metadata field to generate: excerpt or title.', 'wp-module-ai-page-designer' ),
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+						'markup' => array(
+							'required'          => true,
+							'type'              => 'string',
+							'description'       => __( 'The current page content to summarise.', 'wp-module-ai-page-designer' ),
+						),
+					),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -144,6 +169,110 @@ class IntentClassifierController {
 		$intent = $this->parse_intent( $result['content'] );
 
 		return rest_ensure_response( $intent );
+	}
+
+	/**
+	 * Generate a single page-metadata field (excerpt or title) from the current
+	 * page content. Harness-owned: we build the prompt and call the model via the
+	 * analyze() pass-through, so the Worker stays a dumb AI endpoint. The model
+	 * returns the field value only — never a status line.
+	 *
+	 * @param \WP_REST_Request $request The request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function generate_metadata( \WP_REST_Request $request ) {
+		$field = strtolower( (string) $request->get_param( 'field' ) );
+		if ( ! in_array( $field, array( 'excerpt', 'title' ), true ) ) {
+			return new \WP_Error( 'invalid_field', __( 'Unsupported metadata field.', 'wp-module-ai-page-designer' ), array( 'status' => 400 ) );
+		}
+
+		$page_text = $this->markup_to_text( (string) $request->get_param( 'markup' ) );
+		if ( '' === $page_text ) {
+			return new \WP_Error( 'empty_content', __( 'There is no page content to summarise yet.', 'wp-module-ai-page-designer' ), array( 'status' => 400 ) );
+		}
+
+		if ( 'excerpt' === $field ) {
+			$system = 'You write SEO meta descriptions for web pages. Given the page content, write ONE concise, '
+				. 'compelling excerpt of at most 155 characters that summarises the page for search results and social '
+				. 'sharing. Write about the page itself — never describe the edit. Return ONLY the excerpt text: no quotes, '
+				. 'no preamble, no markdown, no label.';
+		} else {
+			$system = 'You write page titles. Given the page content, write ONE concise, descriptive title of at most 60 '
+				. 'characters. Return ONLY the title text: no quotes, no preamble, no markdown, no label.';
+		}
+
+		$ai_messages = array(
+			array(
+				'role'    => 'system',
+				'content' => $system,
+			),
+			array(
+				'role'    => 'user',
+				'content' => "Page content:\n\n" . $page_text,
+			),
+		);
+
+		$result = $this->ai_client->analyze( $ai_messages );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		if ( empty( $result['content'] ) ) {
+			return new \WP_Error( 'generation_failed', __( 'Could not generate that right now. Please try again.', 'wp-module-ai-page-designer' ), array( 'status' => 502 ) );
+		}
+
+		$value = $this->clean_metadata_value( (string) $result['content'] );
+		if ( '' === $value ) {
+			return new \WP_Error( 'generation_failed', __( 'Could not generate that right now. Please try again.', 'wp-module-ai-page-designer' ), array( 'status' => 502 ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'field' => $field,
+				'value' => $value,
+			)
+		);
+	}
+
+	/**
+	 * Reduce block markup to plain text for a cheaper, cleaner prompt: drop block
+	 * comments and HTML tags, collapse whitespace, and cap the length.
+	 *
+	 * @param string $markup Page block markup.
+	 * @return string
+	 */
+	private function markup_to_text( $markup ) {
+		$text = preg_replace( '/<!--.*?-->/s', ' ', $markup );
+		$text = wp_strip_all_tags( (string) $text );
+		$text = trim( preg_replace( '/\s+/', ' ', $text ) );
+		if ( strlen( $text ) > 4000 ) {
+			$text = substr( $text, 0, 4000 );
+		}
+		return $text;
+	}
+
+	/**
+	 * Strip the wrappers a model sometimes adds (code fences, surrounding quotes,
+	 * a "Excerpt:" label) so we keep just the field value.
+	 *
+	 * @param string $content Raw model output.
+	 * @return string
+	 */
+	private function clean_metadata_value( $content ) {
+		$value = preg_replace( '/```(?:\w+)?/', '', $content );
+		$value = trim( $value );
+		// Drop a leading "Excerpt:" / "Title:" label if present.
+		$value = preg_replace( '/^\s*(?:excerpt|title|meta description)\s*[:\-]\s*/i', '', $value );
+		// Strip a single pair of surrounding quotes.
+		$value = trim( $value );
+		if ( strlen( $value ) >= 2 ) {
+			$first = $value[0];
+			$last  = $value[ strlen( $value ) - 1 ];
+			if ( ( '"' === $first && '"' === $last ) || ( "'" === $first && "'" === $last ) ) {
+				$value = substr( $value, 1, -1 );
+			}
+		}
+		return trim( $value );
 	}
 
 	/**

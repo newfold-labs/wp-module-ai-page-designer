@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { HistoryEntry, Message, WPItem } from '../types';
 import { generateContent, generateContentStream } from '../api';
 import { extractHtml } from '../util/aiDesignerHelpers';
-import { classifyIntent, isIntentClassifierEnabled } from '../util/intentClassifier';
+import { classifyIntent, generateMetadata, isIntentClassifierEnabled } from '../util/intentClassifier';
 
 type UseAiConversationOptions = {
   apiUrl: string;
@@ -1269,8 +1269,47 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
               return;
             }
           }
-          // Other actions (edit_metadata, add_block, replace_image, redesign,
-          // freeform) intentionally fall through to the existing routing.
+          // Harness-owned metadata generation: produce a real excerpt/title from
+          // the page content via our own /metadata call (not the page-generate
+          // path that leaked acknowledgment text). Apply only the field(s) asked.
+          if ( intent.action === 'edit_metadata' && intent.metadata_fields.length > 0 && previewHtml ) {
+            const fields = intent.metadata_fields.filter(
+              ( f ) => f === 'excerpt' || f === 'title'
+            ) as Array<'excerpt' | 'title'>;
+
+            if ( fields.length > 0 ) {
+              const applied: string[] = [];
+              for ( const field of fields ) {
+                const value = await generateMetadata( apiUrl, field, previewHtml );
+                if ( value && ! looksLikeAcknowledgment( value ) ) {
+                  if ( field === 'excerpt' ) {
+                    setMetaExcerpt( value );
+                  } else {
+                    setPublishTitle( value );
+                    setMetaTitle( value );
+                  }
+                  applied.push( field );
+                }
+              }
+
+              if ( applied.length > 0 ) {
+                const label = applied.join( ' and ' );
+                setMessages( [
+                  ...newMessages,
+                  { role: 'assistant', content: `Done! I’ve refreshed your ${ label }.` },
+                ] );
+              } else {
+                setMessages( [
+                  ...newMessages,
+                  { role: 'assistant', content: 'I couldn’t update that just now. Want to try again?', isError: true },
+                ] );
+              }
+              clearSelection( iframeRef );
+              return;
+            }
+          }
+          // Other actions (add_block, replace_image, redesign, freeform)
+          // intentionally fall through to the existing routing.
         }
       }
 

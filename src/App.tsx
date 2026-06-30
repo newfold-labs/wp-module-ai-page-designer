@@ -66,6 +66,8 @@ const App = () => {
   // Owned here so it can be shared between useAiConversation and usePreviewIframe
   // without a declaration-order cycle (the preview hook needs conversation.isLoading).
   const iframeRef = useRef<HTMLIFrameElement>( null );
+  // Last published preview snapshot; drives the unsaved-changes guard below.
+  const publishedHtmlRef = useRef<string | null>( null );
   const { selectedBlockIndex, selectedBlockHtml, selectedBlockLabel, clearSelection } = useBlockSelection();
   const canUseMedia = Boolean( ( window as any )?.wp?.media );
   const supportsThumbnail = selectedItem?.supports_thumbnail !== false;
@@ -130,6 +132,7 @@ const App = () => {
         excerpt: nextExcerpt,
         featuredMediaId: nextFeaturedMediaId,
       } );
+      publishedHtmlRef.current = previewHtml;
     },
     onPublished: ( item ) => {
       setSelectedItem( item );
@@ -138,9 +141,37 @@ const App = () => {
         excerpt: metaExcerpt,
         featuredMediaId: metaFeaturedMediaId,
       } );
+      // Mark the current preview as the published baseline so the
+      // unsaved-changes guard goes quiet until the next edit.
+      publishedHtmlRef.current = previewHtml;
     },
     appendAssistantMessage: conversation.appendAssistantMessage,
   } );
+
+  // Warn before leaving with generated/edited content that hasn't been published.
+  // publishedHtmlRef holds the last published snapshot; anything newer is unsaved.
+  // dirtyRef is read inside the native beforeunload handler (no re-render needed).
+  const dirtyRef = useRef( false );
+  dirtyRef.current =
+    'designer' === view &&
+    !! previewHtml &&
+    ( conversation.hasAIGenerated || metaDirty ) &&
+    previewHtml !== publishedHtmlRef.current &&
+    ! publishFlow.publishing;
+
+  useEffect( () => {
+    const handler = ( event: BeforeUnloadEvent ) => {
+      if ( ! dirtyRef.current ) {
+        return;
+      }
+      // Triggers the browser's native "Leave site? Changes you made may not be
+      // saved." confirmation. The message text itself is browser-controlled.
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener( 'beforeunload', handler );
+    return () => window.removeEventListener( 'beforeunload', handler );
+  }, [] );
 
   const handleSelectItem = ( item: WPItem ) => {
     conversation.resetAiConversation();
