@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PlusIcon, SparklesIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
 import DashboardView from './components/DashboardView';
 import MetaStrip from './components/MetaStrip';
@@ -63,11 +63,9 @@ const App = () => {
     'dashboard' === view
   );
   const previewUrl = selectedItem?.link || nfdAIPageDesigner.siteUrl;
-  const { iframeRef } = usePreviewIframe(
-    previewHtml,
-    previewUrl,
-    nfdAIPageDesigner.previewStylesheets
-  );
+  // Owned here so it can be shared between useAiConversation and usePreviewIframe
+  // without a declaration-order cycle (the preview hook needs conversation.isLoading).
+  const iframeRef = useRef<HTMLIFrameElement>( null );
   const { selectedBlockIndex, selectedBlockHtml, selectedBlockLabel, clearSelection } = useBlockSelection();
   const canUseMedia = Boolean( ( window as any )?.wp?.media );
   const supportsThumbnail = selectedItem?.supports_thumbnail !== false;
@@ -100,6 +98,16 @@ const App = () => {
     setMetaFeaturedImageUrl,
     clearSelection,
   } );
+
+  // Declared after conversation so the preview can finalize (play animations once)
+  // exactly when streaming ends, driven by conversation.isLoading.
+  usePreviewIframe(
+    previewHtml,
+    previewUrl,
+    nfdAIPageDesigner.previewStylesheets,
+    conversation.isLoading,
+    iframeRef
+  );
 
   const publishFlow = usePublishFlow( {
     apiUrl: nfdAIPageDesigner.apiUrl,

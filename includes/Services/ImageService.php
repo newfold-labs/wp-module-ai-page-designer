@@ -435,6 +435,24 @@ class ImageService {
 								$content_string = $this->replace_urls_in_block_html( $content_string, $new_url );
 							}
 						}
+						unset( $content_string );
+					}
+
+					// A solid-colour cover has no <img>/url() to rewrite, so setting the url
+					// attribute alone leaves nothing visible in the client-rendered preview.
+					// Inject the rendered cover image element so the background image shows.
+					if ( 'core/cover' === $block['blockName'] ) {
+						if ( ! empty( $block['innerHTML'] ) ) {
+							$block['innerHTML'] = $this->ensure_cover_image_element( $block['innerHTML'], $new_url );
+						}
+						if ( ! empty( $block['innerContent'] ) ) {
+							foreach ( $block['innerContent'] as &$cover_content ) {
+								if ( is_string( $cover_content ) ) {
+									$cover_content = $this->ensure_cover_image_element( $cover_content, $new_url );
+								}
+							}
+							unset( $cover_content );
+						}
 					}
 				}
 			}
@@ -444,5 +462,37 @@ class ImageService {
 				$this->update_block_images_recursive( $block['innerBlocks'], $url_map, $unsplash_images, $image_index, $total_images, $placeholders_only );
 			}
 		}
+	}
+
+	/**
+	 * Ensure a cover block's HTML contains a rendered background image element.
+	 *
+	 * A solid-colour cover carries no <img>/url() to rewrite, so a URL set only in the
+	 * block attributes never appears in the client-rendered preview. When no cover image is
+	 * already present, inject the standard <img class="wp-block-cover__image-background">
+	 * element right after the opening cover wrapper so the background image displays.
+	 *
+	 * @param string $html    A cover block HTML/content string.
+	 * @param string $new_url The image URL to display.
+	 * @return string The HTML with a cover image element guaranteed (unchanged if already present).
+	 */
+	private function ensure_cover_image_element( $html, $new_url ) {
+		if ( false === stripos( $html, 'wp-block-cover' ) ) {
+			return $html;
+		}
+		// Already has a rendered cover image (element or CSS background) — nothing to inject.
+		if ( false !== stripos( $html, 'wp-block-cover__image-background' )
+			|| preg_match( '/background-image\s*:\s*url\(/i', $html ) ) {
+			return $html;
+		}
+		$img = '<img class="wp-block-cover__image-background" alt="" src="' . esc_url( $new_url ) . '" data-object-fit="cover"/>';
+		return preg_replace_callback(
+			'/<div\b[^>]*\bwp-block-cover\b[^>]*>/i',
+			function ( $matches ) use ( $img ) {
+				return $matches[0] . $img;
+			},
+			$html,
+			1
+		);
 	}
 }
