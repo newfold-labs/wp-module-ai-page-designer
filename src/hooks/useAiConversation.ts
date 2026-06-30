@@ -220,12 +220,15 @@ const looksLikeAcknowledgment = ( value: string ): boolean => {
   if ( ! t ) {
     return false;
   }
-  // Self-referential editing vocabulary a genuine excerpt/title would not contain.
-  if ( /\b(excerpt|metadata|the (?:current )?layout|page title|as requested)\b/i.test( t ) ) {
+  // Self-referential editing vocabulary a genuine excerpt/title would never
+  // contain ("...the hero excerpt...", "...improve SEO", "...as requested").
+  if ( /\b(excerpt|metadata|the (?:current )?layout|page title|improve(?:d)? seo|as requested)\b/i.test( t ) ) {
     return true;
   }
-  // Acknowledgment openers ("Updated the…", "I've changed…", "Done — …").
-  if ( /^(?:updated|changed|added|created|set|refreshed|revised|improved|rewrote|generated|here(?:'|’|`|)s|i(?:'|’|`|)ve|i have|done|sure|certainly|ok(?:ay)?)\b/i.test( t ) ) {
+  // Unambiguous edit-acknowledgment openers. Kept conservative: verbs like
+  // "set"/"added" can legitimately start real prose, so they're excluded — the
+  // self-referential check above carries those cases.
+  if ( /^(?:updated|changed|rewrote|revised|refreshed|regenerated|here(?:'|’|`|)s|here is|i(?:'|’|`|)ve|i have)\b/i.test( t ) ) {
     return true;
   }
   return false;
@@ -938,7 +941,11 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         }
         const isFirstGeneration = ! selectedItem && ! hasAIGenerated;
         setHasAIGenerated( true );
-        if ( title && ( isFirstGeneration || wantsTitle ) ) {
+        // Reject acknowledgments the model sometimes writes into the title/excerpt
+        // fields ("Updated the hero excerpt to sharpen the story…") so we never
+        // overwrite real metadata with a status line. Same guard as the
+        // metadata-only path.
+        if ( title && ( isFirstGeneration || wantsTitle ) && ! looksLikeAcknowledgment( title ) ) {
           setPublishTitle( title );
           setMetaTitle( title );
         }
@@ -946,7 +953,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         // requests) so title and excerpt land together when a new page is created.
         if ( isFirstGeneration || wantsExcerpt ) {
           const excerpt = responseData?.excerpt || '';
-          if ( excerpt ) {
+          if ( excerpt && ! looksLikeAcknowledgment( excerpt ) ) {
             setMetaExcerpt( excerpt );
           }
         }
