@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { HistoryEntry, Message, WPItem } from '../types';
 import { generateContent, generateContentStream } from '../api';
 import { extractHtml } from '../util/aiDesignerHelpers';
+import { classifyIntent, isIntentClassifierEnabled } from '../util/intentClassifier';
 
 type UseAiConversationOptions = {
   apiUrl: string;
@@ -1178,6 +1179,60 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           setHasAIGenerated( true );
         }
       };
+
+      // PROTOTYPE: AI intent classifier. When enabled, one cheap classify call
+      // decides the action and resolves fuzzy colours ("light blue", "a bit
+      // darker", "match the theme") that the keyword regexes choke on. We then
+      // run the SAME deterministic handlers below. Only the unambiguous
+      // deterministic actions short-circuit here; everything else falls through
+      // to the existing regex + AI-generate path, so this never blocks an edit.
+      if ( isIntentClassifierEnabled() ) {
+        const hasSelection = selectedBlockIndex !== null && selectedBlockHtml !== null;
+        const selectedTypeForCtx = ( () => {
+          if ( ! hasSelection || ! previewHtml ) {
+            return '';
+          }
+          const idx = parseInt( String( selectedBlockIndex ).split( '-' )[ 0 ], 10 );
+          const tops = splitTopLevelBlocks( previewHtml );
+          const m = ! isNaN( idx ) && tops[ idx ] ? tops[ idx ].match( /<!--\s*wp:([a-z0-9\/-]+)/i ) : null;
+          return m ? m[ 1 ].replace( /^core\//, '' ) : '';
+        } )();
+
+        const intent = await classifyIntent( apiUrl, text, {
+          has_selection: hasSelection,
+          selected_block_type: selectedTypeForCtx,
+          has_generated: hasAIGenerated || !! previewHtml,
+          palette: ( window as any )?.nfdAIPageDesigner?.colorPalette || [],
+        } );
+
+        if ( intent.confidence >= 0.5 ) {
+          if ( intent.action === 'remove' && hasSelection ) {
+            removeSelectedBlock();
+            setMessages( [ ...newMessages, { role: 'assistant', content: 'Section removed.' } ] );
+            clearSelection( iframeRef );
+            return;
+          }
+
+          if ( intent.action === 'recolor_text' && hasSelection && intent.color ) {
+            if ( applySelectedTextColor( { label: intent.color, value: intent.color } ) ) {
+              return;
+            }
+          }
+
+          if ( intent.action === 'recolor_background' && intent.color ) {
+            const swatch = { label: intent.color, value: intent.color, adjustText: false };
+            if ( hasSelection && intent.target !== 'page' ) {
+              if ( applySelectedBackgroundColor( swatch ) ) {
+                return;
+              }
+            } else if ( applyPageBackgroundColor( swatch ) ) {
+              return;
+            }
+          }
+          // Other actions (edit_metadata, add_block, replace_image, redesign,
+          // freeform) intentionally fall through to the existing routing.
+        }
+      }
 
       // Fast path: remove selected block without an AI round-trip.
       if ( selectedBlockIndex !== null && selectedBlockHtml !== null && isRemovalIntent( text ) ) {

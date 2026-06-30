@@ -70,6 +70,7 @@ class AIPageDesigner {
 		$controllers = array(
 			'NewfoldLabs\\WP\\Module\\AIPageDesigner\\RestApi\\AIPageDesignerController',
 			'NewfoldLabs\\WP\\Module\\AIPageDesigner\\RestApi\\WordPressProxyController',
+			'NewfoldLabs\\WP\\Module\\AIPageDesigner\\RestApi\\IntentClassifierController',
 		);
 
 		foreach ( $controllers as $controller ) {
@@ -165,6 +166,10 @@ class AIPageDesigner {
 					'globalStyles' => $global_styles_css,
 				),
 				'colorPalette'            => $color_palette,
+				// Route edits through the AI intent classifier instead of the
+				// frontend keyword regexes. On by default; disable via the filter:
+				//   add_filter( 'nfd_ai_page_designer_enable_intent_classifier', '__return_false' );
+				'enableIntentClassifier'  => (bool) apply_filters( 'nfd_ai_page_designer_enable_intent_classifier', true ),
 			)
 		);
 	}
