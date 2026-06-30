@@ -30,6 +30,7 @@ class Validator {
 			return $violations;
 		}
 
+		$this->check_malformed_delimiters( $markup, $violations );
 		$this->check_document_wrappers( $markup, $violations );
 		$this->check_run_together_grid( $markup, $violations );
 		$this->check_bare_units( $markup, $violations );
@@ -53,6 +54,22 @@ class Validator {
 	 */
 	public function is_valid( string $markup, Context $ctx ): bool {
 		return array() === $this->validate( $markup, $ctx );
+	}
+
+	/**
+	 * No block delimiter missing its leading `!` (e.g. `<-- wp:column -->`).
+	 *
+	 * Mirrors {@see RepairDelimiters}: such a delimiter is not a valid HTML comment, so it
+	 * renders as visible text and is invisible to parse_blocks.
+	 *
+	 * @param string             $markup     Block markup.
+	 * @param array<int, string> $violations Violation accumulator (by reference).
+	 * @return void
+	 */
+	private function check_malformed_delimiters( string $markup, array &$violations ) {
+		if ( preg_match( '/<--\s*\/?\s*wp:/i', $markup ) ) {
+			$violations[] = 'malformed_delimiter';
+		}
 	}
 
 	/**

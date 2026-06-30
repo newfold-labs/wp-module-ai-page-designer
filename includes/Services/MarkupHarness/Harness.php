@@ -8,6 +8,7 @@
 namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness;
 
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\Rule;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\RepairDelimiters;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\SanitizeCss;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnwrapLoneGroup;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\SectionGroupPattern;
@@ -69,6 +70,7 @@ class Harness {
 	 */
 	public static function default_rules(): array {
 		return array(
+			new RepairDelimiters(),
 			new SanitizeCss(),
 			new UnwrapLoneGroup(),
 			new SectionGroupPattern(),
