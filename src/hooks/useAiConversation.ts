@@ -123,8 +123,18 @@ const extractRequestedTextColor = ( text: string ): { label: string; value: stri
     const parts = cleaned.split( ' ' );
     for ( let len = Math.min( 4, parts.length ); len >= 1; len-- ) {
       const candidate = parts.slice( 0, len ).join( ' ' ).trim();
-      if ( candidate && isValidCssColor( candidate ) ) {
+      if ( ! candidate ) {
+        continue;
+      }
+      if ( isValidCssColor( candidate ) ) {
         return { label: candidate, value: candidate };
+      }
+      // Multi-word CSS named colours have no space ("light blue" -> "lightblue").
+      // Mirror the background extractor so a deterministic edit still applies
+      // instead of falling through to the AI (which echoes the page unchanged).
+      const collapsed = candidate.replace( /\s+/g, '' );
+      if ( collapsed !== candidate && isValidCssColor( collapsed ) ) {
+        return { label: candidate, value: collapsed };
       }
     }
   }
@@ -197,6 +207,50 @@ const extractRequestedBackgroundColor = ( text: string ): { label: string; value
     }
   }
 
+  return null;
+};
+
+// A real excerpt/title describes the page; it never narrates the edit. When the
+// model writes its acknowledgment into the PAGE_EXCERPT/PAGE_TITLE field
+// ("Updated the page excerpt for the current layout."), reject it so we don't
+// overwrite good metadata with a status line.
+const looksLikeAcknowledgment = ( value: string ): boolean => {
+  const t = value.trim();
+  if ( ! t ) {
+    return false;
+  }
+  // Self-referential editing vocabulary a genuine excerpt/title would not contain.
+  if ( /\b(excerpt|metadata|the (?:current )?layout|page title|as requested)\b/i.test( t ) ) {
+    return true;
+  }
+  // Acknowledgment openers ("Updated the…", "I've changed…", "Done — …").
+  if ( /^(?:updated|changed|added|created|set|refreshed|revised|improved|rewrote|generated|here(?:'|’|`|)s|i(?:'|’|`|)ve|i have|done|sure|certainly|ok(?:ay)?)\b/i.test( t ) ) {
+    return true;
+  }
+  return false;
+};
+
+// Map an explicit block noun in an additive request ("add a gallery below this")
+// to the core block type(s) we'll accept back. Lets us reject an obviously-wrong
+// block (model returns a cover for a gallery request) instead of splicing it in.
+// Returns null when no specific block was named, so the guard stays inert.
+const expectedAdditiveTypes = ( text: string ): string[] | null => {
+  const t = text.toLowerCase();
+  if ( /\bgaller(?:y|ies)\b/.test( t ) ) {
+    return [ 'gallery', 'image', 'columns' ];
+  }
+  if ( /\btable\b/.test( t ) ) {
+    return [ 'table', 'columns', 'group' ];
+  }
+  if ( /\b(?:buttons?|cta)\b/.test( t ) ) {
+    return [ 'buttons', 'button' ];
+  }
+  if ( /\b(?:quote|testimonials?)\b/.test( t ) ) {
+    return [ 'quote', 'pullquote', 'columns', 'group' ];
+  }
+  if ( /\blist\b/.test( t ) ) {
+    return [ 'list' ];
+  }
   return null;
 };
 
@@ -410,6 +464,11 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
   // block + new content, plus the selected block's type to tell those apart.
   const pendingInsertDirectionRef = useRef<'before' | 'after' | null>( null );
   const pendingSelectedTypeRef = useRef<string | null>( null );
+  // For an additive request that explicitly names a block ("add a gallery"),
+  // the core block type(s) we'll accept back. If the model returns something
+  // else (e.g. a cover), we refuse the splice instead of inserting the wrong
+  // block — see the additive-splice guard in applyFinalResponse.
+  const pendingExpectedTypesRef = useRef<string[] | null>( null );
 
   // Controls when the initial-load useEffect fires to populate the block registry.
   const parsedInitialRef = useRef<boolean>( false );
@@ -481,26 +540,47 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       // (the base prompt requires it), so without this intent gate an
       // "add an excerpt" request would also overwrite the title, and vice versa.
       const applied: string[] = [];
+      const rejected: string[] = [];
       if ( title && wantsTitle ) {
-        setPublishTitle( title );
-        setMetaTitle( title );
-        applied.push( 'title' );
+        if ( looksLikeAcknowledgment( title ) ) {
+          rejected.push( 'title' );
+        } else {
+          setPublishTitle( title );
+          setMetaTitle( title );
+          applied.push( 'title' );
+        }
       }
       if ( excerpt && wantsExcerpt ) {
-        setMetaExcerpt( excerpt );
-        applied.push( 'excerpt' );
+        if ( looksLikeAcknowledgment( excerpt ) ) {
+          rejected.push( 'excerpt' );
+        } else {
+          setMetaExcerpt( excerpt );
+          applied.push( 'excerpt' );
+        }
       }
 
-      const fallback = applied.length
-        ? `Updated ${ applied.join( ' and ' ) }.`
-        : 'No changes were made.';
+      let fallback;
+      if ( applied.length ) {
+        fallback = `Updated ${ applied.join( ' and ' ) }.`;
+      } else if ( rejected.length ) {
+        // The model returned a status line instead of real metadata — don't
+        // overwrite, and tell the user so they can retry rather than silently
+        // landing "Updated the page excerpt…" as the excerpt value.
+        fallback = `I couldn't generate a clean ${ rejected.join( ' and ' ) } — nothing was changed. Try rephrasing.`;
+      } else {
+        fallback = 'No changes were made.';
+      }
 
+      // When we rejected the metadata and applied nothing, show OUR message —
+      // not the model's summary, which would falsely claim it changed something.
+      const blocked = rejected.length > 0 && applied.length === 0;
       setMessages( [
         ...newMessages,
         {
           role: 'assistant',
-          content: summary || fallback,
-          summary: summary || undefined,
+          content: blocked ? fallback : ( summary || fallback ),
+          summary: blocked ? undefined : ( summary || undefined ),
+          isError: blocked || undefined,
         },
       ] );
 
@@ -619,8 +699,40 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           // replacing the selected block with it.
           const insertDirection = pendingInsertDirectionRef.current;
           const selectedType = pendingSelectedTypeRef.current;
+          const expectedTypes = pendingExpectedTypesRef.current;
           const returnedTypeMatch = html.match( /<!--\s*wp:([a-z0-9\/-]+)/i );
           const returnedType = returnedTypeMatch ? returnedTypeMatch[ 1 ].replace( /^core\//, '' ) : null;
+
+          // Guard: an additive request named a specific block ("add a gallery")
+          // but the model returned a single block of the wrong type (e.g. a
+          // cover). Refuse rather than splice the wrong block in silently. Only
+          // applies to the lone-new-block insert case — when the model returns
+          // the selected block plus siblings, returnedType is the selected
+          // block's type and the check would misfire.
+          const returnedCount = wpBlocksParse( html ).length || splitTopLevelBlocks( html ).length;
+          if (
+            insertDirection !== null &&
+            expectedTypes !== null &&
+            returnedCount === 1 &&
+            returnedType !== null &&
+            ! expectedTypes.includes( returnedType )
+          ) {
+            setMessages( [
+              ...newMessages,
+              {
+                role: 'assistant',
+                content: `I couldn't add that — the result came back as a ${ returnedType } block instead of what you asked for. Try rephrasing the request.`,
+                isError: true,
+              },
+            ] );
+            isSingleBlockRequestRef.current = false;
+            pendingTopLevelIndexRef.current = null;
+            pendingInsertDirectionRef.current = null;
+            pendingSelectedTypeRef.current = null;
+            pendingExpectedTypesRef.current = null;
+            clearSelection( iframeRef );
+            return;
+          }
 
           // Primary: wp.blocks parse+serialize if available. Splice in ALL
           // returned top-level blocks — additive requests ("add a section
@@ -674,6 +786,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           pendingTopLevelIndexRef.current = null;
           pendingInsertDirectionRef.current = null;
           pendingSelectedTypeRef.current = null;
+          pendingExpectedTypesRef.current = null;
         } else if ( selectedBlockIndex !== null && selectedBlockHtml !== null ) {
           // Try Gutenberg block-marker replacement first; fall back to DOM patch.
           const hasBlockMarkers = /<!--\s*wp:/.test( html );
@@ -1097,7 +1210,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
       // Check if this is a metadata-only request first, before follow-up edit detection.
       // Metadata requests (excerpt, title, summary) should never send page content as context.
-      const isMetadataRequest = /\b(add|create|generate|write)\s+(an?\s+)?(excerpt|title|summary)\b|^(excerpt|title|summary)$/i.test(text);
+      // Match "add/create/generate/write/update/edit/rewrite/revise/improve/refresh the excerpt",
+      // but NOT "change the title color/font/…" — those are block-style edits, not metadata.
+      const isMetadataRequest = /\b(?:add|create|generate|write|update|edit|rewrite|revise|improve|refresh|change|set)\s+(?:an?\s+|the\s+)?(?:excerpt|title|summary)\b(?!\s+(?:color|colour|font|text|size|style|background))|^(?:excerpt|title|summary)$/i.test(text);
 
       // Redesign requests generate a full new page — never treat them as targeted follow-up edits.
       const REDESIGN_KEYWORDS = [ 'redesign', 'regenerate', 'generate again', 'redo', 'remake', 'rebuild', 'start over', 'start fresh', 'from scratch', 'create new', 'make a new', 'build a new', 'try again', 'new version', 'new design' ];
@@ -1150,6 +1265,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         ? selectedBlockGutenbergMarkup!.match( /<!--\s*wp:([a-z0-9\/-]+)/i )
         : null;
       pendingSelectedTypeRef.current = selectedTypeMatch ? selectedTypeMatch[ 1 ].replace( /^core\//, '' ) : null;
+      pendingExpectedTypesRef.current =
+        isSingleBlockEdit && additiveVerb ? expectedAdditiveTypes( text ) : null;
 
       // For single-block edits: send only the selected block — no full page markup.
       // For all other cases: use existing context logic.
