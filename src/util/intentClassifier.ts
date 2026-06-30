@@ -30,6 +30,8 @@ export interface EditIntent {
   target: 'selected' | 'page' | null;
   /** A concrete CSS colour (hex/name) the model resolved, or null. */
   color: string | null;
+  /** A friendly, non-technical colour name for display ("light blue"), or null. */
+  color_label: string | null;
   metadata_fields: Array<'title' | 'excerpt' | 'summary'>;
   /** Core block slug without the `core/` prefix, for add_block. */
   block_type: string | null;
@@ -49,6 +51,7 @@ const FREEFORM: EditIntent = {
   action: 'freeform',
   target: null,
   color: null,
+  color_label: null,
   metadata_fields: [],
   block_type: null,
   insert_direction: null,

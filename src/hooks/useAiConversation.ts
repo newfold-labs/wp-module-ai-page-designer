@@ -255,6 +255,18 @@ const expectedAdditiveTypes = ( text: string ): string[] | null => {
   return null;
 };
 
+// Display-only: a colour name a novice would recognise, or null when all we
+// have is a hex/rgb value (jargon). Lets messages read "now light blue" when we
+// know the name and stay generic ("updated the colour") when we only have a hex.
+const niceColorName = ( label: string ): string | null => {
+  const t = ( label || '' ).trim();
+  const lower = t.toLowerCase();
+  if ( ! t || t.startsWith( '#' ) || lower.startsWith( 'rgb' ) || lower.startsWith( 'hsl' ) ) {
+    return null;
+  }
+  return t;
+};
+
 const getPreviewHtmlFromDocument = ( doc: Document ): string => {
   const root = doc.getElementById( 'nfd-preview-root' );
 
@@ -722,7 +734,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
               ...newMessages,
               {
                 role: 'assistant',
-                content: `I couldn't add that — the result came back as a ${ returnedType } block instead of what you asked for. Try rephrasing the request.`,
+                content: 'That didn’t come out the way you asked. Nothing was changed — want to try describing it a little differently?',
                 isError: true,
               },
             ] );
@@ -998,9 +1010,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           ] );
         }
 
+        const textName = niceColorName( color.label );
         setMessages( [
           ...newMessages,
-          { role: 'assistant', content: didChange ? `Updated text color to ${ color.label } for this section.` : 'No visible text color changes were applied.' },
+          {
+            role: 'assistant',
+            content: didChange
+              ? ( textName ? `Done! The text is now ${ textName }.` : 'Done! I’ve updated the text color.' )
+              : 'I couldn’t change the text color here. Want to try wording it a little differently?',
+          },
         ] );
         clearSelection( iframeRef );
         return true;
@@ -1054,9 +1072,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           ] );
         }
 
+        const bgName = niceColorName( color.label );
         setMessages( [
           ...newMessages,
-          { role: 'assistant', content: didChange ? `Updated background color to ${ color.label } for this section.` : 'No visible background changes were applied.' },
+          {
+            role: 'assistant',
+            content: didChange
+              ? ( bgName ? `Done! This section now has a ${ bgName } background.` : 'Done! I’ve updated this section’s background.' )
+              : 'I couldn’t update the background here. Want to try wording it a little differently?',
+          },
         ] );
         clearSelection( iframeRef );
         return true;
@@ -1114,9 +1138,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           },
         ] );
 
+        const pageName = niceColorName( color.label );
         setMessages( [
           ...newMessages,
-          { role: 'assistant', content: `Updated the page background to ${ color.label }.` },
+          {
+            role: 'assistant',
+            content: pageName
+              ? `All set — your page background is now ${ pageName }.`
+              : 'All set — I’ve updated your page background.',
+          },
         ] );
         clearSelection( iframeRef );
         return true;
@@ -1213,14 +1243,17 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
             return;
           }
 
+          // Prefer the friendly colour name for display; the hex is only for applying.
+          const friendlyColor = intent.color_label || intent.color || '';
+
           if ( intent.action === 'recolor_text' && hasSelection && intent.color ) {
-            if ( applySelectedTextColor( { label: intent.color, value: intent.color } ) ) {
+            if ( applySelectedTextColor( { label: friendlyColor, value: intent.color } ) ) {
               return;
             }
           }
 
           if ( intent.action === 'recolor_background' && intent.color ) {
-            const swatch = { label: intent.color, value: intent.color, adjustText: false };
+            const swatch = { label: friendlyColor, value: intent.color, adjustText: false };
             if ( hasSelection && intent.target !== 'page' ) {
               if ( applySelectedBackgroundColor( swatch ) ) {
                 return;

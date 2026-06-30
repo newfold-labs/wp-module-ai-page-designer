@@ -169,6 +169,7 @@ class IntentClassifierController {
 			. '["recolor_text","recolor_background","remove","redesign","edit_metadata","add_block","replace_image","freeform"], '
 			. '"target": "selected" | "page" | null, '
 			. '"color": a concrete CSS colour as a hex like "#add8e6" (resolve names/descriptions e.g. "light blue", "a bit darker") or null, '
+			. '"color_label": a short, friendly, lowercase colour name a non-technical person would say, e.g. "light blue", "navy", "warm gray" — never a hex code — or null, '
 			. '"metadata_fields": array subset of ["title","excerpt","summary"], '
 			. '"block_type": a core block slug without the "core/" prefix (e.g. "gallery","table","buttons","heading","paragraph","list") or null, '
 			. '"insert_direction": "before" | "after" | null, '
@@ -233,6 +234,10 @@ class IntentClassifierController {
 			? trim( $data['color'] )
 			: null;
 
+		$color_label = isset( $data['color_label'] ) && is_string( $data['color_label'] ) && '' !== trim( $data['color_label'] )
+			? trim( $data['color_label'] )
+			: null;
+
 		$metadata_fields = array();
 		if ( isset( $data['metadata_fields'] ) && is_array( $data['metadata_fields'] ) ) {
 			foreach ( $data['metadata_fields'] as $field ) {
@@ -257,6 +262,7 @@ class IntentClassifierController {
 			'action'           => $action,
 			'target'           => $target,
 			'color'            => $color,
+			'color_label'      => $color_label,
 			'metadata_fields'  => $metadata_fields,
 			'block_type'       => $block_type,
 			'insert_direction' => $insert_direction,
@@ -275,6 +281,7 @@ class IntentClassifierController {
 			'action'           => 'freeform',
 			'target'           => null,
 			'color'            => null,
+			'color_label'      => null,
 			'metadata_fields'  => array(),
 			'block_type'       => null,
 			'insert_direction' => null,
