@@ -92,12 +92,18 @@ class AIPageDesigner {
 			return;
 		}
 
-		// Enqueue AI Designer React app (will be loaded by the main plugin's router)
+		// Enqueue AI Designer React app (will be loaded by the main plugin's router).
+		// Version by the bundle's mtime so a rebuild busts the browser cache (the static
+		// module version alone left stale JS served while the CSS — versioned below — updated).
+		$script_path    = NFD_MODULE_AI_PAGE_DESIGNER_DIR . '/build/index.js';
+		$script_version = file_exists( $script_path )
+			? NFD_MODULE_AI_PAGE_DESIGNER_VERSION . '.' . filemtime( $script_path )
+			: NFD_MODULE_AI_PAGE_DESIGNER_VERSION;
 		wp_enqueue_script(
 			'nfd-ai-page-designer',
 			NFD_MODULE_AI_PAGE_DESIGNER_URL . 'build/index.js',
 			array( 'react', 'react-dom', 'wp-api-fetch', 'wp-element', 'wp-blocks' ),
-			NFD_MODULE_AI_PAGE_DESIGNER_VERSION,
+			$script_version,
 			true
 		);
 
