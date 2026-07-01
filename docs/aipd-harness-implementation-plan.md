@@ -2,15 +2,19 @@
 
 > Living design doc. Iterate on it in-repo.
 
-## Status — as of 2026-06-29 (start here)
+## Status — as of 2026-07-01 (start here)
 
-**Stage 1 is essentially complete.** The PHP `MarkupHarness` exists with the keystone Validator gate, a `Context` from `theme.json`, an idempotent bounded-repair pipeline, and **10 rules that fully replace the Worker's `postProcessMarkup`**. PHPUnit is wired (`composer test`, **52 tests green**); PHPCS clean. Branch: **`add/aipd-harness`**.
+**Stage 1 is complete.** The PHP `MarkupHarness` exists with the keystone Validator gate, a `Context` from `theme.json`, an idempotent bounded-repair pipeline, and **11 rules that fully replace the Worker's `postProcessMarkup`**. PHPUnit is wired (`composer test`, **63 tests green**); PHPCS clean. Branch: **`add/aipd-harness`**, merged even with `develop` (`16f5cb4`, 2026-07-01) — 0 behind, safe to build Stage 2 on top of.
+
+**Fonts: dropped from scope (decision 2026-07-01).** Not deferred — out. The forced-font enqueue in `AIPageDesigner.php` stays as-is; there is no font conformance rule and no hybrid theme/designer-font toggle. Revisit only if a concrete problem surfaces later. This also drops the "Fonts (hybrid)" design in Stage 2 below — Stage 2 archetypes use whatever font enqueue is currently active, unconditionally.
 
 **Rules in the pipeline (execution order)** — each = `Rule` class + (usually) a mirrored `Validator` assertion + tests, all idempotent:
 
 | Rule | What it does | Validator assertion | Status |
 |---|---|---|---|
+| `RepairDelimiters` | repair malformed/mismatched `<!-- wp: -->` comments | — (pre-parse repair) | done `ad24d1d` |
 | `SanitizeCss` | bare-unit CSS, `1fr1fr` run-together grid | `invalid_css:bare_unit`, `invalid_grid:run_together_fr` | done (earlier) |
+| `BackgroundImagePlaceholder` | drop a `placehold.co` background-image that shadows a real one | — (WYSIWYG repair) | done `58c1fb6` |
 | `UnwrapLoneGroup` | hoist children of a lone page-wrapper group | — | done (earlier) |
 | `SectionGroupPattern` | top-level groups → `align:wide` + h-padding | — (styling default, not gated) | done `305722b` |
 | `GroupPaddingSymmetry` | fill missing horizontal padding when vertical exists | `asymmetric_padding:group` | done (earlier) |
@@ -21,19 +25,19 @@
 | `ButtonBackgroundCollision` | button bg == section bg → contrasting slug + legible text | `button_bg_collision` | done `087c15c` |
 | `ColorLegibility` | non-solid / low-contrast text & background repair | `non_solid_color` | done (earlier) |
 
-**Integration seams wired:** `AIPageDesignerController` (generate, before returning to React), `WordPressProxyController` (save ×2), `FastPathHandler::build_response`. Single `Harness::conform()` at each.
+**Integration seams wired:** `AIPageDesignerController` (generate, before returning to React), `WordPressProxyController` (save ×2, via shared `conform_for_save()`), `FastPathHandler::build_response`. Single `Harness::conform()` at each, plus `ImageService::replace_placeholder_images()` as a final image guarantee at the same two seams (never publish a `placehold.co` image, regardless of how it survived to that point).
 
-**Worker slim (task done, LEFT UNCOMMITTED on purpose):** in the separate repo `/Users/abhijit.bhatnagar/Sites/cf-worker-ai-sitegen` branch `update/ai-page-designer`, removed `postProcessMarkup` + all 9 conformance helpers from `src/services/AIPageDesignerPrompts.js` (−649 lines) and both call sites + the dead import from `src/controllers/aiPageDesigner.js`. **Kept** `getThemeContextPrompt` / `deduplicatePalette` / `hexBrightness` (prompt-only). Both pass `node --check`. Caveats: ⚠️ a prior uncommitted `styleRawFormButtons` addition is preserved at the Worker's `git stash@{0}`; ⚠️ **deploy-coordination** — do not deploy the slimmed Worker before the PHP harness is released (else a no-conformance window).
+**Also shipped since the "essentially complete" note (all on top of Stage 1, not Stage 2):** AI intent classifier (`IntentClassifierController`, on by default, filterable — routes recolour/remove/metadata edits deterministically instead of via regex); harness-owned excerpt/title generation (`/metadata` endpoint, Worker stays AI-only via the `analyze()` pass-through); friendlier non-technical post-edit messages; unsaved-changes guard (native `beforeunload` + in-app confirm on Dashboard/Designer/Create New nav).
 
-### Where to start next (in order)
+**Worker slim (task done, LEFT UNCOMMITTED on purpose):** in the separate repo `/Users/abhijit.bhatnagar/Sites/cf-worker-ai-sitegen` branch `update/ai-page-designer`, removed `postProcessMarkup` + all 9 conformance helpers from `src/services/AIPageDesignerPrompts.js` (−649 lines) and both call sites + the dead import from `src/controllers/aiPageDesigner.js`. **Kept** `getThemeContextPrompt` / `deduplicatePalette` / `hexBrightness` (prompt-only). Both pass `node --check`. Caveats: ⚠️ a prior uncommitted `styleRawFormButtons` addition is preserved at the Worker's `git stash@{0}`; ⚠️ **deploy-coordination** — do not deploy the slimmed Worker before the PHP harness is released (else a no-conformance window). Still not deployed as of this writing.
 
-1. **Fonts** — the one remaining "rule" from Stage 1, intentionally deferred. It's coupled to the hybrid-font decision below (a strip/map font rule would regress the current *forced* designer fonts), so do it **with** item 2, not standalone.
-2. **Unify preview + frontend bundle (WYSIWYG)** — one canonical CSS/motion/font bundle + identical wrapper scope across `usePreviewIframe.ts` and `AIPageDesigner.php`. Resolve the drift: preview `#nfd-preview-root` + `fadeIn` vs frontend `.entry-content` + `nfd-fadeIn`; `pulse-hover` preview-only; make the forced-font enqueue (`AIPageDesigner.php`) conditional behind a "designer fonts" opt-in. Fold the fonts rule in here.
-3. **Stage 2** — section archetype catalogue + composer (see below).
+### Where to start next
+
+**Stage 2 — section archetype catalogue + composer** (see below) is next. The "unify preview + frontend bundle" work (task tracked separately, not blocked on fonts anymore since fonts are out of scope) remains open but is not a Stage 2 prerequisite; it can proceed independently whenever picked up.
 
 ### Unrelated, parked (NOT harness)
 
-`develop` branch has a parked **new-page streaming bug** (Worker returns 200 but no content; `response_id null`, ~1s). Debug instrumentation (`total_bytes`/`raw_sample`/`curl_error` in `AiClientWorker::stream_with_curl`) is saved in `git stash` on `develop` ("PARKED: new-page streaming debug"). Next step there: reproduce, read the `cURL streaming completed` log to tell Worker-empty vs SSE-parse vs frontend.
+`develop` branch has a parked **new-page streaming bug** (Worker returns 200 but no content; `response_id null`, ~1s). Debug instrumentation (`total_bytes`/`raw_sample`/`curl_error` in `AiClientWorker::stream_with_curl`) is saved in `git stash` on `develop` ("PARKED: new-page streaming debug"). Next step there: reproduce, read the `cURL streaming completed` log to tell Worker-empty vs SSE-parse vs frontend. Unaffected by the `develop` → `add/aipd-harness` merge (stash, not a commit).
 
 ## Context
 
@@ -88,8 +92,8 @@ Archetypes are structurally strong, visually neutral — the theme carries the s
 ### Motion & interactivity layer (theme-independent)
 Motion is a separate, theme-agnostic layer. **One canonical motion vocabulary** (classes `fade-in`, `slide-up`, `scale-in`, `bounce-in`, `card-hover-lift`, `fade-in-delay-1/2/3` + `data-aos`/`data-aos-delay`) is the single source of truth; preview and frontend CSS are generated from / checked against it; the Validator rejects any hook outside it (kills `pulse-hover`-style drift). **Per-archetype curated** motion.
 
-### Fonts (hybrid)
-Default to theme fonts (make the forced-font enqueue at `AIPageDesigner.php:256` conditional); a "designer fonts" opt-in setting enqueues the curated set — applied identically in preview + frontend.
+### Fonts
+Out of scope (dropped 2026-07-01). The current forced-font enqueue at `AIPageDesigner.php:256` is left as-is, unconditionally, for both Stage 1 and Stage 2 output. No hybrid toggle, no font conformance rule.
 
 ### v1 catalogue (10) — typed slots / variants / default bg
 | Archetype | Purpose | Key slots | Variants | Default bg |
@@ -128,7 +132,7 @@ A section instance carries `{archetype, content}`; edits map to plan ops, dissol
 - Engine: WordPress-native `parse_blocks`/`serialize_blocks` (+ optional `render_block` in validation).
 - Self-validation gate is the keystone; Validator == test oracle (PHPUnit, new).
 - v1 catalogue: all **10** archetypes; forms as block patterns.
-- Aesthetic: **theme-driven**; Motion: **per-archetype curated**, one vocabulary; Fonts: **hybrid** (theme default + designer opt-in).
+- Aesthetic: **theme-driven**; Motion: **per-archetype curated**, one vocabulary; Fonts: **out of scope** (dropped 2026-07-01 — current forced enqueue stays, unconditionally, no rule/toggle).
 
 ## Verification
 
