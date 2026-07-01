@@ -768,6 +768,14 @@ class AIPageDesignerController extends \WP_REST_Controller {
 			$final_html = ( new Harness() )->conform( $final_html );
 		}
 
+		// Final image guarantee: no placehold.co image ever reaches the preview.
+		// Covers placeholders the block-scoped replacement above misses (e.g. a
+		// background-image on a plain core/group) or that survived an edit where
+		// no fresh imagery was fetched. Runs before returning so preview == save.
+		if ( ! empty( $final_html ) ) {
+			$final_html = $this->image_service->replace_placeholder_images( $final_html, $search_context );
+		}
+
 		// Handle metadata-only responses (e.g., when user asks for excerpt generation)
 		$is_metadata_only = empty( $final_html ) && ( ! empty( $title_data['title'] ) || ! empty( $title_data['excerpt'] ) || ! empty( $title_data['summary'] ) );
 

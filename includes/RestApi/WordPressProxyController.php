@@ -8,6 +8,7 @@
 namespace NewfoldLabs\WP\Module\AIPageDesigner\RestApi;
 
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\ImageService;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Harness;
 
 /**
@@ -249,7 +250,7 @@ class WordPressProxyController extends \WP_REST_Controller {
 		// without passing through the generate path (WYSIWYG + defense).
 		$post_data = array(
 			'post_title'   => sanitize_text_field( $request['title'] ),
-			'post_content' => wp_kses_post( ( new Harness() )->conform( (string) $request['content'] ) ),
+			'post_content' => $this->conform_for_save( (string) $request['content'], (string) $request['title'] ),
 			'post_status'  => sanitize_text_field( $request['status'] ),
 			'post_type'    => $post_type,
 		);
@@ -314,7 +315,8 @@ class WordPressProxyController extends \WP_REST_Controller {
 		if ( isset( $request['content'] ) ) {
 			// Idempotent re-conform on save (WYSIWYG + defense); no-op for
 			// already-conformed preview markup.
-			$post_data['post_content'] = wp_kses_post( ( new Harness() )->conform( (string) $request['content'] ) );
+			$title_context             = isset( $request['title'] ) ? (string) $request['title'] : get_the_title( $id );
+			$post_data['post_content'] = $this->conform_for_save( (string) $request['content'], $title_context );
 		}
 
 		if ( isset( $request['status'] ) ) {
@@ -384,6 +386,25 @@ class WordPressProxyController extends \WP_REST_Controller {
 			),
 			200
 		);
+	}
+
+	/**
+	 * Conform markup for persistence: run the idempotent harness, then guarantee
+	 * no placehold.co image is ever saved by swapping any survivor for a real
+	 * Unsplash image, and finally sanitize with wp_kses_post.
+	 *
+	 * The harness runs at generate time too (so the preview already matches), so
+	 * for content that came through the designer this is a no-op; it is the
+	 * safety net for markup that reached save by another path.
+	 *
+	 * @param string $content Raw block markup from the request.
+	 * @param string $title   Page title, used as image-search context.
+	 * @return string Sanitized, conformed markup ready for post_content.
+	 */
+	private function conform_for_save( $content, $title = '' ) {
+		$conformed = ( new Harness() )->conform( $content );
+		$conformed = ( new ImageService() )->replace_placeholder_images( $conformed, $title );
+		return wp_kses_post( $conformed );
 	}
 
 	/**
