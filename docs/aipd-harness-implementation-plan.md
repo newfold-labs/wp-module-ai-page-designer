@@ -33,7 +33,7 @@
 
 ### Where to start next
 
-**Stage 2 — section archetype catalogue + composer** (see below) is next. The "unify preview + frontend bundle" work (task tracked separately, not blocked on fonts anymore since fonts are out of scope) remains open but is not a Stage 2 prerequisite; it can proceed independently whenever picked up.
+**Stage 2 skeleton is done** (`PageAssembler` + `heroCover`/`featureGrid`, see the Stage 2 section below for full status). Next: either wire a real `analyze()` call for the page-plan JSON (no Worker changes needed — see "Worker impact corrected" below), or keep building out the remaining 8 archetypes on the proven skeleton before wiring anything live. The "unify preview + frontend bundle" work (task tracked separately, not blocked on fonts anymore since fonts are out of scope) remains open but is not a Stage 2 prerequisite; it can proceed independently whenever picked up.
 
 ### Unrelated, parked (NOT harness)
 
@@ -82,9 +82,15 @@ MarkupHarness/
 - **Worker cleanup:** remove `postProcessMarkup`'s conformance passes (keep `getThemeContextPrompt` for prompting). `themeContext` still sent for the prompt, not for fixes.
 - **Tests:** introduce PHPUnit (module currently has none — `composer lint/fix` only). Add `composer test`. Fixtures = the real captured cases (CTA padding, `1fr1fr` form, bare button, lone wrapper, cover, 4×50% columns, full page). Same `Validator` is the oracle. Unit-level rules can use WP_Mock/Brain Monkey; integration uses a WP test bootstrap for `parse_blocks`/theme APIs.
 
-## Stage 2 — Section Archetype Catalogue + Composer
+## Stage 2 — Section Archetype Catalogue + Page Assembler
 
-Worker returns a **page plan** (theme-agnostic JSON: `[{archetype, content, variant}]` + copy); the PHP **composer** renders it from a catalogue of typed, theme-correct, attractive section archetypes — correct **by construction**.
+**Status as of 2026-07-01: skeleton done, catalogue at 2/10.** `includes/Services/PageAssembly/` exists — `PageAssembler` (the renderer; **not** named "Composer": that name collides with PHP's own `composer.json`/`composer test`/`composer lint`, a naming issue caught and fixed before any code was written) plus two archetypes, `HeroCover` and `FeatureGrid`, both single-variant (`image-bg`, `cards-3`). `Context` (Stage 1's) was extended, not replaced, with `spacing_attr()`/`spacing_css()` (theme `spacingSizes` presets, falling back to literal px) and `muted_light_slug()` (a spare light swatch for the surface/surface-alt background rhythm). 20 new PHPUnit tests (83 total) prove each archetype produces **zero** `Validator` violations with no repair pass applied — "correct by construction" is now an automated assertion, not just a design goal. `composer lint` clean. Not yet wired into the live generate flow (see below).
+
+**Worker impact corrected: none.** The line below ("Worker returns a page plan") was written assuming a Worker-side prompt/schema change. Re-derived from how this session already solved the equivalent problem for the intent classifier and harness-owned metadata generation: `AiClientWorker::analyze()` is already a dumb pass-through — it forwards the **caller's own** system prompt to the model with no Worker-side business logic. Getting a page-plan JSON back needs only a new PHP-owned prompt + an `analyze()` call (mirroring `IntentClassifierController::classify()`), **zero Worker code changes**, now or later. The Worker stays exactly the dumb data pipe the user wants it to be.
+
+**Where to go next:** (a) wire a real `analyze()` call for the page-plan JSON (new PHP prompt + caller, no Worker change) — still not bundled into the skeleton slice so it could be proven via PHPUnit first; (b) the remaining 8 archetypes; (c) wiring `PageAssembler` into `AIPageDesignerController`'s live generate flow (currently proven only via tests, nothing user-facing changed yet); (d) "editing on the plan" once enough archetypes exist to make select-edit-splice replacement worthwhile.
+
+Worker returns a **page plan** (theme-agnostic JSON: `[{archetype, content, variant}]` + copy); `PageAssembler` renders it from a catalogue of typed, theme-correct, attractive section archetypes — correct **by construction**.
 
 ### Design principle: theme-driven
 Archetypes are structurally strong, visually neutral — the theme carries the skin. Prefer `theme.json` presets (color slugs, fontSize/fontFamily presets, spacing presets, `align`, `layout`) over inline CSS; use core blocks the theme already styles (`core/button` over raw `<button>`, `core/heading`, `core/columns`, `core/cover`). Resolve tokens once in `Context.php`. Newfold theme is the baseline; degrade gracefully when a token is absent.
@@ -111,8 +117,8 @@ Out of scope (dropped 2026-07-01). The current forced-font enqueue at `AIPageDes
 
 Typed form fields (`{type: text|email|tel|date|time|number|select|textarea, name, label, required?, options?[]}`) → the `bookingForm` archetype renders accessible, theme-styled markup with `core/button` submit. Raw-HTML form defects become structurally impossible. Best authored as **block patterns via the existing `PatternLayoutProvider`**.
 
-### Composer responsibilities
-Background rhythm (alternate surface/alt/accent; hero=dark/accent, cta=accent) · media L/R alternation · token resolution from `Context.php` · reuse the existing **Unsplash `ImageService`** at `imageQuery`/`avatarQuery` slots · page-type composition rules (homepage must include `heroCover` first + `ctaBanner`/form near end) enforced by the **plan validator** before composing.
+### PageAssembler responsibilities
+Background rhythm (alternate surface/alt/accent; hero=dark/accent, cta=accent — v1 implements the simplest case: an archetype's own default, else alternating `muted_light_slug()` for plain "surface" sections) · media L/R alternation · token resolution from `Context.php` · reuse the existing **Unsplash `ImageService`** at `imageQuery`/`avatarQuery` slots (done — resolved before an archetype ever sees its content, archetypes are pure functions) · page-type composition rules (homepage must include `heroCover` first + `ctaBanner`/form near end) enforced by the **plan validator** before assembling (not yet built — v1's Harness re-use covers markup-level correctness; a plan-level validator is a later addition once more archetypes exist).
 
 ### Editing on the plan
 A section instance carries `{archetype, content}`; edits map to plan ops, dissolving most of the select-edit-splice fragility in `useAiConversation.ts`. (Frontend edit-flow rework tracked separately.)
@@ -126,13 +132,14 @@ A section instance carries `{archetype, content}`; edits map to plan ops, dissol
 
 ## Decisions locked
 
-- **Home: PHP module**; Worker stays AI-only (markup now, page-plan in Stage 2).
+- **Home: PHP module**; Worker stays AI-only, and **needs no code changes at all** for the page-plan contract — `analyze()` already lets PHP supply its own prompt (corrected 2026-07-01; see Stage 2 status above).
 - **WYSIWYG** non-negotiable: conform-before-preview + idempotent re-conform on save + unified preview/frontend bundle; preview = same-assets client-render.
 - Sequence: **Stage 1 → Stage 2**.
 - Engine: WordPress-native `parse_blocks`/`serialize_blocks` (+ optional `render_block` in validation).
-- Self-validation gate is the keystone; Validator == test oracle (PHPUnit, new).
-- v1 catalogue: all **10** archetypes; forms as block patterns.
+- Self-validation gate is the keystone; Validator == test oracle (PHPUnit, new) — and, as of the Stage 2 skeleton, doubles as the archetype-correctness oracle too (zero violations with no repair pass).
+- v1 catalogue: all **10** archetypes; forms as block patterns. 2/10 built so far (`heroCover`, `featureGrid`).
 - Aesthetic: **theme-driven**; Motion: **per-archetype curated**, one vocabulary; Fonts: **out of scope** (dropped 2026-07-01 — current forced enqueue stays, unconditionally, no rule/toggle).
+- Naming: the Stage 2 renderer is called **`PageAssembler`**, never "Composer" — that name collides with PHP's own Composer tooling in this repo.
 
 ## Verification
 

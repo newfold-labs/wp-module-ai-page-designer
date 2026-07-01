@@ -9,10 +9,14 @@
 		<testsuite name="markup-harness">
 			<directory>tests/MarkupHarness</directory>
 		</testsuite>
+		<testsuite name="page-assembly">
+			<directory>tests/PageAssembly</directory>
+		</testsuite>
 	</testsuites>
 	<source>
 		<include>
 			<directory>includes/Services/MarkupHarness</directory>
+			<directory>includes/Services/PageAssembly</directory>
 		</include>
 	</source>
 </phpunit>

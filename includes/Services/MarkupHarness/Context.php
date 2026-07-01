@@ -45,6 +45,15 @@ class Context {
 	private $accent_slug;
 
 	/**
+	 * Secondary light-ish slug distinct from dark/light/accent, used for the
+	 * surface/surface-alt background rhythm between sections. Null when the
+	 * palette has no spare swatch to use for it.
+	 *
+	 * @var string|null
+	 */
+	private $muted_light_slug;
+
+	/**
 	 * Default horizontal section padding.
 	 *
 	 * @var string
@@ -52,11 +61,32 @@ class Context {
 	private $section_padding_x = '32px';
 
 	/**
+	 * Theme spacing preset slugs (from theme.json spacingSizes), ascending by size.
+	 *
+	 * @var string[]
+	 */
+	private $spacing_slugs = array();
+
+	/**
+	 * Fallback horizontal padding scale (px) used when the theme has no
+	 * spacingSizes preset scale to resolve tokens from.
+	 *
+	 * @var array<string, string>
+	 */
+	private const FALLBACK_SPACING = array(
+		'sm' => '24px',
+		'md' => '48px',
+		'lg' => '80px',
+		'xl' => '120px',
+	);
+
+	/**
 	 * Constructor.
 	 *
-	 * @param array<int, array<string, string>> $palette Raw palette of { slug, color, name }.
+	 * @param array<int, array<string, string>> $palette       Raw palette of { slug, color, name }.
+	 * @param string[]                          $spacing_slugs Theme spacing preset slugs (ascending by size).
 	 */
-	public function __construct( array $palette = array() ) {
+	public function __construct( array $palette = array(), array $spacing_slugs = array() ) {
 		$this->palette = $this->deduplicate_palette(
 			array_values(
 				array_map(
@@ -75,6 +105,7 @@ class Context {
 				)
 			)
 		);
+		$this->spacing_slugs = array_values( $spacing_slugs );
 
 		$this->resolve_roles();
 	}
@@ -85,7 +116,8 @@ class Context {
 	 * @return Context
 	 */
 	public static function from_theme(): Context {
-		$palette = array();
+		$palette       = array();
+		$spacing_slugs = array();
 
 		if ( function_exists( 'wp_get_global_settings' ) ) {
 			$settings = wp_get_global_settings();
@@ -98,9 +130,21 @@ class Context {
 					}
 				}
 			}
+
+			$sizes = isset( $settings['spacing']['spacingSizes'] ) ? $settings['spacing']['spacingSizes'] : array();
+			foreach ( array( 'theme', 'default', 'custom' ) as $origin ) {
+				if ( ! empty( $sizes[ $origin ] ) && is_array( $sizes[ $origin ] ) ) {
+					foreach ( $sizes[ $origin ] as $size ) {
+						if ( ! empty( $size['slug'] ) ) {
+							$spacing_slugs[] = (string) $size['slug'];
+						}
+					}
+					break; // First non-empty origin wins — avoid mixing scales.
+				}
+			}
 		}
 
-		return new self( $palette );
+		return new self( $palette, $spacing_slugs );
 	}
 
 	/**
@@ -157,6 +201,22 @@ class Context {
 		} else {
 			$this->accent_slug = null;
 		}
+
+		// Muted-light: a light-ish swatch (brightness >= 180) distinct from both
+		// light_slug (the brightest, excluded via the slice) and accent_slug, used
+		// to alternate section backgrounds without repeating the page's own bg.
+		$muted_candidates = array_values(
+			array_filter(
+				array_slice( $sorted, 0, count( $sorted ) - 1 ),
+				function ( $swatch ) {
+					return $this->hex_brightness( $swatch['color'] ) >= 180
+						&& $swatch['slug'] !== $this->accent_slug;
+				}
+			)
+		);
+		$this->muted_light_slug = empty( $muted_candidates )
+			? null
+			: $muted_candidates[ count( $muted_candidates ) - 1 ]['slug'];
 	}
 
 	/**
@@ -328,6 +388,68 @@ class Context {
 	 */
 	public function accent_slug() {
 		return $this->accent_slug;
+	}
+
+	/**
+	 * Secondary light-ish slug for surface/surface-alt background rhythm, or
+	 * null when the palette has no spare swatch to use for it.
+	 *
+	 * @return string|null
+	 */
+	public function muted_light_slug() {
+		return $this->muted_light_slug;
+	}
+
+	/**
+	 * Resolve a logical spacing size to a value usable in a block-attribute
+	 * JSON blob (e.g. `"padding":{"top":"var:preset|spacing|60"}`).
+	 *
+	 * Falls back to a literal px value when the theme has no spacing scale, so
+	 * callers never need to branch on availability.
+	 *
+	 * @param string $size Logical size: 'sm'|'md'|'lg'|'xl'.
+	 * @return string
+	 */
+	public function spacing_attr( string $size ): string {
+		$slug = $this->resolve_spacing_slug( $size );
+		return null === $slug ? self::FALLBACK_SPACING[ $size ] : 'var:preset|spacing|' . $slug;
+	}
+
+	/**
+	 * Resolve a logical spacing size to a value usable directly in inline CSS
+	 * (e.g. `padding-top:var(--wp--preset--spacing--60)`).
+	 *
+	 * Falls back to the same literal px value as {@see spacing_attr()} when the
+	 * theme has no spacing scale, so the two always agree.
+	 *
+	 * @param string $size Logical size: 'sm'|'md'|'lg'|'xl'.
+	 * @return string
+	 */
+	public function spacing_css( string $size ): string {
+		$slug = $this->resolve_spacing_slug( $size );
+		return null === $slug ? self::FALLBACK_SPACING[ $size ] : 'var(--wp--preset--spacing--' . $slug . ')';
+	}
+
+	/**
+	 * Map a logical spacing size to a theme spacing-scale slug by relative
+	 * position (sm=25%, md=50%, lg=75%, xl=last), or null when the theme has
+	 * no spacing scale to resolve from.
+	 *
+	 * @param string $size Logical size: 'sm'|'md'|'lg'|'xl'.
+	 * @return string|null
+	 */
+	private function resolve_spacing_slug( string $size ) {
+		if ( empty( $this->spacing_slugs ) ) {
+			return null;
+		}
+		$count = count( $this->spacing_slugs );
+		$index = array(
+			'sm' => (int) round( 0.25 * ( $count - 1 ) ),
+			'md' => (int) round( 0.5 * ( $count - 1 ) ),
+			'lg' => (int) round( 0.75 * ( $count - 1 ) ),
+			'xl' => $count - 1,
+		);
+		return isset( $index[ $size ] ) ? $this->spacing_slugs[ $index[ $size ] ] : null;
 	}
 
 	/**
