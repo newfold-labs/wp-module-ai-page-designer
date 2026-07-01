@@ -1,0 +1,107 @@
+<?php
+/**
+ * Testimonials section archetype: a row of quote cards.
+ *
+ * @package NewfoldLabs\WP\Module\AIPageDesigner
+ */
+
+namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes;
+
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
+
+/**
+ * Renders a {@see RendersMarkup::render_section()} surface section with a
+ * `core/columns` row, one `core/quote` per testimonial. As with
+ * {@see FeatureGrid}, columns never declare a `width` attr.
+ *
+ * Content shape:
+ * ```
+ * [
+ *   'heading' => string|null,
+ *   'quotes'  => [ [ 'quote' => string, 'author' => string, 'role' => string|null, 'avatarUrl' => string|null ], ... ],
+ * ]
+ * ```
+ * `avatarUrl` is resolved by PageAssembler from an `avatarQuery` slot.
+ *
+ * v1 supports a single variant, `grid-3`.
+ */
+class Testimonials implements Archetype {
+
+	use RendersMarkup;
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function name(): string {
+		return 'testimonials';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * No fixed default — see {@see FeatureGrid::default_background()} for why.
+	 */
+	public function default_background( Context $ctx ): ?string {
+		return null;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
+		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$quotes  = isset( $content['quotes'] ) && is_array( $content['quotes'] ) ? array_slice( $content['quotes'], 0, 3 ) : array();
+
+		$columns = empty( $quotes ) ? '' : $this->render_columns( $quotes );
+
+		return $this->render_section( $heading, null, $columns, $ctx, $background_slug );
+	}
+
+	/**
+	 * Render one column per testimonial.
+	 *
+	 * @param array<int, array<string, mixed>> $quotes Up to 3 testimonials.
+	 * @return string
+	 */
+	private function render_columns( array $quotes ): string {
+		$columns = '';
+		foreach ( $quotes as $entry ) {
+			$quote      = isset( $entry['quote'] ) ? (string) $entry['quote'] : '';
+			$author     = isset( $entry['author'] ) ? (string) $entry['author'] : '';
+			$role       = isset( $entry['role'] ) ? (string) $entry['role'] : '';
+			$avatar_url = isset( $entry['avatarUrl'] ) ? (string) $entry['avatarUrl'] : '';
+
+			$column_inner = '';
+			if ( '' !== $avatar_url ) {
+				$column_inner .= '<img src="' . $this->esc_url( $avatar_url ) . '" alt="" width="48" height="48" style="border-radius:9999px;object-fit:cover"/>';
+			}
+			$column_inner .= $this->render_quote( $quote, $author, $role );
+
+			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $column_inner . '</div>' );
+		}
+
+		return $this->comment_wrap( 'columns', array(), '<div class="wp-block-columns">' . $columns . '</div>' );
+	}
+
+	/**
+	 * Render a `core/quote` block with an author (and optional role) citation.
+	 *
+	 * @param string $quote  Quote text.
+	 * @param string $author Author name.
+	 * @param string $role   Author role/company, or empty string to omit.
+	 * @return string
+	 */
+	private function render_quote( string $quote, string $author, string $role ): string {
+		$citation = $author;
+		if ( '' !== $role ) {
+			$citation .= ', ' . $role;
+		}
+
+		$html = '<p>' . $this->esc_html( $quote ) . '</p>';
+		if ( '' !== $citation ) {
+			$html .= '<cite>' . $this->esc_html( $citation ) . '</cite>';
+		}
+
+		return $this->comment_wrap( 'quote', array(), '<blockquote class="wp-block-quote">' . $html . '</blockquote>' );
+	}
+}

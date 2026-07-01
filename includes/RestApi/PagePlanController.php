@@ -1,6 +1,6 @@
 <?php
 /**
- * Page Plan REST Controller (PROTOTYPE — Stage 2, catalogue at 2/10 archetypes).
+ * Page Plan REST Controller (PROTOTYPE — Stage 2, v1 catalogue of 10 archetypes).
  *
  * Asks the model for a theme-agnostic page plan (`[{archetype, content}]`)
  * restricted to the archetypes currently registered with {@see PageAssembler},
@@ -51,10 +51,23 @@ class PagePlanController {
 	 * @var array<string, string>
 	 */
 	private const ARCHETYPE_SCHEMAS = array(
-		'heroCover'   => 'eyebrow?: string, heading: string, subheading?: string, '
+		'heroCover'             => 'eyebrow?: string, heading: string, subheading?: string, '
 			. 'primaryCta: { label: string, url: string }, secondaryCta?: { label: string, url: string }, '
 			. 'imageQuery: string (a short Unsplash search phrase for the hero background)',
-		'featureGrid' => 'heading?: string, intro?: string, items: exactly 3 of { title: string, body: string }',
+		'featureGrid'           => 'heading?: string, intro?: string, items: exactly 3 of { title: string, body: string }',
+		'alternatingMediaText'  => 'heading?: string, intro?: string, rows: array of { heading: string, body: string, '
+			. 'imageQuery: string (short Unsplash search phrase), cta?: { label: string, url: string } }',
+		'ctaBanner'             => 'heading: string, subheading?: string, cta: { label: string, url: string }',
+		'bookingForm'           => 'heading?: string, intro?: string, submitLabel?: string, fields: array of '
+			. '{ type: one of "text"|"email"|"tel"|"date"|"time"|"number"|"select"|"textarea", name: string, label: string, '
+			. 'required?: boolean, options?: string[] (only for type "select") }',
+		'testimonials'          => 'heading?: string, quotes: 2-3 of { quote: string, author: string, role?: string, '
+			. 'avatarQuery?: string (short Unsplash search phrase for a headshot) }',
+		'pricingTiers'          => 'heading?: string, tiers: 2-3 of { name: string, price: string, period?: string, '
+			. 'features: string[], cta: { label: string, url: string }, highlighted?: boolean }',
+		'faqAccordion'          => 'heading?: string, items: array of { q: string, a: string }',
+		'statsBar'              => 'items: 2-4 of { value: string, label: string }',
+		'richText'              => 'heading?: string, body: string, cta?: { label: string, url: string }',
 	);
 
 	/**

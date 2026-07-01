@@ -10,9 +10,17 @@ namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\ImageService;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Harness;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\AlternatingMediaText;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\Archetype;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\BookingForm;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\CtaBanner;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\FaqAccordion;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\FeatureGrid;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\HeroCover;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\PricingTiers;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\RichText;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\StatsBar;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\Testimonials;
 
 /**
  * Renders a page plan — `[{archetype, content, variant?, background?}]` — into
@@ -58,7 +66,18 @@ class PageAssembler {
 	public function __construct( ?ImageService $image_service = null, ?array $archetypes = null ) {
 		$this->image_service = $image_service ?? new ImageService();
 
-		$archetypes       = null === $archetypes ? array( new HeroCover(), new FeatureGrid() ) : $archetypes;
+		$archetypes       = null === $archetypes ? array(
+			new HeroCover(),
+			new FeatureGrid(),
+			new AlternatingMediaText(),
+			new CtaBanner(),
+			new BookingForm(),
+			new Testimonials(),
+			new PricingTiers(),
+			new FaqAccordion(),
+			new StatsBar(),
+			new RichText(),
+		) : $archetypes;
 		$this->archetypes = array();
 		foreach ( $archetypes as $archetype ) {
 			$this->archetypes[ $archetype->name() ] = $archetype;
