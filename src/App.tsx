@@ -150,14 +150,31 @@ const App = () => {
 
   // Warn before leaving with generated/edited content that hasn't been published.
   // publishedHtmlRef holds the last published snapshot; anything newer is unsaved.
-  // dirtyRef is read inside the native beforeunload handler (no re-render needed).
-  const dirtyRef = useRef( false );
-  dirtyRef.current =
+  // Single source of truth shared by the native beforeunload handler (tab close /
+  // refresh / full WP-admin navigation) and the in-app guard (Dashboard / Designer
+  // / Create New, which reset state without triggering a page unload).
+  const isDirty = () =>
     'designer' === view &&
     !! previewHtml &&
     ( conversation.hasAIGenerated || metaDirty ) &&
     previewHtml !== publishedHtmlRef.current &&
     ! publishFlow.publishing;
+
+  // Confirm before an in-app action that would discard unpublished work.
+  // Returns true when it's safe to proceed (clean, or the user accepted).
+  const confirmDiscard = () => {
+    if ( ! isDirty() ) {
+      return true;
+    }
+    // eslint-disable-next-line no-alert
+    return window.confirm(
+      'You have unpublished changes that will be lost. Leave without publishing?'
+    );
+  };
+
+  // dirtyRef is read inside the native beforeunload handler (no re-render needed).
+  const dirtyRef = useRef( false );
+  dirtyRef.current = isDirty();
 
   useEffect( () => {
     const handler = ( event: BeforeUnloadEvent ) => {
@@ -201,6 +218,9 @@ const App = () => {
   };
 
   const handleCreateNew = () => {
+    if ( ! confirmDiscard() ) {
+      return;
+    }
     conversation.resetAiConversation();
     publishFlow.resetPublishState();
     setSelectedItem( null );
@@ -232,6 +252,9 @@ const App = () => {
   };
 
   const handleShowDashboard = () => {
+    if ( ! confirmDiscard() ) {
+      return;
+    }
     conversation.resetAiConversation();
     publishFlow.resetPublishState();
     setSelectedItem( null );
@@ -247,6 +270,9 @@ const App = () => {
   };
 
   const handleShowDesigner = () => {
+    if ( ! confirmDiscard() ) {
+      return;
+    }
     conversation.resetAiConversation();
     publishFlow.resetPublishState();
     setView( 'designer' );
