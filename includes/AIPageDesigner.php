@@ -71,6 +71,7 @@ class AIPageDesigner {
 			'NewfoldLabs\\WP\\Module\\AIPageDesigner\\RestApi\\AIPageDesignerController',
 			'NewfoldLabs\\WP\\Module\\AIPageDesigner\\RestApi\\WordPressProxyController',
 			'NewfoldLabs\\WP\\Module\\AIPageDesigner\\RestApi\\IntentClassifierController',
+			'NewfoldLabs\\WP\\Module\\AIPageDesigner\\RestApi\\PagePlanController',
 		);
 
 		foreach ( $controllers as $controller ) {
@@ -176,6 +177,11 @@ class AIPageDesigner {
 				// frontend keyword regexes. On by default; disable via the filter:
 				//   add_filter( 'nfd_ai_page_designer_enable_intent_classifier', '__return_false' );
 				'enableIntentClassifier'  => (bool) apply_filters( 'nfd_ai_page_designer_enable_intent_classifier', true ),
+				// PROTOTYPE: render a new page from a PageAssembler page-plan instead
+				// of freeform AI markup. Off by default — the archetype catalogue is
+				// only 2/10 built — enable for testing via the filter:
+				//   add_filter( 'nfd_ai_page_designer_enable_page_plan', '__return_true' );
+				'enablePagePlan'          => (bool) apply_filters( 'nfd_ai_page_designer_enable_page_plan', false ),
 			)
 		);
 	}

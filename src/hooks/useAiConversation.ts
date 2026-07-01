@@ -3,6 +3,7 @@ import type { HistoryEntry, Message, WPItem } from '../types';
 import { generateContent, generateContentStream } from '../api';
 import { extractHtml } from '../util/aiDesignerHelpers';
 import { classifyIntent, generateMetadata, isIntentClassifierEnabled } from '../util/intentClassifier';
+import { generatePagePlanPage, isPagePlanEnabled } from '../util/pagePlan';
 
 type UseAiConversationOptions = {
   apiUrl: string;
@@ -1039,6 +1040,28 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     try {
       setIsLoading( true );
 
+      // PROTOTYPE: build a brand-new page from a PageAssembler page-plan instead
+      // of freeform AI markup. Only ever engages for "create a new page from a
+      // prompt" (no existing preview, no selected item to edit) so it can never
+      // interfere with the edit flow below. Falls through to the normal AI
+      // generate path on any failure (generatePagePlanPage never throws).
+      if ( isPagePlanEnabled() && ! previewHtml && ! selectedItem ) {
+        const planResult = await generatePagePlanPage( apiUrl, text );
+        if ( planResult?.content ) {
+          const parsed = wpBlocksParse( planResult.content );
+          if ( parsed.length > 0 ) {
+            setParsedBlocks( parsed );
+          }
+          setPreviewHtml( planResult.content );
+          setHasAIGenerated( true );
+          if ( planResult.title ) {
+            setPublishTitle( planResult.title );
+          }
+          setMessages( [ ...newMessages, { role: 'assistant', content: 'Here is a first draft.' } ] );
+          return;
+        }
+      }
+
       const applySelectedTextColor = ( color: { label: string; value: string } ): boolean => {
         const doc = iframeRef.current?.contentDocument;
         if ( ! doc ) {
@@ -1730,6 +1753,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     publishTitle,
     selectedBlockHtml,
     selectedBlockIndex,
+    selectedItem,
     setHasAIGenerated,
     setInput,
     setMessages,
