@@ -173,15 +173,20 @@ class AIPageDesigner {
 					'globalStyles' => $global_styles_css,
 				),
 				'colorPalette'            => $color_palette,
+				// Same motion-vocabulary CSS enqueue_frontend_animations() adds to the
+				// published page, scoped to the preview iframe's #nfd-preview-root
+				// instead — one source of truth (get_motion_css()) so preview and
+				// front-end can never drift on which motion classes actually animate.
+				'previewMotionCss'        => self::get_motion_css( '#nfd-preview-root' ),
 				// Route edits through the AI intent classifier instead of the
 				// frontend keyword regexes. On by default; disable via the filter:
 				//   add_filter( 'nfd_ai_page_designer_enable_intent_classifier', '__return_false' );
 				'enableIntentClassifier'  => (bool) apply_filters( 'nfd_ai_page_designer_enable_intent_classifier', true ),
-				// PROTOTYPE: render a new page from a PageAssembler page-plan instead
-				// of freeform AI markup. Off by default — the archetype catalogue is
-				// only 2/10 built — enable for testing via the filter:
-				//   add_filter( 'nfd_ai_page_designer_enable_page_plan', '__return_true' );
-				'enablePagePlan'          => (bool) apply_filters( 'nfd_ai_page_designer_enable_page_plan', false ),
+				// Render a new page from a PageAssembler page-plan (typed archetypes)
+				// instead of freeform AI markup. On by default now that the v1
+				// catalogue (10 archetypes) is complete; disable via the filter:
+				//   add_filter( 'nfd_ai_page_designer_enable_page_plan', '__return_false' );
+				'enablePagePlan'          => (bool) apply_filters( 'nfd_ai_page_designer_enable_page_plan', true ),
 			)
 		);
 	}
@@ -261,6 +266,56 @@ class AIPageDesigner {
 	}
 
 	/**
+	 * The canonical motion vocabulary CSS, shared verbatim by the published
+	 * front-end (this method, scoped to `.entry-content, .wp-block-post-content`)
+	 * and the designer preview iframe (localized to the frontend as
+	 * `previewMotionCss`, scoped to `#nfd-preview-root` — see `enqueue_assets()`
+	 * and `usePreviewIframe.ts`).
+	 *
+	 * This is the single source of truth for every motion class the AI/archetypes
+	 * may emit (`fade-in`, `slide-up`, `bounce-in`, `scale-in`, `fade-in-delay-1/2/3`,
+	 * `pulse-hover`, `glow-hover`, `card-hover-lift`, `data-aos`). Previously the
+	 * preview and front-end each hand-maintained their own copy of this list and
+	 * drifted — `pulse-hover`/`glow-hover` existed only in the preview's copy, so
+	 * those classes animated in the editor but did nothing on the published page.
+	 * Adding a class here now updates both surfaces at once; it cannot drift again.
+	 *
+	 * @param string $scope           CSS selector prefix scoping every rule (e.g. `.entry-content, .wp-block-post-content` or `#nfd-preview-root`).
+	 * @param string $keyframe_prefix Prefix for `@keyframes` names, to avoid colliding with other stylesheets sharing the same document (e.g. `nfd-`). Pass `''` for the preview iframe, which is its own isolated document.
+	 * @return string
+	 */
+	public static function get_motion_css( $scope, $keyframe_prefix = '' ) {
+		$fade_in   = $keyframe_prefix . 'fadeIn';
+		$slide_up  = $keyframe_prefix . 'slideUp';
+		$bounce_in = $keyframe_prefix . 'bounceIn';
+		$scale_in  = $keyframe_prefix . 'scaleIn';
+		$pulse     = $keyframe_prefix . 'pulse';
+
+		return '
+			@keyframes ' . $fade_in . ' { from { opacity: 0; } to { opacity: 1; } }
+			@keyframes ' . $slide_up . ' { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+			@keyframes ' . $bounce_in . ' { 0% { opacity: 0; transform: scale(0.3); } 50% { opacity: 1; transform: scale(1.05); } 70% { transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
+			@keyframes ' . $scale_in . ' { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+			@keyframes ' . $pulse . ' { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+			' . $scope . ' .fade-in { animation: ' . $fade_in . ' 0.8s ease-out forwards; }
+			' . $scope . ' .slide-up { animation: ' . $slide_up . ' 0.8s ease-out forwards; }
+			' . $scope . ' .bounce-in { animation: ' . $bounce_in . ' 0.8s ease-out forwards; }
+			' . $scope . ' .scale-in { animation: ' . $scale_in . ' 0.8s ease-out forwards; }
+			' . $scope . ' .fade-in-delay-1 { animation: ' . $fade_in . ' 0.8s ease-out 0.2s forwards; opacity: 0; }
+			' . $scope . ' .fade-in-delay-2 { animation: ' . $fade_in . ' 0.8s ease-out 0.4s forwards; opacity: 0; }
+			' . $scope . ' .fade-in-delay-3 { animation: ' . $fade_in . ' 0.8s ease-out 0.6s forwards; opacity: 0; }
+			' . $scope . ' .pulse-hover { transition: all 0.3s ease; }
+			' . $scope . ' .pulse-hover:hover { animation: ' . $pulse . ' 1s infinite; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
+			' . $scope . ' .glow-hover { transition: all 0.3s ease; }
+			' . $scope . ' .glow-hover:hover { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6), 0 0 60px rgba(59, 130, 246, 0.4); }
+			' . $scope . ' .card-hover-lift { transition: all 0.3s ease; }
+			' . $scope . ' .card-hover-lift:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+			' . $scope . ' [data-aos] { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
+			' . $scope . ' [data-aos].aos-animate { opacity: 1; transform: translateY(0); }
+		';
+	}
+
+	/**
 	 * Enqueue frontend animation styles and scripts
 	 */
 	public function enqueue_frontend_animations() {
@@ -276,25 +331,7 @@ class AIPageDesigner {
 		);
 
 		$content_scope = '.entry-content, .wp-block-post-content';
-
-		$animation_css = '
-			@keyframes nfd-fadeIn { from { opacity: 0; } to { opacity: 1; } }
-			@keyframes nfd-slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
-			@keyframes nfd-bounceIn { 0% { opacity: 0; transform: scale(0.3); } 50% { opacity: 1; transform: scale(1.05); } 70% { transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
-			@keyframes nfd-scaleIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
-			@keyframes nfd-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-			' . $content_scope . ' .fade-in { animation: nfd-fadeIn 0.8s ease-out forwards; }
-			' . $content_scope . ' .slide-up { animation: nfd-slideUp 0.8s ease-out forwards; }
-			' . $content_scope . ' .bounce-in { animation: nfd-bounceIn 0.8s ease-out forwards; }
-			' . $content_scope . ' .scale-in { animation: nfd-scaleIn 0.8s ease-out forwards; }
-			' . $content_scope . ' .fade-in-delay-1 { animation: nfd-fadeIn 0.8s ease-out 0.2s forwards; opacity: 0; }
-			' . $content_scope . ' .fade-in-delay-2 { animation: nfd-fadeIn 0.8s ease-out 0.4s forwards; opacity: 0; }
-			' . $content_scope . ' .fade-in-delay-3 { animation: nfd-fadeIn 0.8s ease-out 0.6s forwards; opacity: 0; }
-			' . $content_scope . ' .card-hover-lift { transition: all 0.3s ease; }
-			' . $content_scope . ' .card-hover-lift:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
-			' . $content_scope . ' [data-aos] { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
-			' . $content_scope . ' [data-aos].aos-animate { opacity: 1; transform: translateY(0); }
-		';
+		$animation_css = self::get_motion_css( $content_scope, 'nfd-' );
 
 		wp_add_inline_style( 'wp-block-library', $animation_css );
 

@@ -15,7 +15,8 @@ export const usePreviewIframe = (
   previewUrl: string,
   previewStylesheets?: PreviewStylesheets,
   isStreaming: boolean = false,
-  externalIframeRef?: RefObject<HTMLIFrameElement>
+  externalIframeRef?: RefObject<HTMLIFrameElement>,
+  motionCss: string = ''
 ): UsePreviewIframeResult => {
   const localIframeRef = useRef<HTMLIFrameElement>( null );
   // Allow the caller to own the ref so it can be shared with other hooks
@@ -315,32 +316,16 @@ export const usePreviewIframe = (
           // Inject animation CSS (once) + (re)attach the IntersectionObserver.
           // Called only on finalize (stream complete / non-streamed update), never
           // during streaming — so no animation can fire while deltas are arriving.
+          // The CSS itself comes from the parent (AIPageDesigner::get_motion_css(),
+          // scoped to #nfd-preview-root) rather than being duplicated here — it's
+          // the same source enqueue_frontend_animations() uses for the published
+          // page, so a motion class can never animate in the editor and silently
+          // do nothing once published (or vice versa).
           function _enableAnimations() {
             if (!document.getElementById('nfd-anim-style')) {
             var style = document.createElement('style');
             style.id = 'nfd-anim-style';
-            style.textContent = [
-              '@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }',
-              '@keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }',
-              '@keyframes bounceIn { 0% { opacity: 0; transform: scale(0.3); } 50% { opacity: 1; transform: scale(1.05); } 70% { transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }',
-              '@keyframes scaleIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }',
-              '@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }',
-              '#nfd-preview-root .fade-in { animation: fadeIn 0.8s ease-out forwards; }',
-              '#nfd-preview-root .slide-up { animation: slideUp 0.8s ease-out forwards; }',
-              '#nfd-preview-root .bounce-in { animation: bounceIn 0.8s ease-out forwards; }',
-              '#nfd-preview-root .scale-in { animation: scaleIn 0.8s ease-out forwards; }',
-              '#nfd-preview-root .fade-in-delay-1 { animation: fadeIn 0.8s ease-out 0.2s forwards; opacity: 0; }',
-              '#nfd-preview-root .fade-in-delay-2 { animation: fadeIn 0.8s ease-out 0.4s forwards; opacity: 0; }',
-              '#nfd-preview-root .fade-in-delay-3 { animation: fadeIn 0.8s ease-out 0.6s forwards; opacity: 0; }',
-              '#nfd-preview-root .pulse-hover { transition: all 0.3s ease; }',
-              '#nfd-preview-root .pulse-hover:hover { animation: pulse 1s infinite; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }',
-              '#nfd-preview-root .glow-hover { transition: all 0.3s ease; }',
-              '#nfd-preview-root .glow-hover:hover { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6), 0 0 60px rgba(59, 130, 246, 0.4); }',
-              '#nfd-preview-root .card-hover-lift { transition: all 0.3s ease; }',
-              '#nfd-preview-root .card-hover-lift:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }',
-              '#nfd-preview-root [data-aos] { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }',
-              '#nfd-preview-root [data-aos].aos-animate { opacity: 1; transform: translateY(0); }'
-            ].join('\\n');
+            style.textContent = ${ JSON.stringify( motionCss ) };
             document.head.appendChild(style);
             }
 
@@ -504,7 +489,7 @@ export const usePreviewIframe = (
         window.removeEventListener( 'message', onMessage );
         iframe.removeEventListener( 'load', onReady );
       };
-  }, [ frontendBodyClass, frontendShellHtml, frontendStyles, previewStylesheets, previewUrl, !! previewHtml ] );
+  }, [ frontendBodyClass, frontendShellHtml, frontendStyles, previewStylesheets, previewUrl, !! previewHtml, motionCss ] );
   // !!previewHtml (boolean) is included so Effect 1 re-runs when the iframe first mounts
   // (PreviewFrame renders the <iframe> only once previewHtml is truthy). It never changes
   // again during streaming, so this does not cause per-delta reloads.

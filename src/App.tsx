@@ -31,6 +31,7 @@ declare global {
         globalStyles: string;
       };
       colorPalette?: Array<{ slug: string; name: string; color: string }>;
+      previewMotionCss?: string;
     };
   }
 }
@@ -108,7 +109,8 @@ const App = () => {
     previewUrl,
     nfdAIPageDesigner.previewStylesheets,
     conversation.isLoading,
-    iframeRef
+    iframeRef,
+    nfdAIPageDesigner.previewMotionCss || ''
   );
 
   const publishFlow = usePublishFlow( {

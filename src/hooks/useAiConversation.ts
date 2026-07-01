@@ -1040,10 +1040,10 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     try {
       setIsLoading( true );
 
-      // PROTOTYPE: build a brand-new page from a PageAssembler page-plan instead
-      // of freeform AI markup. Only ever engages for "create a new page from a
-      // prompt" (no existing preview, no selected item to edit) so it can never
-      // interfere with the edit flow below. Falls through to the normal AI
+      // Build a brand-new page from a PageAssembler page-plan (typed archetypes)
+      // instead of freeform AI markup. Only ever engages for "create a new page
+      // from a prompt" (no existing preview, no selected item to edit) so it can
+      // never interfere with the edit flow below. Falls through to the normal AI
       // generate path on any failure (generatePagePlanPage never throws).
       if ( isPagePlanEnabled() && ! previewHtml && ! selectedItem ) {
         const planResult = await generatePagePlanPage( apiUrl, text );

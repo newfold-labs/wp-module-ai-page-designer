@@ -1,6 +1,6 @@
 <?php
 /**
- * Page Plan REST Controller (PROTOTYPE — Stage 2, v1 catalogue of 10 archetypes).
+ * Page Plan REST Controller (Stage 2, v1 catalogue of 10 archetypes).
  *
  * Asks the model for a theme-agnostic page plan (`[{archetype, content}]`)
  * restricted to the archetypes currently registered with {@see PageAssembler},
