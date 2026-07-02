@@ -2,9 +2,11 @@
 
 > Living design doc. Iterate on it in-repo.
 
-## Status — as of 2026-07-01 (start here)
+## Status — as of 2026-07-02 (start here)
 
-**Stage 1 is complete.** The PHP `MarkupHarness` exists with the keystone Validator gate, a `Context` from `theme.json`, an idempotent bounded-repair pipeline, and **11 rules that fully replace the Worker's `postProcessMarkup`**. PHPUnit is wired (`composer test`, **63 tests green**); PHPCS clean. Branch: **`add/aipd-harness`**, merged even with `develop` (`16f5cb4`, 2026-07-01) — 0 behind, safe to build Stage 2 on top of.
+**Stage 1 is complete.** The PHP `MarkupHarness` exists with the keystone Validator gate, a `Context` from `theme.json`, an idempotent bounded-repair pipeline, and **12 rules that fully replace the Worker's `postProcessMarkup`**. PHPUnit is wired (`composer test`, **126 tests green** — includes Stage 2's `PageAssembly` suite, see below); PHPCS clean. Branch: **`add/aipd-harness`**, merged even with `develop` (`16f5cb4`, 2026-07-01) — 0 behind, safe to build on top of. **Stage 1's WYSIWYG asset-bundle unification (the last open Stage 1 item) is also done** — see "Unified preview + frontend motion CSS" below.
+
+**Stage 2 is also complete for v1**: 10/10 archetypes built, the live page-plan pipeline is wired and on by default, and manually confirmed working in the browser. See the Stage 2 section below for full detail.
 
 **Fonts: dropped from scope (decision 2026-07-01).** Not deferred — out. The forced-font enqueue in `AIPageDesigner.php` stays as-is; there is no font conformance rule and no hybrid theme/designer-font toggle. Revisit only if a concrete problem surfaces later. This also drops the "Fonts (hybrid)" design in Stage 2 below — Stage 2 archetypes use whatever font enqueue is currently active, unconditionally.
 
@@ -90,15 +92,15 @@ MarkupHarness/
 
 **Worker impact corrected: none.** The line below ("Worker returns a page plan") was written assuming a Worker-side prompt/schema change. Re-derived from how this session already solved the equivalent problem for the intent classifier and harness-owned metadata generation: `AiClientWorker::analyze()` is already a dumb pass-through — it forwards the **caller's own** system prompt to the model with no Worker-side business logic. Getting a page-plan JSON back needed only a new PHP-owned prompt + an `analyze()` call (mirroring `IntentClassifierController::classify()`), **zero Worker code changes**. The Worker stays exactly the dumb data pipe the user wants it to be.
 
-**Where to go next:** a broader manual test now that all 10 archetypes are live (a homepage prompt should reasonably use several of them, not just hero + feature grid); then "editing on the plan" once the catalogue has been exercised enough in practice to know it's worth replacing select-edit-splice with plan ops; then the multi-variant work each archetype's table entry originally called for (only one variant per archetype exists so far).
+**Where to go next:** the multi-variant work each archetype's table entry originally called for (only one variant per archetype exists so far); "editing on the plan" once the catalogue has been exercised enough in practice to know it's worth replacing select-edit-splice with plan ops.
 
-Worker returns a **page plan** (theme-agnostic JSON: `[{archetype, content, variant}]` + copy); `PageAssembler` renders it from a catalogue of typed, theme-correct, attractive section archetypes — correct **by construction**.
+`PageAssembler` renders a page plan (theme-agnostic JSON: `[{archetype, content, variant}]`) from a catalogue of typed, theme-correct, attractive section archetypes — correct **by construction**. The plan itself comes from `PagePlanController` via the `analyze()` pass-through (see "Worker impact corrected: none" above) — no separate Worker-side plan format was ever needed.
 
 ### Design principle: theme-driven
 Archetypes are structurally strong, visually neutral — the theme carries the skin. Prefer `theme.json` presets (color slugs, fontSize/fontFamily presets, spacing presets, `align`, `layout`) over inline CSS; use core blocks the theme already styles (`core/button` over raw `<button>`, `core/heading`, `core/columns`, `core/cover`). Resolve tokens once in `Context.php`. Newfold theme is the baseline; degrade gracefully when a token is absent.
 
-### Motion & interactivity layer (theme-independent)
-Motion is a separate, theme-agnostic layer. **One canonical motion vocabulary** (classes `fade-in`, `slide-up`, `scale-in`, `bounce-in`, `card-hover-lift`, `fade-in-delay-1/2/3` + `data-aos`/`data-aos-delay`) is the single source of truth; preview and frontend CSS are generated from / checked against it; the Validator rejects any hook outside it (kills `pulse-hover`-style drift). **Per-archetype curated** motion.
+### Motion & interactivity layer (theme-independent) — done
+**One canonical motion vocabulary** (classes `fade-in`, `slide-up`, `scale-in`, `bounce-in`, `card-hover-lift`, `pulse-hover`, `glow-hover`, `fade-in-delay-1/2/3` + `data-aos`/`data-aos-delay`) is the single source of truth, generated by `AIPageDesigner::get_motion_css()` and consumed by both the preview and the front-end — see "Unified preview + frontend motion CSS" above, which closed the exact `pulse-hover`-style drift this section originally called out as a risk. No archetype currently emits any of these classes yet (v1 archetypes are deliberately unanimated); this is the vocabulary they'll draw from when **per-archetype curated** motion is added.
 
 ### Fonts
 Out of scope (dropped 2026-07-01). The current forced-font enqueue at `AIPageDesigner.php:256` is left as-is, unconditionally, for both Stage 1 and Stage 2 output. No hybrid toggle, no font conformance rule.
@@ -117,7 +119,7 @@ Out of scope (dropped 2026-07-01). The current forced-font enqueue at `AIPageDes
 | `statsBar` | Metrics | items[{value,label}] | accent-band · light | accent/surface |
 | `richText` | Prose / escape hatch | heading?, body, cta? | default | surface |
 
-Typed form fields (`{type: text|email|tel|date|time|number|select|textarea, name, label, required?, options?[]}`) → the `bookingForm` archetype renders accessible, theme-styled markup with `core/button` submit. Raw-HTML form defects become structurally impossible. Best authored as **block patterns via the existing `PatternLayoutProvider`**.
+Typed form fields (`{type: text|email|tel|date|time|number|select|textarea, name, label, required?, options?[]}`) → the `bookingForm` archetype renders accessible, theme-styled markup with `core/button`-style submit. Raw-HTML form defects become structurally impossible **by construction, not by pattern-authoring** — implemented as a real `<form>` inside `core/html` with every field/button carrying explicit theme-derived inline styles, since no native Gutenberg form-field block exists to author a pattern against (see Decisions locked below).
 
 ### PageAssembler responsibilities
 Background rhythm (alternate surface/alt/accent; hero=dark/accent, cta=accent — v1 implements the simplest case: an archetype's own default, else alternating `muted_light_slug()` for plain "surface" sections) · media L/R alternation · token resolution from `Context.php` · reuse the existing **Unsplash `ImageService`** at `imageQuery`/`avatarQuery` slots (done — resolved before an archetype ever sees its content, archetypes are pure functions) · page-type composition rules (homepage must include `heroCover` first + `ctaBanner`/form near end) enforced by the **plan validator** before assembling (not yet built — v1's Harness re-use covers markup-level correctness; a plan-level validator is a later addition once more archetypes exist).
@@ -127,9 +129,9 @@ A section instance carries `{archetype, content}`; edits map to plan ops, dissol
 
 ## Open design questions
 
-- Confirm exact `theme.json` token availability for spacing/border presets across target themes; fallbacks where missing.
-- Stage 2 behind a feature flag alongside Stage 1 until the catalogue is broad enough, then cut over.
-- PHPUnit setup: wp-env vs existing CI; how much needs WP bootstrap vs pure unit mocks.
+- Confirm exact `theme.json` token availability for spacing/border presets across target themes; fallbacks where missing (`Context::spacing_attr()`/`spacing_css()` already fall back to literal px when a theme has no `spacingSizes` scale, but this hasn't been tested against a real non-Newfold theme yet).
+- ~~Stage 2 behind a feature flag alongside Stage 1 until the catalogue is broad enough, then cut over.~~ **Resolved 2026-07-02**: `nfd_ai_page_designer_enable_page_plan` now defaults `true` — catalogue complete, manually verified twice.
+- PHPUnit setup: wp-env vs existing CI; how much needs WP bootstrap vs pure unit mocks. (In practice: everything so far runs under the pure-PHP bootstrap with a standalone `parse_blocks`/`serialize_blocks` polyfill — no wp-env has been needed.)
 - How far archetypes flex to non-Newfold themes.
 
 ## Decisions locked
