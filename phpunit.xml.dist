@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
 		bootstrap="tests/bootstrap.php"
 		colors="true"
-		cacheDirectory=".phpunit.cache"
+		cacheResultFile=".phpunit.cache/test-results"
 		failOnWarning="true"
 		failOnRisky="true">
 	<testsuites>
@@ -13,10 +14,10 @@
 			<directory>tests/PageAssembly</directory>
 		</testsuite>
 	</testsuites>
-	<source>
+	<coverage>
 		<include>
 			<directory>includes/Services/MarkupHarness</directory>
 			<directory>includes/Services/PageAssembly</directory>
 		</include>
-	</source>
+	</coverage>
 </phpunit>

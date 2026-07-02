@@ -34,7 +34,7 @@
     "require-dev": {
         "newfold-labs/wp-php-standards": "^1.2.5",
         "roave/security-advisories": "dev-latest",
-        "phpunit/phpunit": "^11.5"
+        "phpunit/phpunit": "^9.6"
     },
     "repositories": {
         "newfold": {
@@ -50,6 +50,9 @@
     "config": {
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "platform": {
+            "php": "7.4.33"
         }
     }
 }
