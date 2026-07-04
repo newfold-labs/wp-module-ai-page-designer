@@ -365,37 +365,57 @@ const wpBlocksSerialize = ( blocks: any[] ): string => {
 // Split Gutenberg block markup into an array of top-level block strings.
 // Does not require wp.blocks — works purely on the comment delimiter syntax.
 //
-// Each new top-level block start (opening OR self-closing) begins a fresh segment so
-// that self-closing blocks (<!-- wp:separator /--> + <hr>) stay with their rendered
-// HTML instead of leaking into the next segment and offsetting all subsequent indices.
+// Token-based: scans EVERY block delimiter (opening, closing, self-closing)
+// with a single regex and tracks nesting depth by token, so it is immune to
+// formatting — delimiters mid-line, whole sections on one line, indentation.
+// The previous line-based version only classified the FIRST token of each
+// line; PageAssembler markup nests delimiters after HTML on the same line,
+// which silently desynced the depth count and put "top-level" boundaries
+// inside the hero (the "insert landed inside the hero section" bug).
+// Matches a block-comment delimiter: optional closing slash, block name
+// (optionally namespaced), optional JSON attrs, optional self-closing slash.
+// Same practical assumption as WP's own tokenizer: attr JSON never contains
+// a literal `} -->` inside a string value.
+const BLOCK_DELIMITER_RE = /<!--\s*(\/)?wp:[a-z0-9_-]+(?:\/[a-z0-9_-]+)?(?:\s+\{[\s\S]*?\})?\s*(\/)?-->/gi;
+
 const splitTopLevelBlocks = ( markup: string ): string[] => {
-  const segments: string[][] = [ [] ];
-  let segIdx = 0;
+  // Character offsets where a depth-0 block (opening or self-closing) starts —
+  // each is the start of a top-level segment.
+  const boundaries: number[] = [];
   let depth = 0;
-
-  for ( const line of markup.split( '\n' ) ) {
-    const trimmed = line.trim();
-    const isSelfClosing = /^<!--\s*wp:[^ ].*?\/-->/i.test( trimmed );
-    const isOpening = ! isSelfClosing && /^<!--\s*wp:/i.test( trimmed );
-    const isClosing = /^<!--\s*\/wp:/i.test( trimmed );
-
-    // Each top-level block start opens a new segment.
-    if ( ( isOpening || isSelfClosing ) && depth === 0 ) {
-      segments.push( [] );
-      segIdx++;
+  BLOCK_DELIMITER_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ( ( m = BLOCK_DELIMITER_RE.exec( markup ) ) !== null ) {
+    const isClosing = m[ 1 ] === '/';
+    const isSelfClosing = m[ 2 ] === '/';
+    if ( isClosing ) {
+      // Clamp so stray closers in malformed markup can't push depth negative
+      // and swallow every following section into one segment.
+      depth = Math.max( 0, depth - 1 );
+    } else {
+      if ( depth === 0 ) {
+        boundaries.push( m.index );
+      }
+      if ( ! isSelfClosing ) {
+        depth++;
+      }
     }
-
-    segments[ segIdx ].push( line );
-
-    if ( isOpening ) depth++;
-    if ( isClosing ) depth--;
   }
 
-  // Join each segment and drop any that contain no block comments (e.g. leading whitespace,
-  // trailing fastpath cache-buster comments).
-  return segments
-    .map( seg => seg.join( '\n' ).trim() )
-    .filter( s => s.length > 0 && /<!--\s*\/?wp:/i.test( s ) );
+  if ( boundaries.length === 0 ) {
+    return [];
+  }
+
+  const segments: string[] = [];
+  for ( let i = 0; i < boundaries.length; i++ ) {
+    // Fold any prefix before the first block (whitespace, stray comments)
+    // into the first segment; trim makes it invisible when pure whitespace.
+    const start = i === 0 ? 0 : boundaries[ i ];
+    const end = i + 1 < boundaries.length ? boundaries[ i + 1 ] : markup.length;
+    segments.push( markup.slice( start, end ).trim() );
+  }
+
+  return segments.filter( ( s ) => s.length > 0 && /<!--\s*\/?wp:/i.test( s ) );
 };
 
 // During streaming the buffer almost always ends mid-block — a tag or a class name cut
@@ -1664,6 +1684,11 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       // run the SAME deterministic handlers below. Only the unambiguous
       // deterministic actions short-circuit here; everything else falls through
       // to the existing regex + AI-generate path, so this never blocks an edit.
+      // When the classifier recognises an add_block request, remember any
+      // direction it extracted — the additive-insert routing below consults it
+      // for requests that don't spell out "above"/"below" themselves.
+      let classifiedInsertDirection: 'before' | 'after' | null = null;
+
       if ( isIntentClassifierEnabled() ) {
         const hasSelection = selectedBlockIndex !== null && selectedBlockHtml !== null;
         const selectedTypeForCtx = ( () => {
@@ -1748,6 +1773,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
               clearSelection( iframeRef );
               return;
             }
+          }
+          if ( intent.action === 'add_block' && hasSelection ) {
+            classifiedInsertDirection = intent.insert_direction;
           }
           // Other actions (add_block, replace_image, redesign, freeform)
           // intentionally fall through to the existing routing.
@@ -1842,9 +1870,25 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       const additiveVerb = /\b(add|insert|create|put|place)\b/i.test( text );
       const positionBefore = /\b(above|before|on top of)\b/i.test( text );
       const positionAfter = /\b(below|under|underneath|beneath|after)\b/i.test( text );
+      const explicitDirection =
+        positionBefore || positionAfter ? ( positionBefore ? 'before' : 'after' ) : null;
+      // A direction-less "add a pricing table" with a block selected must ALSO
+      // insert a new sibling section — routing it as an edit of the selection
+      // makes the model nest the new content inside the selected section (the
+      // "pricing table appeared inside the hero" bug). Gated on a section-scale
+      // noun, and containment phrasing ("add a button to this section") keeps
+      // the edit behavior. Defaults to inserting after the selected section.
+      const sectionScaleNoun =
+        /\b(?:pricing|tables?|galler(?:y|ies)|testimonials?|quotes?|sections?|faqs?|accordion|stats?|cta|banners?|forms?|features?|hero)\b/i.test( text );
+      const containmentPhrasing =
+        /\b(?:in|into|inside|within|to)\s+(?:this|that|it\b|the\s+(?:selected|current))/i.test( text );
+      const impliedDirection =
+        sectionScaleNoun && ! containmentPhrasing
+          ? classifiedInsertDirection || 'after'
+          : null;
       pendingInsertDirectionRef.current =
-        isSingleBlockEdit && additiveVerb && ( positionBefore || positionAfter )
-          ? ( positionBefore ? 'before' : 'after' )
+        isSingleBlockEdit && additiveVerb
+          ? explicitDirection ?? impliedDirection
           : null;
       const selectedTypeMatch = isSingleBlockEdit
         ? selectedBlockGutenbergMarkup!.match( /<!--\s*wp:([a-z0-9\/-]+)/i )
