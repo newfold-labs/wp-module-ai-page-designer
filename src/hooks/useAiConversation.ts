@@ -652,9 +652,13 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         }
       }
 
+      // Always show OUR message here, never the model's summary: the model
+      // narrates what IT generated ("Added SEO-ready page title and excerpt")
+      // even when the intent gate above only applied one of those fields —
+      // the chat must state exactly what actually changed.
       let fallback;
       if ( applied.length ) {
-        fallback = `Updated ${ applied.join( ' and ' ) }.`;
+        fallback = `Done! I’ve refreshed your ${ applied.join( ' and ' ) }.`;
       } else if ( rejected.length ) {
         // The model returned a status line instead of real metadata — don't
         // overwrite, and tell the user so they can retry rather than silently
@@ -664,14 +668,12 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         fallback = 'No changes were made.';
       }
 
-      // When we rejected the metadata and applied nothing, show OUR message —
-      // not the model's summary, which would falsely claim it changed something.
       const blocked = rejected.length > 0 && applied.length === 0;
       setMessages( [
         ...newMessages,
         {
           role: 'assistant',
-          content: blocked ? fallback : ( summary || fallback ),
+          content: fallback,
           summary: blocked ? undefined : ( summary || undefined ),
           isError: blocked || undefined,
         },
@@ -1298,13 +1300,31 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
             setParsedBlocks( parsed );
           }
           setHasAIGenerated( true );
-          if ( planResult.title ) {
-            const cleanTitle = sanitizeTitle( planResult.title );
+          // The server guarantees a title/excerpt via its own fallback chain,
+          // but if either ever arrives empty, derive one from the page itself
+          // (first heading / first paragraph) — a fresh generation must never
+          // leave the PAGE TITLE or EXCERPT fields blank.
+          let planTitle = planResult.title;
+          if ( ! planTitle ) {
+            // eslint-disable-next-line no-console
+            console.warn( '[AI Page Designer] /page-plan returned no title; deriving from content.' );
+            const headingMatch = planResult.content.match( /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i );
+            planTitle = ( headingMatch?.[ 1 ] || '' ).replace( /<[^>]+>/g, '' ).trim();
+          }
+          if ( planTitle ) {
+            const cleanTitle = sanitizeTitle( planTitle );
             setPublishTitle( cleanTitle );
             setMetaTitle( cleanTitle );
           }
-          if ( planResult.excerpt ) {
-            setMetaExcerpt( planResult.excerpt );
+          let planExcerpt = planResult.excerpt;
+          if ( ! planExcerpt ) {
+            // eslint-disable-next-line no-console
+            console.warn( '[AI Page Designer] /page-plan returned no excerpt; deriving from content.' );
+            const paragraphMatch = planResult.content.match( /<p[^>]*>([\s\S]*?)<\/p>/i );
+            planExcerpt = ( paragraphMatch?.[ 1 ] || '' ).replace( /<[^>]+>/g, '' ).trim();
+          }
+          if ( planExcerpt ) {
+            setMetaExcerpt( planExcerpt );
           }
           setMessages( [ ...newMessages, { role: 'assistant', content: 'Here is a first draft.' } ] );
           return;

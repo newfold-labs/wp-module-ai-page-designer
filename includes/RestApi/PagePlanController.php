@@ -153,9 +153,15 @@ class PagePlanController {
 			}
 			$parsed = $this->parse_response( (string) $result['content'] );
 			if ( ! empty( $parsed['sections'] ) ) {
-				$plan         = $parsed['sections'];
-				$plan_title   = $parsed['title'];
-				$plan_excerpt = $parsed['excerpt'];
+				$plan = $parsed['sections'];
+				// Never let a retry that omitted title/excerpt clobber values a
+				// previous attempt already provided.
+				if ( '' !== $parsed['title'] ) {
+					$plan_title = $parsed['title'];
+				}
+				if ( '' !== $parsed['excerpt'] ) {
+					$plan_excerpt = $parsed['excerpt'];
+				}
 				// Accept a substantial plan right away; if it came back thin
 				// (fewer than 4 sections) try once more for a fuller page, then
 				// take whatever the second attempt gives.
