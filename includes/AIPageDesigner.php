@@ -291,27 +291,44 @@ class AIPageDesigner {
 		$scale_in  = $keyframe_prefix . 'scaleIn';
 		$pulse     = $keyframe_prefix . 'pulse';
 
+		// The scope may be a selector LIST (".entry-content, .wp-block-post-content").
+		// Naively prepending it to a rule ("$scope .pulse-hover:hover { … }") splits
+		// at the comma, so the FIRST scope alone — the whole page container — received
+		// every declaration, including the infinite pulse animation (the published
+		// page visibly zoomed in and out on its own, continuously). Expand the list
+		// so every scope prefixes every selector instead.
+		$scopes = array_map( 'trim', explode( ',', (string) $scope ) );
+		$sel    = static function ( $suffix ) use ( $scopes ) {
+			$parts = array();
+			foreach ( $scopes as $one_scope ) {
+				if ( '' !== $one_scope ) {
+					$parts[] = $one_scope . ' ' . $suffix;
+				}
+			}
+			return implode( ', ', $parts );
+		};
+
 		return '
 			@keyframes ' . $fade_in . ' { from { opacity: 0; } to { opacity: 1; } }
 			@keyframes ' . $slide_up . ' { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
 			@keyframes ' . $bounce_in . ' { 0% { opacity: 0; transform: scale(0.3); } 50% { opacity: 1; transform: scale(1.05); } 70% { transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
 			@keyframes ' . $scale_in . ' { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
 			@keyframes ' . $pulse . ' { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-			' . $scope . ' .fade-in { animation: ' . $fade_in . ' 0.8s ease-out forwards; }
-			' . $scope . ' .slide-up { animation: ' . $slide_up . ' 0.8s ease-out forwards; }
-			' . $scope . ' .bounce-in { animation: ' . $bounce_in . ' 0.8s ease-out forwards; }
-			' . $scope . ' .scale-in { animation: ' . $scale_in . ' 0.8s ease-out forwards; }
-			' . $scope . ' .fade-in-delay-1 { animation: ' . $fade_in . ' 0.8s ease-out 0.2s forwards; opacity: 0; }
-			' . $scope . ' .fade-in-delay-2 { animation: ' . $fade_in . ' 0.8s ease-out 0.4s forwards; opacity: 0; }
-			' . $scope . ' .fade-in-delay-3 { animation: ' . $fade_in . ' 0.8s ease-out 0.6s forwards; opacity: 0; }
-			' . $scope . ' .pulse-hover { transition: all 0.3s ease; }
-			' . $scope . ' .pulse-hover:hover { animation: ' . $pulse . ' 1s infinite; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
-			' . $scope . ' .glow-hover { transition: all 0.3s ease; }
-			' . $scope . ' .glow-hover:hover { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6), 0 0 60px rgba(59, 130, 246, 0.4); }
-			' . $scope . ' .card-hover-lift { transition: all 0.3s ease; }
-			' . $scope . ' .card-hover-lift:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
-			' . $scope . ' [data-aos] { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
-			' . $scope . ' [data-aos].aos-animate { opacity: 1; transform: translateY(0); }
+			' . $sel( '.fade-in' ) . ' { animation: ' . $fade_in . ' 0.8s ease-out forwards; }
+			' . $sel( '.slide-up' ) . ' { animation: ' . $slide_up . ' 0.8s ease-out forwards; }
+			' . $sel( '.bounce-in' ) . ' { animation: ' . $bounce_in . ' 0.8s ease-out forwards; }
+			' . $sel( '.scale-in' ) . ' { animation: ' . $scale_in . ' 0.8s ease-out forwards; }
+			' . $sel( '.fade-in-delay-1' ) . ' { animation: ' . $fade_in . ' 0.8s ease-out 0.2s forwards; opacity: 0; }
+			' . $sel( '.fade-in-delay-2' ) . ' { animation: ' . $fade_in . ' 0.8s ease-out 0.4s forwards; opacity: 0; }
+			' . $sel( '.fade-in-delay-3' ) . ' { animation: ' . $fade_in . ' 0.8s ease-out 0.6s forwards; opacity: 0; }
+			' . $sel( '.pulse-hover' ) . ' { transition: all 0.3s ease; }
+			' . $sel( '.pulse-hover:hover' ) . ' { animation: ' . $pulse . ' 1s infinite; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
+			' . $sel( '.glow-hover' ) . ' { transition: all 0.3s ease; }
+			' . $sel( '.glow-hover:hover' ) . ' { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6), 0 0 60px rgba(59, 130, 246, 0.4); }
+			' . $sel( '.card-hover-lift' ) . ' { transition: all 0.3s ease; }
+			' . $sel( '.card-hover-lift:hover' ) . ' { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+			' . $sel( '[data-aos]' ) . ' { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
+			' . $sel( '[data-aos].aos-animate' ) . ' { opacity: 1; transform: translateY(0); }
 		';
 	}
 
