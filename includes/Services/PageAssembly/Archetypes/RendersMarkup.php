@@ -245,6 +245,43 @@ trait RendersMarkup {
 	}
 
 	/**
+	 * Wrap `core/column` blocks in a `core/columns` row with a comfortable gap
+	 * between the columns and (optionally) vertical centering. WordPress applies
+	 * a column's default gap via generated layout CSS that the raw-markup preview
+	 * doesn't render, so the gap and alignment are ALSO emitted as inline styles
+	 * here — otherwise the columns render flush against each other in the preview
+	 * (the "no spacing between the image and text" issue). Kept as an explicit
+	 * inline `gap`/`align-items` so preview and published front-end match (WYSIWYG).
+	 *
+	 * @param string  $columns_html      Concatenated `core/column` block markup.
+	 * @param Context $ctx               Theme/conformance context.
+	 * @param bool    $vertically_center Whether to vertically centre the columns.
+	 * @param string  $gap_size          Logical spacing size for the inter-column gap.
+	 * @param bool    $center_group      Whether to horizontally centre the column row as a group.
+	 * @return string
+	 */
+	private function render_columns_wrap( string $columns_html, Context $ctx, bool $vertically_center = true, string $gap_size = 'md', bool $center_group = false ): string {
+		$attrs   = array(
+			'style' => array(
+				'spacing' => array(
+					'blockGap' => $ctx->spacing_attr( $gap_size ),
+				),
+			),
+		);
+		$classes = array( 'wp-block-columns' );
+		$style   = 'gap:' . $ctx->spacing_css( $gap_size );
+		if ( $vertically_center ) {
+			$attrs['verticalAlignment'] = 'center';
+			$classes[]                  = 'are-vertically-aligned-center';
+			$style                     .= ';align-items:center';
+		}
+		if ( $center_group ) {
+			$style .= ';justify-content:center';
+		}
+		return $this->comment_wrap( 'columns', $attrs, '<div class="' . implode( ' ', $classes ) . '" style="' . $style . '">' . $columns_html . '</div>' );
+	}
+
+	/**
 	 * Render a wide `core/group` section: optional centered heading + intro,
 	 * then arbitrary inner content, with symmetric padding on all four sides
 	 * (avoiding `asymmetric_padding:group`) and an optional background/text
@@ -304,6 +341,203 @@ trait RendersMarkup {
 			'group',
 			$group_attrs,
 			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '">' . $content . '</div>'
+		);
+	}
+
+	/**
+	 * A `background:linear-gradient(...)` declaration built **only from real,
+	 * registered theme palette slugs** — never an invented/derived color. Picks
+	 * the theme's OWN swatch that is closest in brightness to the section's
+	 * background (a subtle, same-tone pairing — e.g. two dark theme colors),
+	 * so the gradient can never introduce a color the theme didn't already
+	 * choose. If the theme has no other swatch close enough in tone (many
+	 * themes register only one dark and one light color), no gradient is
+	 * rendered at all — a flat, correct theme color beats an invented shade or
+	 * a jarring role jump (e.g. dark-to-accent, which reads as "colors that
+	 * don't match the theme" against some palettes).
+	 *
+	 * Deliberately never set as a `backgroundColor` *attribute* (only ever as a
+	 * raw inline `style` declaration) — {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Validator::check_non_solid_colors()}
+	 * only inspects the `textColor`/`backgroundColor` JSON attrs for non-solid
+	 * values, never arbitrary inline CSS, so this is safe by construction as
+	 * long as the block's own `backgroundColor` attr/class still carries a real
+	 * solid slug (for editor/recolor compatibility) and this declaration is
+	 * emitted *after* that solid `background-color:` declaration in the same
+	 * style string, so it wins the cascade.
+	 *
+	 * @param Context     $ctx     Theme/conformance context.
+	 * @param string|null $bg_slug Anchor background slug, or null for the dark fallback.
+	 * @return string Empty string when no close-enough second theme color exists.
+	 */
+	private function gradient_style_declaration( Context $ctx, ?string $bg_slug ): string {
+		if ( ! $ctx->has_palette() ) {
+			return '';
+		}
+		$slug = $bg_slug ?? $ctx->dark_slug();
+		$hex  = null !== $slug ? $ctx->color_for_slug( $slug ) : null;
+		if ( null === $slug || null === $hex || ! Context::is_solid_color( $hex ) ) {
+			return '';
+		}
+
+		$base_brightness = $ctx->brightness( $hex );
+		$best_slug        = null;
+		$best_delta       = null;
+		// A same-tone pairing only — anything further apart is a different role
+		// (e.g. dark vs. accent), which is the exact jump we're avoiding here.
+		$max_delta = 60.0;
+
+		foreach ( array( $ctx->dark_slug(), $ctx->light_slug(), $ctx->accent_slug(), $ctx->muted_light_slug() ) as $candidate ) {
+			if ( null === $candidate || $candidate === $slug ) {
+				continue;
+			}
+			$candidate_hex = $ctx->color_for_slug( $candidate );
+			if ( null === $candidate_hex || ! Context::is_solid_color( $candidate_hex ) ) {
+				continue;
+			}
+			$delta = abs( $ctx->brightness( $candidate_hex ) - $base_brightness );
+			if ( $delta > $max_delta ) {
+				continue;
+			}
+			if ( null === $best_delta || $delta < $best_delta ) {
+				$best_slug  = $candidate;
+				$best_delta = $delta;
+			}
+		}
+
+		if ( null === $best_slug ) {
+			return '';
+		}
+
+		return 'background:linear-gradient(135deg, var(--wp--preset--color--' . $slug . ') 0%, var(--wp--preset--color--' . $best_slug . ') 100%)';
+	}
+
+	/**
+	 * Render a wide `core/group` section shell with symmetric padding and a
+	 * solid background slug overlaid with a {@see gradient_style_declaration()}
+	 * gradient — the shared "modern" section backdrop used by the `split` hero
+	 * and `floating-card` CTA variants. Unlike {@see render_section()}, this
+	 * has no heading/intro slots of its own; callers supply the full inner body.
+	 *
+	 * @param string      $inner           Rendered inner block markup.
+	 * @param Context     $ctx             Theme/conformance context.
+	 * @param string|null $background_slug Anchor background slug (the solid color under the gradient).
+	 * @return string
+	 */
+	private function render_gradient_section( string $inner, Context $ctx, ?string $background_slug ): string {
+		$group_attrs = array(
+			'align' => 'wide',
+			'style' => array(
+				'spacing' => array(
+					'padding' => array(
+						'top'    => $ctx->spacing_attr( 'lg' ),
+						'bottom' => $ctx->spacing_attr( 'lg' ),
+						'left'   => $ctx->spacing_attr( 'md' ),
+						'right'  => $ctx->spacing_attr( 'md' ),
+					),
+				),
+			),
+		);
+		$group_classes = array( 'wp-block-group', 'alignwide' );
+		$group_style   = 'padding-top:' . $ctx->spacing_css( 'lg' ) . ';padding-bottom:' . $ctx->spacing_css( 'lg' )
+			. ';padding-left:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' );
+
+		$text_slug = $this->text_slug_for_background( $ctx, $background_slug );
+
+		if ( null !== $background_slug ) {
+			$group_attrs['backgroundColor'] = $background_slug;
+			$group_classes[]                = 'has-' . $background_slug . '-background-color';
+			$group_classes[]                = 'has-background';
+			$group_style                    .= ';background-color:var(--wp--preset--color--' . $background_slug . ')';
+		}
+		if ( null !== $text_slug ) {
+			$group_attrs['textColor'] = $text_slug;
+			$group_classes[]          = 'has-' . $text_slug . '-color';
+			$group_classes[]          = 'has-text-color';
+			$group_style              .= ';color:var(--wp--preset--color--' . $text_slug . ')';
+		}
+
+		$gradient = $this->gradient_style_declaration( $ctx, $background_slug );
+		if ( '' !== $gradient ) {
+			$group_style .= ';' . $gradient;
+		}
+
+		return $this->comment_wrap(
+			'group',
+			$group_attrs,
+			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '">' . $inner . '</div>'
+		);
+	}
+
+	/**
+	 * Render a "floating card": a solid-background `core/group` with symmetric
+	 * padding, rounded corners, and a drop shadow — a generalization of
+	 * {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\PricingTiers::render_card()}'s
+	 * proven shape, extended with the visual "card" treatment for the `split`
+	 * hero and `floating-card` CTA variants.
+	 *
+	 * @param string      $inner     Rendered inner block markup.
+	 * @param Context     $ctx       Theme/conformance context.
+	 * @param string|null $card_slug Card background slug, or null for no background.
+	 * @param string|null $text_slug Card text color slug, or null for the default.
+	 * @param int|null    $max_width Optional max-width in px, centered via auto margins (e.g. so a card floats centered inside a wider section rather than stretching full width).
+	 * @return string
+	 */
+	private function render_floating_card( string $inner, Context $ctx, ?string $card_slug, ?string $text_slug, ?int $max_width = null ): string {
+		$group_attrs = array(
+			'style' => array(
+				'spacing' => array(
+					'padding' => array(
+						'top'    => $ctx->spacing_attr( 'md' ),
+						'bottom' => $ctx->spacing_attr( 'md' ),
+						'left'   => $ctx->spacing_attr( 'md' ),
+						'right'  => $ctx->spacing_attr( 'md' ),
+					),
+				),
+			),
+		);
+		$group_classes = array( 'wp-block-group' );
+		$group_style   = 'padding-top:' . $ctx->spacing_css( 'md' ) . ';padding-bottom:' . $ctx->spacing_css( 'md' )
+			. ';padding-left:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' )
+			. ';border-radius:16px;box-shadow:0 20px 60px -15px rgba(0,0,0,.35);overflow:hidden';
+		if ( null !== $max_width ) {
+			$group_style .= ';max-width:' . $max_width . 'px;margin-left:auto;margin-right:auto';
+		}
+
+		if ( null !== $card_slug ) {
+			$group_attrs['backgroundColor'] = $card_slug;
+			$group_classes[]                = 'has-' . $card_slug . '-background-color';
+			$group_classes[]                = 'has-background';
+			$group_style                    .= ';background-color:var(--wp--preset--color--' . $card_slug . ')';
+		}
+		if ( null !== $text_slug ) {
+			$group_attrs['textColor'] = $text_slug;
+			$group_classes[]          = 'has-' . $text_slug . '-color';
+			$group_classes[]          = 'has-text-color';
+			$group_style              .= ';color:var(--wp--preset--color--' . $text_slug . ')';
+		}
+
+		return $this->comment_wrap(
+			'group',
+			$group_attrs,
+			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '">' . $inner . '</div>'
+		);
+	}
+
+	/**
+	 * Render a `core/image` block.
+	 *
+	 * @param string $image_url Resolved image URL.
+	 * @return string
+	 */
+	private function render_image_block( string $image_url ): string {
+		if ( '' === $image_url ) {
+			return '';
+		}
+		$img = '<img src="' . $this->esc_url( $image_url ) . '" alt="" style="width:100%;height:100%;object-fit:cover"/>';
+		return $this->comment_wrap(
+			'image',
+			array( 'sizeSlug' => 'large' ),
+			'<figure class="wp-block-image size-large">' . $img . '</figure>'
 		);
 	}
 }

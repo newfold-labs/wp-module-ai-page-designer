@@ -108,6 +108,6 @@ class AlternatingMediaText implements Archetype {
 
 		$columns = $image_first ? ( $image_column . $text_column ) : ( $text_column . $image_column );
 
-		return $this->comment_wrap( 'columns', array(), '<div class="wp-block-columns">' . $columns . '</div>' );
+		return $this->render_columns_wrap( $columns, $ctx );
 	}
 }

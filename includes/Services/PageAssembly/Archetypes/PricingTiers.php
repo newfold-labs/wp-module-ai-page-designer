@@ -82,7 +82,7 @@ class PricingTiers implements Archetype {
 			$columns        .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $tier_inner . '</div>' );
 		}
 
-		return $this->comment_wrap( 'columns', array(), '<div class="wp-block-columns">' . $columns . '</div>' );
+		return $this->render_columns_wrap( $columns, $ctx, false, 'md', true );
 	}
 
 	/**
@@ -103,15 +103,15 @@ class PricingTiers implements Archetype {
 		$text_slug   = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
 		$price_line  = $price . ( '' !== $period ? ' / ' . $period : '' );
 
-		$content  = $this->render_heading( $name, 3, $text_slug );
-		$content .= $this->render_paragraph( $price_line, $text_slug );
+		$content  = $this->render_heading( $name, 3, $text_slug, true );
+		$content .= $this->render_paragraph( $price_line, $text_slug, true );
 		if ( ! empty( $features ) ) {
 			$content .= $this->render_feature_list( $features, $text_slug );
 		}
 		if ( null !== $cta && ! empty( $cta['label'] ) ) {
 			$button_bg   = $this->contrasting_slug( $ctx, $card_slug );
 			$button_text = $this->text_slug_for_background( $ctx, $button_bg );
-			$content    .= $this->render_buttons_wrap( $this->render_button( (string) $cta['label'], isset( $cta['url'] ) ? (string) $cta['url'] : '#', $button_bg, $button_text ), false );
+			$content    .= $this->render_buttons_wrap( $this->render_button( (string) $cta['label'], isset( $cta['url'] ) ? (string) $cta['url'] : '#', $button_bg, $button_text ), true );
 		}
 
 		if ( null === $card_slug ) {
@@ -129,20 +129,23 @@ class PricingTiers implements Archetype {
 	 * @return string
 	 */
 	private function render_feature_list( array $features, ?string $text_slug ): string {
-		$classes = array( 'wp-block-list' );
-		$style   = '';
+		$classes      = array( 'wp-block-list', 'has-text-align-center' );
+		// Centre the list and drop bullet markers — centered bullets read awkwardly;
+		// a clean centered list is the standard pricing-tier treatment.
+		$declarations = array( 'text-align:center', 'list-style:none' );
 		if ( null !== $text_slug ) {
-			$classes[] = 'has-' . $text_slug . '-color';
-			$classes[] = 'has-text-color';
-			$style     = ' style="color:var(--wp--preset--color--' . $text_slug . ')"';
+			$classes[]      = 'has-' . $text_slug . '-color';
+			$classes[]      = 'has-text-color';
+			$declarations[] = 'color:var(--wp--preset--color--' . $text_slug . ')';
 		}
+		$style = ' style="' . implode( ';', $declarations ) . '"';
 
 		$items = '';
 		foreach ( $features as $feature ) {
 			$items .= $this->comment_wrap( 'list-item', array(), '<li>' . $this->esc_html( (string) $feature ) . '</li>' );
 		}
 
-		return $this->comment_wrap( 'list', array(), '<ul class="' . implode( ' ', $classes ) . '"' . $style . '>' . $items . '</ul>' );
+		return $this->comment_wrap( 'list', array( 'textAlign' => 'center' ), '<ul class="' . implode( ' ', $classes ) . '"' . $style . '>' . $items . '</ul>' );
 	}
 
 	/**

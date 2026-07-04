@@ -559,6 +559,14 @@ class AiClientWorker {
 			$context['siteName'] = $site_name;
 		}
 
+		// Site tagline — a short business/niche signal (e.g. "Coffee that wakes you up")
+		// that costs nothing extra to attach and helps the model write copy specific to
+		// the actual site rather than generic placeholder text.
+		$site_tagline = get_bloginfo( 'description' );
+		if ( $site_tagline ) {
+			$context['siteTagline'] = $site_tagline;
+		}
+
 		return $context;
 	}
 

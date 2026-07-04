@@ -28,7 +28,15 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * v1 supports a single variant, `image-bg`.
+ * Two variants:
+ *  - `split` (default): a two-column `core/columns` row — left is the text
+ *    stack, right is the image wrapped in a rounded, drop-shadowed
+ *    "floating card" (see {@see RendersMarkup::render_floating_card()}), the
+ *    whole section backed by a gradient-over-solid-slug backdrop (see
+ *    {@see RendersMarkup::render_gradient_section()}).
+ *  - `image-bg`: the original full-bleed `core/cover` treatment, kept as an
+ *    explicit fallback, reachable only via an explicit `variant: "image-bg"`
+ *    plan item.
  */
 class HeroCover implements Archetype {
 
@@ -55,6 +63,63 @@ class HeroCover implements Archetype {
 	 * {@inheritDoc}
 	 */
 	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
+		if ( 'image-bg' === $variant ) {
+			return $this->render_image_bg( $content, $ctx, $background_slug );
+		}
+		return $this->render_split( $content, $ctx, $background_slug );
+	}
+
+	/**
+	 * Render the `split` variant: text column + floating image card column.
+	 *
+	 * @param array<string, mixed> $content         Slot content.
+	 * @param Context               $ctx             Theme/conformance context.
+	 * @param string|null           $background_slug Section background slug.
+	 * @return string
+	 */
+	private function render_split( array $content, Context $ctx, ?string $background_slug ): string {
+		$bg_slug   = $background_slug ?? $this->default_background( $ctx );
+		$text_slug = $this->text_slug_for_background( $ctx, $bg_slug );
+
+		$eyebrow       = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
+		$heading       = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$subheading    = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
+		$image_url     = isset( $content['imageUrl'] ) ? (string) $content['imageUrl'] : '';
+		$primary_cta   = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
+		$secondary_cta = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
+
+		$text_column  = '';
+		if ( '' !== $eyebrow ) {
+			$text_column .= $this->render_paragraph( $eyebrow, $text_slug, false );
+		}
+		$text_column .= $this->render_heading( $heading, 1, $text_slug, false );
+		if ( '' !== $subheading ) {
+			$text_column .= $this->render_paragraph( $subheading, $text_slug, false );
+		}
+		if ( null !== $primary_cta || null !== $secondary_cta ) {
+			$text_column .= $this->render_ctas( $primary_cta, $secondary_cta, $bg_slug, $ctx, false );
+		}
+		$text_column = $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $text_column . '</div>' );
+
+		$card_slug    = $this->contrasting_slug( $ctx, $bg_slug );
+		$card_text    = $this->text_slug_for_background( $ctx, $card_slug );
+		$image_column = $this->render_floating_card( $this->render_image_block( $image_url ), $ctx, $card_slug, $card_text );
+		$image_column = $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $image_column . '</div>' );
+
+		$columns = $this->render_columns_wrap( $text_column . $image_column, $ctx );
+
+		return $this->render_gradient_section( $columns, $ctx, $bg_slug );
+	}
+
+	/**
+	 * Render the `image-bg` variant: the original full-bleed `core/cover` hero.
+	 *
+	 * @param array<string, mixed> $content         Slot content.
+	 * @param Context               $ctx             Theme/conformance context.
+	 * @param string|null           $background_slug Cover background slug.
+	 * @return string
+	 */
+	private function render_image_bg( array $content, Context $ctx, ?string $background_slug ): string {
 		$bg_slug   = $background_slug ?? $this->default_background( $ctx );
 		$text_slug = $this->text_slug_for_background( $ctx, $bg_slug );
 
@@ -132,9 +197,10 @@ class HeroCover implements Archetype {
 	 * @param array<string, string>|null $secondary_cta [ 'label', 'url' ] or null.
 	 * @param string|null                $cover_bg_slug The cover's own background slug.
 	 * @param Context                    $ctx           Theme/conformance context.
+	 * @param bool                       $center        Whether to center the button row (false for the left-aligned `split` variant).
 	 * @return string
 	 */
-	private function render_ctas( ?array $primary_cta, ?array $secondary_cta, ?string $cover_bg_slug, Context $ctx ): string {
+	private function render_ctas( ?array $primary_cta, ?array $secondary_cta, ?string $cover_bg_slug, Context $ctx, bool $center = true ): string {
 		$buttons = '';
 		if ( null !== $primary_cta && ! empty( $primary_cta['label'] ) ) {
 			$bg_slug   = $this->contrasting_slug( $ctx, $cover_bg_slug );
@@ -146,6 +212,6 @@ class HeroCover implements Archetype {
 			$buttons  .= $this->render_button( (string) $secondary_cta['label'], isset( $secondary_cta['url'] ) ? (string) $secondary_cta['url'] : '#', null, $text_slug, true );
 		}
 
-		return $this->render_buttons_wrap( $buttons );
+		return $this->render_buttons_wrap( $buttons, $center );
 	}
 }

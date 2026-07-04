@@ -103,4 +103,65 @@ class HeroCoverTest extends PageAssemblyTestCase {
 		$once = $hero->render( $this->content(), 'image-bg', $ctx, $bg );
 		$this->assertSame( $once, $hero->render( $this->content(), 'image-bg', $ctx, $bg ) );
 	}
+
+	public function test_split_is_the_default_variant(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$out  = $hero->render( $this->content(), null, $ctx, $hero->default_background( $ctx ) );
+
+		$this->assertStringContainsString( '<!-- wp:columns', $out );
+		$this->assertStringNotContainsString( '<!-- wp:cover', $out );
+		$this->assertStringContainsString( 'Fresh coffee, faster mornings', $out );
+		$this->assertStringContainsString( 'New for 2026', $out );
+		$this->assertStringContainsString( 'Order now', $out );
+		$this->assertStringContainsString( 'View menu', $out );
+		$this->assertStringContainsString( 'https://images.unsplash.com/photo-1', $out );
+	}
+
+	public function test_split_variant_is_correct_by_construction(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$out  = $hero->render( $this->content(), 'split', $ctx, $hero->default_background( $ctx ) );
+
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
+
+	public function test_split_variant_cta_never_collides_with_section_background(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$bg   = $hero->default_background( $ctx );
+		$out  = $hero->render( $this->content(), 'split', $ctx, $bg );
+
+		$this->assertNotNull( $bg );
+		$this->assertStringNotContainsString( 'wp-block-button__link has-' . $bg . '-background-color', $out );
+	}
+
+	public function test_split_variant_is_deterministic(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$bg   = $hero->default_background( $ctx );
+		$once = $hero->render( $this->content(), 'split', $ctx, $bg );
+		$this->assertSame( $once, $hero->render( $this->content(), 'split', $ctx, $bg ) );
+	}
+
+	public function test_split_variant_omits_optional_slots_cleanly(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$out  = $hero->render(
+			array(
+				'heading'    => 'Just a heading',
+				'primaryCta' => array(
+					'label' => 'Go',
+					'url'   => '#',
+				),
+				'imageUrl'   => 'https://images.unsplash.com/photo-2',
+			),
+			null,
+			$ctx,
+			$hero->default_background( $ctx )
+		);
+
+		$this->assertStringContainsString( 'Just a heading', $out );
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
 }

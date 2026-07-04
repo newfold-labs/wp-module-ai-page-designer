@@ -59,7 +59,7 @@ class FeatureGrid implements Archetype {
 		$intro   = isset( $content['intro'] ) ? (string) $content['intro'] : '';
 		$items   = isset( $content['items'] ) && is_array( $content['items'] ) ? array_slice( $content['items'], 0, 3 ) : array();
 
-		$columns = empty( $items ) ? '' : $this->render_columns( $items );
+		$columns = empty( $items ) ? '' : $this->render_columns( $items, $ctx );
 
 		return $this->render_section( $heading, $intro, $columns, $ctx, $background_slug );
 	}
@@ -70,20 +70,21 @@ class FeatureGrid implements Archetype {
 	 * Validator's column-width check always accepts.
 	 *
 	 * @param array<int, array<string, string>> $items Up to 3 [ 'title', 'body' ] items.
+	 * @param Context                            $ctx   Theme/conformance context.
 	 * @return string
 	 */
-	private function render_columns( array $items ): string {
+	private function render_columns( array $items, Context $ctx ): string {
 		$columns = '';
 		foreach ( $items as $item ) {
 			$title = isset( $item['title'] ) ? (string) $item['title'] : '';
 			$body  = isset( $item['body'] ) ? (string) $item['body'] : '';
 
-			$column_inner  = $this->render_heading( $title, 3, null );
-			$column_inner .= $this->render_paragraph( $body, null );
+			$column_inner  = $this->render_heading( $title, 3, null, true );
+			$column_inner .= $this->render_paragraph( $body, null, true );
 
 			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $column_inner . '</div>' );
 		}
 
-		return $this->comment_wrap( 'columns', array(), '<div class="wp-block-columns">' . $columns . '</div>' );
+		return $this->render_columns_wrap( $columns, $ctx, false, 'md', true );
 	}
 }

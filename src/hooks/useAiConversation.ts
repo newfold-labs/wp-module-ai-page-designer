@@ -259,6 +259,41 @@ const expectedAdditiveTypes = ( text: string ): string[] | null => {
   return null;
 };
 
+// A page title must stay short and read like a title — the AI sometimes returns a
+// whole sentence, or stuffs the excerpt into the title field. Collapse whitespace,
+// keep only the first sentence, and cap to ~10 words / 70 chars on a word boundary.
+const sanitizeTitle = ( raw: string ): string => {
+  let t = ( raw || '' ).replace( /\s+/g, ' ' ).trim();
+  if ( ! t ) {
+    return '';
+  }
+  // Keep only the first sentence (drops an excerpt accidentally placed in the title).
+  const firstSentence = ( t.match( /^[^.!?]*[.!?]/ )?.[ 0 ] || t ).trim();
+  if ( firstSentence.length >= 12 ) {
+    t = firstSentence;
+  }
+  const words = t.split( ' ' );
+  if ( words.length > 10 ) {
+    t = words.slice( 0, 10 ).join( ' ' );
+  }
+  if ( t.length > 70 ) {
+    const clipped = t.slice( 0, 70 );
+    const space = clipped.lastIndexOf( ' ' );
+    t = space > 0 ? clipped.slice( 0, space ) : clipped;
+  }
+  return t.replace( /[\s.,;:—–-]+$/, '' ).trim();
+};
+
+// Strip developer jargon from AI status messages shown in chat — novice users
+// don't know (or need) terms like "Gutenberg". Keeps the sentence readable.
+const sanitizeAssistantSummary = ( raw: string ): string =>
+  ( raw || '' )
+    .replace( /\busing Gutenberg\b/gi, '' )
+    .replace( /\bGutenberg\b\s*/gi, '' )
+    .replace( /\s{2,}/g, ' ' )
+    .replace( /\s+([.,;:])/g, '$1' )
+    .trim();
+
 // Display-only: a colour name a novice would recognise, or null when all we
 // have is a hex/rgb value (jargon). Lets messages read "now light blue" when we
 // know the name and stay generic ("updated the colour") when we only have a hex.
@@ -602,8 +637,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         if ( looksLikeAcknowledgment( title ) ) {
           rejected.push( 'title' );
         } else {
-          setPublishTitle( title );
-          setMetaTitle( title );
+          const cleanTitle = sanitizeTitle( title );
+          setPublishTitle( cleanTitle );
+          setMetaTitle( cleanTitle );
           applied.push( 'title' );
         }
       }
@@ -669,7 +705,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     };
 
     const applyFinalResponse = ( rawContent: string, responseData: any, isFollowUpEdit: boolean ) => {
-      const responseSummary = responseData?.summary ?? '';
+      const responseSummary = sanitizeAssistantSummary( responseData?.summary ?? '' );
       const title = responseData?.title || '';
       const fallbackSummary = selectedItem ? 'Update ready.' : 'New page ready.';
 
@@ -749,6 +785,80 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
             ] );
           }
         };
+
+        // Deterministic additive insert: an "add X above/below [selection]"
+        // request places the new section as a TOP-LEVEL sibling, computed purely
+        // by string-splitting the current page into top-level blocks and splicing
+        // at the selected section's index. No wp.blocks round-trip and no DOM
+        // patch — so a NESTED selection (e.g. a heading inside the hero) still
+        // inserts the new section at the top level, never inside the selected
+        // section (the "it went into the hero" bug). Runs before the general
+        // single-block handler below so it owns every positioned-add request.
+        if ( pendingInsertDirectionRef.current !== null ) {
+          const insertDir = pendingInsertDirectionRef.current;
+
+          let topIdx = pendingTopLevelIndexRef.current;
+          if ( topIdx === null && selectedBlockIndex !== null ) {
+            const parsedIdx = parseInt( selectedBlockIndex.split( '-' )[ 0 ], 10 );
+            topIdx = isNaN( parsedIdx ) ? null : parsedIdx;
+          }
+
+          const pageTop = previewHtml ? splitTopLevelBlocks( previewHtml ) : [];
+          const newSection = html.trim();
+
+          // Type guard: refuse an obviously-wrong single block (asked for a
+          // pricing table, got a cover) instead of splicing it in.
+          const expectedTypes = pendingExpectedTypesRef.current;
+          const returnedCount = splitTopLevelBlocks( newSection ).length;
+          const returnedTypeMatch = newSection.match( /<!--\s*wp:([a-z0-9\/-]+)/i );
+          const returnedType = returnedTypeMatch ? returnedTypeMatch[ 1 ].replace( /^core\//, '' ) : null;
+          const wrongType =
+            expectedTypes !== null &&
+            returnedCount === 1 &&
+            returnedType !== null &&
+            ! expectedTypes.includes( returnedType );
+
+          const resetPending = () => {
+            isSingleBlockRequestRef.current = false;
+            pendingTopLevelIndexRef.current = null;
+            pendingInsertDirectionRef.current = null;
+            pendingSelectedTypeRef.current = null;
+            pendingExpectedTypesRef.current = null;
+          };
+
+          if ( wrongType ) {
+            setMessages( [
+              ...newMessages,
+              {
+                role: 'assistant',
+                content: 'That didn’t come out the way you asked. Nothing was changed — want to try describing it a little differently?',
+                isError: true,
+              },
+            ] );
+            resetPending();
+            clearSelection( iframeRef );
+            return;
+          }
+
+          if ( topIdx !== null && topIdx >= 0 && '' !== newSection && pageTop.length > 0 ) {
+            const at = Math.min( Math.max( insertDir === 'before' ? topIdx : topIdx + 1, 0 ), pageTop.length );
+            const updated = [ ...pageTop ];
+            updated.splice( at, 0, newSection );
+            const merged = updated.join( '\n\n' );
+            const mergedBlocks = wpBlocksParse( merged );
+            if ( mergedBlocks.length > 0 ) {
+              setParsedBlocks( mergedBlocks );
+            }
+            setPreviewHtml( merged );
+            addHistoryEntry( merged );
+            setLastGeneratedHtml( null );
+            clearSelection( iframeRef );
+            resetPending();
+            return;
+          }
+          // If we couldn't resolve a top-level index, fall through to the general
+          // handler below rather than dropping the request.
+        }
 
         if ( isSingleBlockRequestRef.current && pendingTopLevelIndexRef.current !== null ) {
           const idx = pendingTopLevelIndexRef.current;
@@ -1017,8 +1127,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         // overwrite real metadata with a status line. Same guard as the
         // metadata-only path.
         if ( title && ( isFirstGeneration || wantsTitle ) && ! looksLikeAcknowledgment( title ) ) {
-          setPublishTitle( title );
-          setMetaTitle( title );
+          const cleanTitle = sanitizeTitle( title );
+          setPublishTitle( cleanTitle );
+          setMetaTitle( cleanTitle );
         }
         // Apply the excerpt on a fresh generation too (not just explicit "add an excerpt"
         // requests) so title and excerpt land together when a new page is created.
@@ -1049,13 +1160,151 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         const planResult = await generatePagePlanPage( apiUrl, text );
         if ( planResult?.content ) {
           const parsed = wpBlocksParse( planResult.content );
+
+          // Render the whole page ONCE, then reveal its top-level sections one at
+          // a time by directly toggling their opacity in the iframe DOM (this
+          // bypasses the render pipeline that batches intermediate previewHtml
+          // states) and scrolling each into view.
+          const sections = splitTopLevelBlocks( planResult.content );
+          setPreviewHtml( planResult.content );
+
+          if ( streamEnabled && sections.length > 1 ) {
+            const SECTION_GAP_MS = 400;
+            const ELEMENT_STEP_MS = 500;
+            // The visible "leaves" of a section, faded in one at a time. Lists,
+            // quotes and figures fade as a unit (per-<li>/per-<img> is too slow
+            // and too twitchy); the ancestor filter below drops anything nested
+            // inside another match so nothing double-fades.
+            const CONTENT_SELECTOR = 'h1,h2,h3,h4,h5,h6,p,ul,ol,blockquote,figure,.wp-block-buttons,img';
+            const sleep = ( ms: number ) => new Promise<void>( ( resolve ) => setTimeout( resolve, ms ) );
+
+            // Hide a section's content elements inline (marked with
+            // data-nfd-reveal so cleanup can find them) and return them in DOM
+            // order for the staggered fade-in. Inline opacity survives the
+            // stylesheet cascade; the marker also self-cleans if the iframe
+            // re-renders, because innerHTML replacement rebuilds the nodes.
+            const hideContent = ( sectionEl: Element ): HTMLElement[] => {
+              // NOTE: no `instanceof HTMLElement` here — these nodes live in the
+              // iframe's realm, whose HTMLElement constructor is a different
+              // object, so instanceof against the parent window's is always false.
+              const els = Array.from( sectionEl.querySelectorAll<HTMLElement>( CONTENT_SELECTOR ) )
+                .filter( ( el ) => ! el.parentElement?.closest( CONTENT_SELECTOR ) );
+              els.forEach( ( el ) => {
+                el.setAttribute( 'data-nfd-reveal', '' );
+                el.style.setProperty( 'opacity', '0', 'important' );
+              } );
+              return els;
+            };
+
+            const revealContent = async ( els: HTMLElement[] ) => {
+              for ( const el of els ) {
+                // eslint-disable-next-line no-await-in-loop
+                await sleep( ELEMENT_STEP_MS );
+                el.style.setProperty( 'opacity', '1', 'important' );
+              }
+            };
+
+            // The reveal is driven ENTIRELY by a head <style> rule, never by
+            // element references: the iframe swaps its whole document when
+            // srcdoc loads, and nfdSetContent replaces root.innerHTML on
+            // re-renders, so any node/document captured across an await can go
+            // stale. ensureRule() re-reads the CURRENT document every call and
+            // (re)injects the rule if that document doesn't have it — the hide
+            // state survives both kinds of replacement. Revealing section N is
+            // just loosening nth-child(n+2) to nth-child(n+N+1).
+            const ensureRule = ( hiddenFrom: number ): Document | null => {
+              const doc = iframeRef.current?.contentDocument;
+              if ( ! doc?.head ) {
+                return null;
+              }
+              let st = doc.getElementById( 'nfd-reveal-style' );
+              if ( ! st ) {
+                st = doc.createElement( 'style' );
+                st.id = 'nfd-reveal-style';
+                doc.head.appendChild( st );
+              }
+              // The fade needs !important + the [data-nfd-streaming] selector to
+              // out-cascade the srcdoc's blanket transition:none streaming rule
+              // (same specificity, later in the document, so it wins).
+              st.textContent =
+                `#nfd-preview-root > :nth-child(n+${ hiddenFrom }){opacity:0 !important;}` +
+                '#nfd-preview-root[data-nfd-streaming] > *, #nfd-preview-root > *{transition:opacity 500ms ease !important;}' +
+                '#nfd-preview-root[data-nfd-streaming] [data-nfd-reveal], #nfd-preview-root [data-nfd-reveal]{transition:opacity 350ms ease !important;}';
+              return doc;
+            };
+
+            // Poll until the sections exist in the CURRENT document, keeping the
+            // hide rule alive across the srcdoc document swap so they never flash.
+            let sectionCount = 0;
+            const started = performance.now();
+            while ( performance.now() - started < 6000 ) {
+              const doc = ensureRule( 2 );
+              const root = doc?.getElementById( 'nfd-preview-root' ) ?? null;
+              if ( root && root.children.length >= 2 ) {
+                sectionCount = root.children.length;
+                break;
+              }
+              // eslint-disable-next-line no-await-in-loop
+              await sleep( 80 );
+            }
+
+            if ( sectionCount >= 2 ) {
+              // The hero is already visible — stagger its content first so the
+              // page builds element by element from the very top.
+              {
+                const doc = ensureRule( 2 );
+                const heroEl = doc?.getElementById( 'nfd-preview-root' )?.children[ 0 ];
+                if ( heroEl ) {
+                  await revealContent( hideContent( heroEl ) );
+                }
+              }
+              for ( let i = 2; i <= sectionCount; i++ ) {
+                // eslint-disable-next-line no-await-in-loop
+                await sleep( SECTION_GAP_MS );
+                // Hide the section's content while the section itself is still
+                // hidden by the nth-child rule, THEN loosen the rule — the shell
+                // (background, padding) fades in empty and the content follows.
+                const doc = ensureRule( i );
+                const el = doc?.getElementById( 'nfd-preview-root' )?.children[ i - 1 ];
+                const contentEls = el ? hideContent( el ) : [];
+                ensureRule( i + 1 );
+                try {
+                  el?.scrollIntoView( { behavior: 'smooth', block: 'center' } );
+                } catch {
+                  // ignore
+                }
+                // eslint-disable-next-line no-await-in-loop
+                await revealContent( contentEls );
+              }
+              await sleep( 800 );
+              const doc = iframeRef.current?.contentDocument;
+              doc?.getElementById( 'nfd-reveal-style' )?.remove();
+              doc?.querySelectorAll( '[data-nfd-reveal]' ).forEach( ( el ) => {
+                ( el as HTMLElement ).style.removeProperty( 'opacity' );
+                el.removeAttribute( 'data-nfd-reveal' );
+              } );
+              try {
+                doc?.getElementById( 'nfd-preview-root' )?.children[ 0 ]?.scrollIntoView( { behavior: 'smooth', block: 'start' } );
+              } catch {
+                // ignore
+              }
+            } else {
+              // Poll timed out — remove the hide rule so nothing stays invisible.
+              iframeRef.current?.contentDocument?.getElementById( 'nfd-reveal-style' )?.remove();
+            }
+          }
+
           if ( parsed.length > 0 ) {
             setParsedBlocks( parsed );
           }
-          setPreviewHtml( planResult.content );
           setHasAIGenerated( true );
           if ( planResult.title ) {
-            setPublishTitle( planResult.title );
+            const cleanTitle = sanitizeTitle( planResult.title );
+            setPublishTitle( cleanTitle );
+            setMetaTitle( cleanTitle );
+          }
+          if ( planResult.excerpt ) {
+            setMetaExcerpt( planResult.excerpt );
           }
           setMessages( [ ...newMessages, { role: 'assistant', content: 'Here is a first draft.' } ] );
           return;
@@ -1622,6 +1871,29 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         ...( selectedImageUrl ? { selected_image_url: selectedImageUrl } : {} ),
       };
 
+      // For an "add X above/below [selection]" request, the model must return a
+      // NEW standalone section to insert as a sibling — NOT a modified copy of
+      // the selected block. When the selection is nested (e.g. a heading inside
+      // the hero), the selected_block_markup we send is the whole containing
+      // section, and asking the model to "add X above it" makes it embed the new
+      // content inside that section. Send an explicit instruction so it returns
+      // only the new section's block(s); the insert logic then places them at the
+      // selected section's top-level position (before/after), never modifying it.
+      const isAdditiveInsert = isSingleBlockEdit && pendingInsertDirectionRef.current !== null;
+      const apiMessages: Message[] = isAdditiveInsert
+        ? [
+            ...newMessages.slice( 0, -1 ),
+            {
+              role: 'user',
+              content:
+                `Create a NEW, standalone section for this request: "${ text }". ` +
+                `Return ONLY the new section as its own top-level Gutenberg block(s). ` +
+                `Do NOT include, repeat, or modify the selected block or any existing section. ` +
+                `Match the site's existing theme colors and styling.`,
+            },
+          ]
+        : newMessages;
+
       const shouldStream =
         streamEnabled &&
         ! selectedItem &&
@@ -1632,7 +1904,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         let finalData: any = null;
         let streamError: string | null = null;
 
-        await generateContentStream( apiUrl, newMessages, context, ( event ) => {
+        await generateContentStream( apiUrl, apiMessages, context, ( event ) => {
           if ( event.type === 'delta' ) {
             streamBuffer += event.text;
 
@@ -1695,7 +1967,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         return;
       }
 
-      const response = await generateContent( apiUrl, newMessages, context );
+      const response = await generateContent( apiUrl, apiMessages, context );
 
       const rawContent = response?.data?.content ?? '';
       const serverMessage = response?.data?.message ?? '';

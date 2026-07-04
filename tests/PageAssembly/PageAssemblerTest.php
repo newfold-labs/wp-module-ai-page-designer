@@ -58,7 +58,7 @@ class PageAssemblerTest extends PageAssemblyTestCase {
 		$assembler = new PageAssembler( $this->fake_image_service() );
 		$out       = $assembler->assemble( $this->two_item_plan(), $ctx );
 
-		$this->assertStringContainsString( '<!-- wp:cover', $out );
+		$this->assertStringContainsString( '<!-- wp:columns', $out );
 		$this->assertStringContainsString( '<!-- wp:group', $out );
 		$this->assertStringContainsString( 'Fresh coffee, faster mornings', $out );
 		$this->assertStringContainsString( 'Why choose us', $out );

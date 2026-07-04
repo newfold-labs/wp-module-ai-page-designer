@@ -122,12 +122,22 @@ class Context {
 		if ( function_exists( 'wp_get_global_settings' ) ) {
 			$settings = wp_get_global_settings();
 			$groups   = isset( $settings['color']['palette'] ) ? $settings['color']['palette'] : array();
-			// Prefer theme, then default, then custom — first occurrence of a slug wins.
+			// Use the active theme's OWN palette exclusively when it registers one.
+			// wp_get_global_settings() also returns WordPress's core 'default' palette
+			// (black, white, vivid-purple, ...) even for a block theme that sets
+			// `defaultPalette: false`. Merging those in let their brightness extremes —
+			// pure #000/#fff and a saturated vivid-purple — win the dark/light/accent
+			// roles over the theme's real brand colors, which is the "why is there
+			// purple that isn't in my theme" bug. Take the FIRST origin that actually
+			// has swatches (theme, else default, else custom) — never a merge — so the
+			// harness matches what the Worker's get_theme_context() already does
+			// (theme origin only). The spacing loop below already does this correctly.
 			foreach ( array( 'theme', 'default', 'custom' ) as $origin ) {
 				if ( ! empty( $groups[ $origin ] ) && is_array( $groups[ $origin ] ) ) {
 					foreach ( $groups[ $origin ] as $swatch ) {
 						$palette[] = $swatch;
 					}
+					break; // First non-empty origin wins — never mix theme with core defaults.
 				}
 			}
 

@@ -50,7 +50,7 @@ class StatsBar implements Archetype {
 		$bg_slug = $background_slug ?? $this->default_background( $ctx );
 		$items   = isset( $content['items'] ) && is_array( $content['items'] ) ? $content['items'] : array();
 
-		$columns = empty( $items ) ? '' : $this->render_columns( $items );
+		$columns = empty( $items ) ? '' : $this->render_columns( $items, $ctx );
 
 		return $this->render_section( null, null, $columns, $ctx, $bg_slug );
 	}
@@ -59,9 +59,10 @@ class StatsBar implements Archetype {
 	 * Render one column per stat.
 	 *
 	 * @param array<int, array<string, string>> $items [ 'value', 'label' ] items.
+	 * @param Context                            $ctx   Theme/conformance context.
 	 * @return string
 	 */
-	private function render_columns( array $items ): string {
+	private function render_columns( array $items, Context $ctx ): string {
 		$columns = '';
 		foreach ( $items as $item ) {
 			$value = isset( $item['value'] ) ? (string) $item['value'] : '';
@@ -73,6 +74,6 @@ class StatsBar implements Archetype {
 			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $column_inner . '</div>' );
 		}
 
-		return $this->comment_wrap( 'columns', array(), '<div class="wp-block-columns">' . $columns . '</div>' );
+		return $this->render_columns_wrap( $columns, $ctx, false, 'md', true );
 	}
 }

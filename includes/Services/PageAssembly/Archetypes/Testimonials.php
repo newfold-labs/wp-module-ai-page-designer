@@ -52,7 +52,7 @@ class Testimonials implements Archetype {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
 		$quotes  = isset( $content['quotes'] ) && is_array( $content['quotes'] ) ? array_slice( $content['quotes'], 0, 3 ) : array();
 
-		$columns = empty( $quotes ) ? '' : $this->render_columns( $quotes );
+		$columns = empty( $quotes ) ? '' : $this->render_columns( $quotes, $ctx );
 
 		return $this->render_section( $heading, null, $columns, $ctx, $background_slug );
 	}
@@ -61,9 +61,10 @@ class Testimonials implements Archetype {
 	 * Render one column per testimonial.
 	 *
 	 * @param array<int, array<string, mixed>> $quotes Up to 3 testimonials.
+	 * @param Context                          $ctx    Theme/conformance context.
 	 * @return string
 	 */
-	private function render_columns( array $quotes ): string {
+	private function render_columns( array $quotes, Context $ctx ): string {
 		$columns = '';
 		foreach ( $quotes as $entry ) {
 			$quote      = isset( $entry['quote'] ) ? (string) $entry['quote'] : '';
@@ -80,7 +81,7 @@ class Testimonials implements Archetype {
 			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $column_inner . '</div>' );
 		}
 
-		return $this->comment_wrap( 'columns', array(), '<div class="wp-block-columns">' . $columns . '</div>' );
+		return $this->render_columns_wrap( $columns, $ctx, false, 'md', true );
 	}
 
 	/**
@@ -102,6 +103,10 @@ class Testimonials implements Archetype {
 			$html .= '<cite>' . $this->esc_html( $citation ) . '</cite>';
 		}
 
-		return $this->comment_wrap( 'quote', array(), '<blockquote class="wp-block-quote">' . $html . '</blockquote>' );
+		return $this->comment_wrap(
+			'quote',
+			array( 'textAlign' => 'center' ),
+			'<blockquote class="wp-block-quote has-text-align-center">' . $html . '</blockquote>'
+		);
 	}
 }

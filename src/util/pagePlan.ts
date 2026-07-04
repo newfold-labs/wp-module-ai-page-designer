@@ -11,6 +11,7 @@ import apiFetch from '@wordpress/api-fetch';
 export interface PagePlanResult {
   content: string;
   title: string;
+  excerpt: string;
 }
 
 // On by default; only an explicit `false` (set via the
@@ -28,17 +29,21 @@ export const generatePagePlanPage = async (
   prompt: string
 ): Promise<PagePlanResult | null> => {
   try {
-    const result = await apiFetch<{ content?: string; title?: string }>( {
+    const result = await apiFetch<{ content?: string; title?: string; excerpt?: string }>( {
       path: `${ apiUrl }/page-plan`,
       method: 'POST',
       data: { prompt },
     } );
 
     if ( ! result?.content ) {
+      // eslint-disable-next-line no-console
+      console.warn( '[AI Page Designer] /page-plan returned no content; falling back to freeform generate.', result );
       return null;
     }
-    return { content: result.content, title: result.title || '' };
-  } catch {
+    return { content: result.content, title: result.title || '', excerpt: result.excerpt || '' };
+  } catch ( error ) {
+    // eslint-disable-next-line no-console
+    console.warn( '[AI Page Designer] /page-plan request failed; falling back to freeform generate.', error );
     return null;
   }
 };
