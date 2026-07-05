@@ -72,7 +72,10 @@ class AlternatingMediaTextTest extends PageAssemblyTestCase {
 	public function test_columns_never_declare_a_width(): void {
 		$alt = new AlternatingMediaText();
 		$out = $alt->render( $this->content(), null, $this->context(), null );
-		$this->assertStringNotContainsString( 'width', $out );
+		// No block-attr "width" anywhere (columns stay auto-distributed — the
+		// one width state the Validator always accepts). The rounded image's
+		// inline `width:100%` CSS is fine and deliberately not matched here.
+		$this->assertStringNotContainsString( '"width"', $out );
 	}
 
 	public function test_is_correct_by_construction(): void {
@@ -92,5 +95,29 @@ class AlternatingMediaTextTest extends PageAssemblyTestCase {
 		$ctx  = $this->context();
 		$once = $alt->render( $this->content(), null, $ctx, null );
 		$this->assertSame( $once, $alt->render( $this->content(), null, $ctx, null ) );
+	}
+
+	public function test_floating_media_is_the_default_variant(): void {
+		$alt = new AlternatingMediaText();
+		$out = $alt->render( $this->content(), null, $this->context(), null );
+
+		$this->assertStringContainsString( 'border-radius:16px', $out );
+		$this->assertStringContainsString( 'box-shadow', $out );
+	}
+
+	public function test_flat_variant_keeps_unstyled_images(): void {
+		$alt = new AlternatingMediaText();
+		$out = $alt->render( $this->content(), 'flat', $this->context(), null );
+
+		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( 'box-shadow', $out );
+	}
+
+	public function test_flat_variant_is_correct_by_construction(): void {
+		$alt = new AlternatingMediaText();
+		$ctx = $this->context();
+		$out = $alt->render( $this->content(), 'flat', $ctx, null );
+
+		$this->assertSame( array(), ( new \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Validator() )->validate( $out, $ctx ) );
 	}
 }

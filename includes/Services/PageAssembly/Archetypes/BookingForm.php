@@ -35,7 +35,15 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * v1 supports a single variant, `stacked`.
+ * Two variants:
+ *  - `card` (default): the form centered inside a
+ *    {@see RendersMarkup::render_floating_card()} card (max-width 640, quiet
+ *    {@see RendersMarkup::card_slug_for_section()} swatch) — field borders,
+ *    text, and the submit button all derive from the CARD's background, so
+ *    legibility holds by construction one level down, same chaining as
+ *    {@see PricingTiers}'s highlighted tier.
+ *  - `stacked`: the original full-width flat form, reachable only via an
+ *    explicit `variant: "stacked"` plan item.
  */
 class BookingForm implements Archetype {
 
@@ -76,14 +84,21 @@ class BookingForm implements Archetype {
 			? (string) $content['submitLabel']
 			: 'Submit';
 
+		$as_card   = 'stacked' !== $variant;
+		$card_slug = $as_card ? $this->card_slug_for_section( $ctx, $background_slug ) : null;
+		$card_text = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
+		// Everything inside the form colors against the surface it actually
+		// sits on: the card when present, the section otherwise.
+		$form_surface = $as_card && null !== $card_slug ? $card_slug : $background_slug;
+
 		$field_html = '';
 		foreach ( $fields as $field ) {
 			if ( is_array( $field ) ) {
-				$field_html .= $this->render_field( $field, $ctx, $background_slug );
+				$field_html .= $this->render_field( $field, $ctx, $form_surface );
 			}
 		}
 
-		$button_bg    = $this->contrasting_slug( $ctx, $background_slug );
+		$button_bg    = $this->contrasting_slug( $ctx, $form_surface );
 		$button_text  = $this->text_slug_for_background( $ctx, $button_bg );
 		$button_style = 'background-color:' . ( null !== $button_bg ? 'var(--wp--preset--color--' . $button_bg . ')' : '#000' ) . ';'
 			. 'color:' . ( null !== $button_text ? 'var(--wp--preset--color--' . $button_text . ')' : '#fff' ) . ';'
@@ -94,6 +109,9 @@ class BookingForm implements Archetype {
 			. '</form>';
 
 		$inner = $this->comment_wrap( 'html', array(), $form );
+		if ( $as_card ) {
+			$inner = $this->render_floating_card( $inner, $ctx, $card_slug, $card_text, 640 );
+		}
 
 		return $this->render_section( $heading, $intro, $inner, $ctx, $background_slug );
 	}

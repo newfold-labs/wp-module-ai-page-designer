@@ -110,4 +110,35 @@ class BookingFormTest extends PageAssemblyTestCase {
 		$once = $form->render( $this->content(), 'stacked', $ctx, null );
 		$this->assertSame( $once, $form->render( $this->content(), 'stacked', $ctx, null ) );
 	}
+
+	public function test_card_is_the_default_variant(): void {
+		$form = new BookingForm();
+		$out  = $form->render( $this->content(), null, $this->context(), null );
+
+		$this->assertStringContainsString( 'border-radius:16px', $out );
+		$this->assertStringContainsString( 'max-width:640px', $out );
+		$this->assertStringContainsString( '<input type="text" id="name" name="name"', $out );
+	}
+
+	public function test_stacked_variant_stays_flat(): void {
+		$form = new BookingForm();
+		$out  = $form->render( $this->content(), 'stacked', $this->context(), null );
+
+		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+	}
+
+	public function test_card_variant_is_correct_by_construction_with_and_without_background(): void {
+		$form = new BookingForm();
+		$ctx  = $this->context();
+		$v    = new Validator();
+
+		$this->assertSame( array(), $v->validate( $form->render( $this->content(), null, $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $form->render( $this->content(), null, $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_card_variant_submit_button_is_never_unstyled(): void {
+		$form = new BookingForm();
+		$out  = $form->render( $this->content(), null, $this->context(), null );
+		$this->assertMatchesRegularExpression( '/<button type="submit" style="[^"]*background(-color)?\s*:/', $out );
+	}
 }

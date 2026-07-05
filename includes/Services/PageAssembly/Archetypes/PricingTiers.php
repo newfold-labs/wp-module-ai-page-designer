@@ -32,7 +32,13 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * v1 supports a single variant, `3-tier`.
+ * Two variants:
+ *  - `cards` (default): every tier in a {@see RendersMarkup::render_floating_card()}
+ *    card — the highlighted tier keeps the loud {@see RendersMarkup::contrasting_slug()}
+ *    accent card so it still stands out, plain tiers get the quiet
+ *    {@see RendersMarkup::card_slug_for_section()} swatch.
+ *  - `3-tier`: the original flat columns (highlighted tier only gets a card),
+ *    reachable only via an explicit `variant: "3-tier"` plan item.
  */
 class PricingTiers implements Archetype {
 
@@ -61,7 +67,8 @@ class PricingTiers implements Archetype {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
 		$tiers   = isset( $content['tiers'] ) && is_array( $content['tiers'] ) ? $content['tiers'] : array();
 
-		$columns = empty( $tiers ) ? '' : $this->render_columns( $tiers, $ctx, $background_slug );
+		$as_cards = '3-tier' !== $variant;
+		$columns  = empty( $tiers ) ? '' : $this->render_columns( $tiers, $ctx, $background_slug, $as_cards );
 
 		return $this->render_section( $heading, null, $columns, $ctx, $background_slug );
 	}
@@ -72,14 +79,27 @@ class PricingTiers implements Archetype {
 	 * @param array<int, array<string, mixed>> $tiers           Tier definitions.
 	 * @param Context                          $ctx             Theme/conformance context.
 	 * @param string|null                      $background_slug The section's own background slug.
+	 * @param bool                             $as_cards        Whether every tier gets a floating card (the `cards` variant).
 	 * @return string
 	 */
-	private function render_columns( array $tiers, Context $ctx, ?string $background_slug ): string {
+	private function render_columns( array $tiers, Context $ctx, ?string $background_slug, bool $as_cards ): string {
 		$columns = '';
 		foreach ( $tiers as $tier ) {
 			$is_highlighted = ! empty( $tier['highlighted'] );
-			$tier_inner      = $this->render_tier( $tier, $ctx, $is_highlighted ? $this->contrasting_slug( $ctx, $background_slug ) : null );
-			$columns        .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $tier_inner . '</div>' );
+
+			if ( $as_cards ) {
+				// The highlighted tier keeps the LOUD accent card so it stands
+				// out from its (quiet, muted-light) siblings.
+				$card_slug  = $is_highlighted
+					? $this->contrasting_slug( $ctx, $background_slug )
+					: $this->card_slug_for_section( $ctx, $background_slug );
+				$text_slug  = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
+				$tier_inner = $this->render_floating_card( $this->render_tier_content( $tier, $ctx, $card_slug ), $ctx, $card_slug, $text_slug );
+			} else {
+				$tier_inner = $this->render_tier( $tier, $ctx, $is_highlighted ? $this->contrasting_slug( $ctx, $background_slug ) : null );
+			}
+
+			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $tier_inner . '</div>' );
 		}
 
 		return $this->render_columns_wrap( $columns, $ctx, false, 'md', true );
@@ -94,6 +114,26 @@ class PricingTiers implements Archetype {
 	 * @return string
 	 */
 	private function render_tier( array $tier, Context $ctx, ?string $card_slug ): string {
+		$content = $this->render_tier_content( $tier, $ctx, $card_slug );
+
+		if ( null === $card_slug ) {
+			return $content;
+		}
+
+		return $this->render_card( $content, $card_slug, $this->text_slug_for_background( $ctx, $card_slug ), $ctx );
+	}
+
+	/**
+	 * Render a tier's inner content (heading, price line, features, CTA) with
+	 * text/button colors computed against the tier's card background — shared
+	 * by both the legacy flat wrap and the floating-card variant.
+	 *
+	 * @param array<string, mixed> $tier      Tier definition.
+	 * @param Context               $ctx       Theme/conformance context.
+	 * @param string|null           $card_slug The tier's card background slug, or null for none.
+	 * @return string
+	 */
+	private function render_tier_content( array $tier, Context $ctx, ?string $card_slug ): string {
 		$name     = isset( $tier['name'] ) ? (string) $tier['name'] : '';
 		$price    = isset( $tier['price'] ) ? (string) $tier['price'] : '';
 		$period   = isset( $tier['period'] ) ? (string) $tier['period'] : '';
@@ -114,11 +154,7 @@ class PricingTiers implements Archetype {
 			$content    .= $this->render_buttons_wrap( $this->render_button( (string) $cta['label'], isset( $cta['url'] ) ? (string) $cta['url'] : '#', $button_bg, $button_text ), true );
 		}
 
-		if ( null === $card_slug ) {
-			return $content;
-		}
-
-		return $this->render_card( $content, $card_slug, $text_slug, $ctx );
+		return $content;
 	}
 
 	/**
@@ -131,8 +167,10 @@ class PricingTiers implements Archetype {
 	private function render_feature_list( array $features, ?string $text_slug ): string {
 		$classes      = array( 'wp-block-list', 'has-text-align-center' );
 		// Centre the list and drop bullet markers — centered bullets read awkwardly;
-		// a clean centered list is the standard pricing-tier treatment.
-		$declarations = array( 'text-align:center', 'list-style:none' );
+		// a clean centered list is the standard pricing-tier treatment. The
+		// browser's default <ul> padding-inline-start (~40px) must go too, or
+		// the "centered" text sits visibly right of centre once bullets are gone.
+		$declarations = array( 'text-align:center', 'list-style:none', 'padding-left:0', 'margin-left:0' );
 		if ( null !== $text_slug ) {
 			$classes[]      = 'has-' . $text_slug . '-color';
 			$classes[]      = 'has-text-color';

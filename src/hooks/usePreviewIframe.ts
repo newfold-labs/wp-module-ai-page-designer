@@ -360,8 +360,13 @@ export const usePreviewIframe = (
 
             if (finalize) {
               root.removeAttribute('data-nfd-streaming');
-              _enableAnimations();
+              // Render FIRST, then enable animations: _enableAnimations()
+              // attaches the IntersectionObserver to the [data-aos] nodes in
+              // the DOM, so it must run on the freshly rendered content —
+              // observing the about-to-be-replaced nodes leaves the new
+              // sections permanently at the [data-aos] base opacity:0 (blank).
               _applyContent(root, html, true);
+              _enableAnimations();
               return;
             }
 

@@ -1248,8 +1248,12 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
               // The fade needs !important + the [data-nfd-streaming] selector to
               // out-cascade the srcdoc's blanket transition:none streaming rule
               // (same specificity, later in the document, so it wins).
+              // The [data-nfd-streaming] variants match the specificity of the
+              // srcdoc's streaming rules (e.g. its [data-aos]{opacity:1
+              // !important} guard, which sections now carry) so this later
+              // stylesheet wins the cascade and the hide actually hides.
               st.textContent =
-                `#nfd-preview-root > :nth-child(n+${ hiddenFrom }){opacity:0 !important;}` +
+                `#nfd-preview-root[data-nfd-streaming] > :nth-child(n+${ hiddenFrom }), #nfd-preview-root > :nth-child(n+${ hiddenFrom }){opacity:0 !important;}` +
                 '#nfd-preview-root[data-nfd-streaming] > *, #nfd-preview-root > *{transition:opacity 500ms ease !important;}' +
                 '#nfd-preview-root[data-nfd-streaming] [data-nfd-reveal], #nfd-preview-root [data-nfd-reveal]{transition:opacity 350ms ease !important;}';
               return doc;
@@ -1291,7 +1295,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
                 const contentEls = el ? hideContent( el ) : [];
                 ensureRule( i + 1 );
                 try {
-                  el?.scrollIntoView( { behavior: 'smooth', block: 'center' } );
+                  el?.scrollIntoView( { behavior: 'smooth', block: 'start' } );
                 } catch {
                   // ignore
                 }

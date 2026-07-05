@@ -62,4 +62,31 @@ class FaqAccordionTest extends PageAssemblyTestCase {
 		$once = $faq->render( $this->content(), 'stacked', $ctx, null );
 		$this->assertSame( $once, $faq->render( $this->content(), 'stacked', $ctx, null ) );
 	}
+
+	public function test_cards_is_the_default_variant(): void {
+		$faq = new FaqAccordion();
+		$ctx = $this->context();
+		$out = $faq->render( $this->content(), null, $ctx, null );
+
+		$this->assertSame( 2, substr_count( $out, 'border-radius:12px' ) );
+		$this->assertStringContainsString( '"backgroundColor":"' . $ctx->muted_light_slug() . '"', $out );
+		$this->assertStringContainsString( 'What is this?', $out );
+	}
+
+	public function test_stacked_variant_stays_flat(): void {
+		$faq = new FaqAccordion();
+		$out = $faq->render( $this->content(), 'stacked', $this->context(), null );
+
+		$this->assertStringNotContainsString( 'border-radius:12px', $out );
+		$this->assertSame( 2, substr_count( $out, '<summary>' ) );
+	}
+
+	public function test_cards_variant_is_correct_by_construction_with_and_without_background(): void {
+		$faq = new FaqAccordion();
+		$ctx = $this->context();
+		$v   = new Validator();
+
+		$this->assertSame( array(), $v->validate( $faq->render( $this->content(), null, $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $faq->render( $this->content(), null, $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
 }

@@ -23,7 +23,12 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * v1 supports a single variant, `stacked`.
+ * Two variants:
+ *  - `cards` (default): each `core/details` item styled as a rounded
+ *    {@see RendersMarkup::card_slug_for_section()} card (quiet muted-light
+ *    swatch, padding, radius) so the accordion reads as a modern stacked list.
+ *  - `stacked`: the original unstyled `core/details` stack, reachable only
+ *    via an explicit `variant: "stacked"` plan item.
  */
 class FaqAccordion implements Archetype {
 
@@ -52,28 +57,61 @@ class FaqAccordion implements Archetype {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
 		$items   = isset( $content['items'] ) && is_array( $content['items'] ) ? $content['items'] : array();
 
+		$card_slug = 'stacked' !== $variant ? $this->card_slug_for_section( $ctx, $background_slug ) : null;
+		$card_text = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
+
 		$inner = '';
 		foreach ( $items as $item ) {
 			$question = isset( $item['q'] ) ? (string) $item['q'] : '';
 			$answer   = isset( $item['a'] ) ? (string) $item['a'] : '';
-			$inner   .= $this->render_details( $question, $answer );
+			$inner   .= $this->render_details( $question, $answer, $ctx, $card_slug, $card_text );
 		}
 
 		return $this->render_section( $heading, null, $inner, $ctx, $background_slug );
 	}
 
 	/**
-	 * Render one `core/details` question/answer pair.
+	 * Render one `core/details` question/answer pair, optionally styled as a
+	 * rounded card (the `cards` variant).
 	 *
-	 * @param string $question Question text.
-	 * @param string $answer   Answer text.
+	 * @param string      $question  Question text.
+	 * @param string      $answer    Answer text.
+	 * @param Context     $ctx       Theme/conformance context.
+	 * @param string|null $card_slug Card background slug, or null for the plain stack.
+	 * @param string|null $text_slug Card text color slug.
 	 * @return string
 	 */
-	private function render_details( string $question, string $answer ): string {
-		$html = '<details class="wp-block-details"><summary>' . $this->esc_html( $question ) . '</summary>'
-			. $this->render_paragraph( $answer, null )
+	private function render_details( string $question, string $answer, Context $ctx, ?string $card_slug, ?string $text_slug ): string {
+		$classes = array( 'wp-block-details' );
+		$attrs   = array();
+		$style   = '';
+
+		if ( null !== $card_slug ) {
+			$classes[]                = 'has-' . $card_slug . '-background-color';
+			$classes[]                = 'has-background';
+			$attrs['backgroundColor'] = $card_slug;
+			$style                    = 'border-radius:12px'
+				. ';padding:' . $ctx->spacing_css( 'sm' ) . ' ' . $ctx->spacing_css( 'md' )
+				. ';margin-bottom:' . $ctx->spacing_css( 'sm' )
+				. ';background-color:var(--wp--preset--color--' . $card_slug . ')';
+			if ( null !== $text_slug ) {
+				$classes[]          = 'has-' . $text_slug . '-color';
+				$classes[]          = 'has-text-color';
+				$attrs['textColor'] = $text_slug;
+				$style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
+			}
+		}
+
+		$style_attr = '' !== $style ? ' style="' . $style . '"' : '';
+		// Summary styling belongs to the cards look only — the legacy stacked
+		// variant stays byte-identical to its original output.
+		$summary = null !== $card_slug
+			? '<summary style="cursor:pointer;font-weight:600">' . $this->esc_html( $question ) . '</summary>'
+			: '<summary>' . $this->esc_html( $question ) . '</summary>';
+		$html    = '<details class="' . implode( ' ', $classes ) . '"' . $style_attr . '>' . $summary
+			. $this->render_paragraph( $answer, $text_slug )
 			. '</details>';
 
-		return $this->comment_wrap( 'details', array(), $html );
+		return $this->comment_wrap( 'details', $attrs, $html );
 	}
 }

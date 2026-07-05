@@ -31,7 +31,12 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * v1 supports a single variant, auto left/right alternation (no named variant).
+ * Rows always alternate left/right automatically. Two visual variants:
+ *  - `floating-media` (default): row images rendered rounded with a soft drop
+ *    shadow ({@see RendersMarkup::render_image_block()} rounded mode) — the
+ *    modern treatment matching the split hero's floating image card.
+ *  - `flat`: the original unstyled images, reachable only via an explicit
+ *    `variant: "flat"` plan item.
  */
 class AlternatingMediaText implements Archetype {
 
@@ -61,12 +66,14 @@ class AlternatingMediaText implements Archetype {
 		$intro   = isset( $content['intro'] ) ? (string) $content['intro'] : '';
 		$rows    = isset( $content['rows'] ) && is_array( $content['rows'] ) ? $content['rows'] : array();
 
+		$rounded = 'flat' !== $variant;
+
 		$inner = '';
 		foreach ( array_values( $rows ) as $index => $row ) {
 			if ( ! is_array( $row ) ) {
 				continue;
 			}
-			$inner .= $this->render_row( $row, 0 === $index % 2, $ctx, $background_slug );
+			$inner .= $this->render_row( $row, 0 === $index % 2, $ctx, $background_slug, $rounded );
 		}
 
 		return $this->render_section( $heading, $intro, $inner, $ctx, $background_slug );
@@ -79,9 +86,10 @@ class AlternatingMediaText implements Archetype {
 	 * @param bool                  $image_first     Whether the image column comes first (even rows).
 	 * @param Context               $ctx             Theme/conformance context.
 	 * @param string|null           $background_slug The section's own background slug.
+	 * @param bool                  $rounded         Whether the row image gets the rounded/shadowed treatment.
 	 * @return string
 	 */
-	private function render_row( array $row, bool $image_first, Context $ctx, ?string $background_slug ): string {
+	private function render_row( array $row, bool $image_first, Context $ctx, ?string $background_slug, bool $rounded = true ): string {
 		$row_heading = isset( $row['heading'] ) ? (string) $row['heading'] : '';
 		$body        = isset( $row['body'] ) ? (string) $row['body'] : '';
 		$image_url   = isset( $row['imageUrl'] ) ? (string) $row['imageUrl'] : '';
@@ -98,11 +106,13 @@ class AlternatingMediaText implements Archetype {
 
 		$image_column = '';
 		if ( '' !== $image_url ) {
-			$image_column = $this->comment_wrap(
-				'image',
-				array( 'sizeSlug' => 'large' ),
-				'<figure class="wp-block-image size-large"><img src="' . $this->esc_url( $image_url ) . '" alt=""/></figure>'
-			);
+			$image_column = $rounded
+				? $this->render_image_block( $image_url, true )
+				: $this->comment_wrap(
+					'image',
+					array( 'sizeSlug' => 'large' ),
+					'<figure class="wp-block-image size-large"><img src="' . $this->esc_url( $image_url ) . '" alt=""/></figure>'
+				);
 		}
 		$image_column = $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $image_column . '</div>' );
 

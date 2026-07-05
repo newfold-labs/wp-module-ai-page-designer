@@ -241,7 +241,14 @@ trait RendersMarkup {
 				),
 			)
 			: array();
-		return $this->comment_wrap( 'buttons', $attrs, '<div class="wp-block-buttons">' . $buttons_html . '</div>' );
+		// The layout attr alone only centers when WordPress generates layout CSS
+		// for it — which the raw-markup preview never does and the front-end does
+		// inconsistently for static markup. Emit the flex centering as classes +
+		// inline styles too, so a "centered" button row is centered everywhere
+		// by construction (text centered but buttons left-hugging reads broken).
+		$classes = 'wp-block-buttons' . ( $center ? ' is-content-justification-center is-layout-flex wp-block-buttons-is-layout-flex' : '' );
+		$style   = $center ? ' style="display:flex;flex-wrap:wrap;gap:0.5em;align-items:center;justify-content:center"' : '';
+		return $this->comment_wrap( 'buttons', $attrs, '<div class="' . $classes . '"' . $style . '>' . $buttons_html . '</div>' );
 	}
 
 	/**
@@ -337,10 +344,14 @@ trait RendersMarkup {
 		}
 		$content .= $inner;
 
+		// data-aos: scroll-triggered entrance from the canonical motion
+		// vocabulary — the preview iframe and the published front-end both run
+		// an IntersectionObserver for it, so the section fades up once when it
+		// enters the viewport on BOTH surfaces (WYSIWYG), and never loops.
 		return $this->comment_wrap(
 			'group',
 			$group_attrs,
-			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '">' . $content . '</div>'
+			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '" data-aos="fade-up">' . $content . '</div>'
 		);
 	}
 
@@ -461,10 +472,11 @@ trait RendersMarkup {
 			$group_style .= ';' . $gradient;
 		}
 
+		// Same scroll-triggered entrance as render_section() — see there.
 		return $this->comment_wrap(
 			'group',
 			$group_attrs,
-			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '">' . $inner . '</div>'
+			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '" data-aos="fade-up">' . $inner . '</div>'
 		);
 	}
 
@@ -484,7 +496,12 @@ trait RendersMarkup {
 	 */
 	private function render_floating_card( string $inner, Context $ctx, ?string $card_slug, ?string $text_slug, ?int $max_width = null ): string {
 		$group_attrs = array(
-			'style' => array(
+			// card-hover-lift: hover-gated motion from the canonical vocabulary
+			// (subtle lift + shadow on hover, defined by get_motion_css() for
+			// both preview and front-end). Hover-only — never plays on load,
+			// never loops.
+			'className' => 'card-hover-lift',
+			'style'     => array(
 				'spacing' => array(
 					'padding' => array(
 						'top'    => $ctx->spacing_attr( 'md' ),
@@ -495,7 +512,7 @@ trait RendersMarkup {
 				),
 			),
 		);
-		$group_classes = array( 'wp-block-group' );
+		$group_classes = array( 'wp-block-group', 'card-hover-lift' );
 		$group_style   = 'padding-top:' . $ctx->spacing_css( 'md' ) . ';padding-bottom:' . $ctx->spacing_css( 'md' )
 			. ';padding-left:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' )
 			. ';border-radius:16px;box-shadow:0 20px 60px -15px rgba(0,0,0,.35);overflow:hidden';
@@ -539,7 +556,7 @@ trait RendersMarkup {
 		return $this->comment_wrap(
 			'image',
 			array( 'sizeSlug' => 'large' ),
-			'<figure class="wp-block-image size-large"' . ( $rounded ? ' style="border-radius:16px;overflow:hidden"' : '' ) . '>' . $img . '</figure>'
+			'<figure class="wp-block-image size-large"' . ( $rounded ? ' style="border-radius:16px;overflow:hidden;box-shadow:0 12px 32px -12px rgba(0,0,0,.25)"' : '' ) . '>' . $img . '</figure>'
 		);
 	}
 
