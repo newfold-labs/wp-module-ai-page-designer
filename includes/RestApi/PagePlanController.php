@@ -68,6 +68,12 @@ class PagePlanController {
 		'faqAccordion'          => 'heading?: string, items: array of { q: string, a: string }',
 		'statsBar'              => 'items: 2-4 of { value: string, label: string }',
 		'richText'              => 'heading?: string, body: string, cta?: { label: string, url: string }',
+		'galleryGrid'           => 'heading?: string, intro?: string, images: 3-6 of '
+			. '{ imageQuery: string (short Unsplash search phrase; vary the phrases so the images differ) }',
+		'teamGrid'              => 'heading?: string, intro?: string, members: 2-4 of { name: string, role: string, '
+			. 'bio?: string (one short sentence), avatarQuery?: string (short Unsplash search phrase for a headshot) }',
+		'processSteps'          => 'heading?: string, intro?: string, steps: 3-4 of { title: string, body: string } '
+			. '(a numbered "how it works" sequence)',
 	);
 
 	/**
@@ -307,7 +313,9 @@ class PagePlanController {
 			. $archetype_lines
 			. "\nBuild a COMPLETE, substantial page: include AT LEAST 4 sections (ideally 5-6). Always open with \"heroCover\" "
 			. 'and end with a "ctaBanner", and fill the middle with a varied mix (for example featureGrid, alternatingMediaText, '
-			. 'testimonials, statsBar, pricingTiers, or faqAccordion) that fits the topic. Even if the request only mentions one or '
+			. 'testimonials, statsBar, pricingTiers, processSteps, galleryGrid, teamGrid, or faqAccordion) that fits the topic — '
+			. 'prefer galleryGrid for visual businesses (food, interiors, portfolios), teamGrid for about/people pages, and '
+			. 'processSteps when the service has a clear how-it-works flow. Even if the request only mentions one or '
 			. 'two sections, still produce a full homepage with at least 4 sections. '
 			. $site_context
 			. 'Write real, specific copy for the described business/topic — never placeholder text like "Lorem ipsum" or "Heading here".';

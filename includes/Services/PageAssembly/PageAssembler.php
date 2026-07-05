@@ -16,10 +16,13 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\Bookin
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\CtaBanner;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\FaqAccordion;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\FeatureGrid;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\GalleryGrid;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\HeroCover;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\PricingTiers;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\ProcessSteps;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\RichText;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\StatsBar;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\TeamGrid;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\Testimonials;
 
 /**
@@ -77,6 +80,9 @@ class PageAssembler {
 			new FaqAccordion(),
 			new StatsBar(),
 			new RichText(),
+			new GalleryGrid(),
+			new TeamGrid(),
+			new ProcessSteps(),
 		) : $archetypes;
 		$this->archetypes = array();
 		foreach ( $archetypes as $archetype ) {

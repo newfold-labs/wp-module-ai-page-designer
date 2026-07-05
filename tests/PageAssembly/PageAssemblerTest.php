@@ -120,11 +120,190 @@ class PageAssemblerTest extends PageAssemblyTestCase {
 		$assembler = new PageAssembler( $this->fake_image_service() );
 		$out       = $assembler->assemble( $plan, $ctx );
 
-		$sections = explode( '<!-- wp:group', $out );
-		// [0] is markup before the first group (empty); [1] and [2] are the two sections.
-		$this->assertCount( 3, $sections );
-		$this->assertStringNotContainsString( 'backgroundColor', $sections[1] );
-		$this->assertStringContainsString( '"backgroundColor":"' . $ctx->muted_light_slug() . '"', $sections[2] );
+		// Assert on the TOP-LEVEL section groups' own opening attrs only —
+		// featureGrid's default floating-card variant nests further wp:group
+		// cards (which legitimately carry their own backgroundColor), so
+		// counting/inspecting every group would misfire.
+		preg_match_all( '/<!-- wp:group \{"align":"wide".*? -->/', $out, $matches );
+		$section_opens = $matches[0];
+		$this->assertCount( 2, $section_opens );
+		$this->assertStringNotContainsString( '"backgroundColor"', $section_opens[0] );
+		$this->assertStringContainsString( '"backgroundColor":"' . $ctx->muted_light_slug() . '"', $section_opens[1] );
+	}
+
+	public function test_full_13_archetype_page_is_correct_by_construction(): void {
+		$plan = array(
+			array(
+				'archetype' => 'heroCover',
+				'content'   => array(
+					'heading'    => 'H',
+					'primaryCta' => array(
+						'label' => 'Go',
+						'url'   => '#',
+					),
+					'imageQuery' => 'coffee',
+				),
+			),
+			array(
+				'archetype' => 'featureGrid',
+				'content'   => array(
+					'items' => array(
+						array(
+							'title' => 'a',
+							'body'  => 'a',
+						),
+						array(
+							'title' => 'b',
+							'body'  => 'b',
+						),
+						array(
+							'title' => 'c',
+							'body'  => 'c',
+						),
+					),
+				),
+			),
+			array(
+				'archetype' => 'alternatingMediaText',
+				'content'   => array(
+					'rows' => array(
+						array(
+							'heading'    => 'r',
+							'body'       => 'b',
+							'imageQuery' => 'beans',
+						),
+					),
+				),
+			),
+			array(
+				'archetype' => 'galleryGrid',
+				'content'   => array(
+					'images' => array(
+						array( 'imageQuery' => 'latte art' ),
+						array( 'imageQuery' => 'cafe interior' ),
+						array( 'imageQuery' => 'espresso' ),
+					),
+				),
+			),
+			array(
+				'archetype' => 'teamGrid',
+				'content'   => array(
+					'members' => array(
+						array(
+							'name'        => 'Ana',
+							'role'        => 'Roaster',
+							'avatarQuery' => 'barista headshot',
+						),
+						array(
+							'name' => 'Ben',
+							'role' => 'Lead',
+						),
+					),
+				),
+			),
+			array(
+				'archetype' => 'processSteps',
+				'content'   => array(
+					'steps' => array(
+						array(
+							'title' => 'One',
+							'body'  => 'x',
+						),
+						array(
+							'title' => 'Two',
+							'body'  => 'y',
+						),
+						array(
+							'title' => 'Three',
+							'body'  => 'z',
+						),
+					),
+				),
+			),
+			array(
+				'archetype' => 'testimonials',
+				'content'   => array(
+					'quotes' => array(
+						array(
+							'quote'  => 'q',
+							'author' => 'a',
+						),
+					),
+				),
+			),
+			array(
+				'archetype' => 'pricingTiers',
+				'content'   => array(
+					'tiers' => array(
+						array(
+							'name'     => 't',
+							'price'    => '$1',
+							'features' => array( 'f' ),
+							'cta'      => array(
+								'label' => 'Buy',
+								'url'   => '#',
+							),
+						),
+					),
+				),
+			),
+			array(
+				'archetype' => 'statsBar',
+				'content'   => array(
+					'items' => array(
+						array(
+							'value' => '1',
+							'label' => 'l',
+						),
+					),
+				),
+			),
+			array(
+				'archetype' => 'faqAccordion',
+				'content'   => array(
+					'items' => array(
+						array(
+							'q' => 'q',
+							'a' => 'a',
+						),
+					),
+				),
+			),
+			array(
+				'archetype' => 'bookingForm',
+				'content'   => array(
+					'fields' => array(
+						array(
+							'type'  => 'email',
+							'name'  => 'email',
+							'label' => 'Email',
+						),
+					),
+				),
+			),
+			array(
+				'archetype' => 'richText',
+				'content'   => array( 'body' => 'prose' ),
+			),
+			array(
+				'archetype' => 'ctaBanner',
+				'content'   => array(
+					'heading' => 'Go',
+					'cta'     => array(
+						'label' => 'Now',
+						'url'   => '#',
+					),
+				),
+			),
+		);
+
+		$ctx       = $this->context();
+		$assembler = new PageAssembler( $this->fake_image_service() );
+		$out       = $assembler->assemble( $plan, $ctx );
+
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+		// Idempotent under a second conform pass (WYSIWYG-critical).
+		$this->assertSame( $out, ( new \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Harness() )->conform( $out ) );
 	}
 
 	public function test_unknown_archetype_is_skipped_not_fatal(): void {

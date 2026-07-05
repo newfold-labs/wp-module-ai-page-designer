@@ -23,7 +23,12 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ```
  * `avatarUrl` is resolved by PageAssembler from an `avatarQuery` slot.
  *
- * v1 supports a single variant, `grid-3`.
+ * Two variants:
+ *  - `cards` (default): each quote wrapped in a light
+ *    {@see RendersMarkup::render_floating_card()} card — the modern "lifted
+ *    cards" treatment matching {@see FeatureGrid}'s default.
+ *  - `grid-3`: the original flat quote columns, reachable only via an explicit
+ *    `variant: "grid-3"` plan item.
  */
 class Testimonials implements Archetype {
 
@@ -52,7 +57,8 @@ class Testimonials implements Archetype {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
 		$quotes  = isset( $content['quotes'] ) && is_array( $content['quotes'] ) ? array_slice( $content['quotes'], 0, 3 ) : array();
 
-		$columns = empty( $quotes ) ? '' : $this->render_columns( $quotes, $ctx );
+		$as_cards = 'grid-3' !== $variant;
+		$columns  = empty( $quotes ) ? '' : $this->render_columns( $quotes, $ctx, $background_slug, $as_cards );
 
 		return $this->render_section( $heading, null, $columns, $ctx, $background_slug );
 	}
@@ -60,11 +66,16 @@ class Testimonials implements Archetype {
 	/**
 	 * Render one column per testimonial.
 	 *
-	 * @param array<int, array<string, mixed>> $quotes Up to 3 testimonials.
-	 * @param Context                          $ctx    Theme/conformance context.
+	 * @param array<int, array<string, mixed>> $quotes          Up to 3 testimonials.
+	 * @param Context                          $ctx             Theme/conformance context.
+	 * @param string|null                      $background_slug The section's own background slug.
+	 * @param bool                             $as_cards        Whether to wrap each quote in a floating card.
 	 * @return string
 	 */
-	private function render_columns( array $quotes, Context $ctx ): string {
+	private function render_columns( array $quotes, Context $ctx, ?string $background_slug, bool $as_cards ): string {
+		$card_slug = $as_cards ? $this->card_slug_for_section( $ctx, $background_slug ) : null;
+		$card_text = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
+
 		$columns = '';
 		foreach ( $quotes as $entry ) {
 			$quote      = isset( $entry['quote'] ) ? (string) $entry['quote'] : '';
@@ -74,9 +85,13 @@ class Testimonials implements Archetype {
 
 			$column_inner = '';
 			if ( '' !== $avatar_url ) {
-				$column_inner .= '<img src="' . $this->esc_url( $avatar_url ) . '" alt="" width="48" height="48" style="border-radius:9999px;object-fit:cover"/>';
+				$column_inner .= '<div style="text-align:center"><img src="' . $this->esc_url( $avatar_url ) . '" alt="" width="56" height="56" style="border-radius:9999px;object-fit:cover"/></div>';
 			}
 			$column_inner .= $this->render_quote( $quote, $author, $role );
+
+			if ( $as_cards ) {
+				$column_inner = $this->render_floating_card( $column_inner, $ctx, $card_slug, $card_text );
+			}
 
 			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $column_inner . '</div>' );
 		}

@@ -73,4 +73,39 @@ class StatsBarTest extends PageAssemblyTestCase {
 		$once  = $stats->render( $this->content(), 'accent-band', $ctx, $bg );
 		$this->assertSame( $once, $stats->render( $this->content(), 'accent-band', $ctx, $bg ) );
 	}
+
+	public function test_stat_cards_is_the_default_variant(): void {
+		$stats = new StatsBar();
+		$ctx   = $this->context();
+		$out   = $stats->render( $this->content(), null, $ctx, $stats->default_background( $ctx ) );
+
+		$this->assertSame( 3, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertStringContainsString( '10k', $out );
+	}
+
+	public function test_accent_band_variant_stays_flat(): void {
+		$stats = new StatsBar();
+		$ctx   = $this->context();
+		$out   = $stats->render( $this->content(), 'accent-band', $ctx, $stats->default_background( $ctx ) );
+
+		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+	}
+
+	public function test_stat_cards_variant_is_correct_by_construction(): void {
+		$stats = new StatsBar();
+		$ctx   = $this->context();
+		$out   = $stats->render( $this->content(), null, $ctx, $stats->default_background( $ctx ) );
+
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
+
+	public function test_stat_cards_never_share_the_accent_band_background(): void {
+		$stats = new StatsBar();
+		$ctx   = $this->context();
+		$bg    = $stats->default_background( $ctx );
+		$out   = $stats->render( $this->content(), null, $ctx, $bg );
+
+		$this->assertNotNull( $bg );
+		$this->assertStringNotContainsString( 'wp-block-group has-' . $bg . '-background-color', $out );
+	}
 }

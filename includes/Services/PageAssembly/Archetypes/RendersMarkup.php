@@ -527,17 +527,41 @@ trait RendersMarkup {
 	 * Render a `core/image` block.
 	 *
 	 * @param string $image_url Resolved image URL.
+	 * @param bool   $rounded   Whether to round the corners (the modern "card image" look).
 	 * @return string
 	 */
-	private function render_image_block( string $image_url ): string {
+	private function render_image_block( string $image_url, bool $rounded = false ): string {
 		if ( '' === $image_url ) {
 			return '';
 		}
-		$img = '<img src="' . $this->esc_url( $image_url ) . '" alt="" style="width:100%;height:100%;object-fit:cover"/>';
+		$img_style = 'width:100%;height:100%;object-fit:cover' . ( $rounded ? ';border-radius:16px' : '' );
+		$img       = '<img src="' . $this->esc_url( $image_url ) . '" alt="" style="' . $img_style . '"/>';
 		return $this->comment_wrap(
 			'image',
 			array( 'sizeSlug' => 'large' ),
-			'<figure class="wp-block-image size-large">' . $img . '</figure>'
+			'<figure class="wp-block-image size-large"' . ( $rounded ? ' style="border-radius:16px;overflow:hidden"' : '' ) . '>' . $img . '</figure>'
 		);
+	}
+
+	/**
+	 * The background slug for a light "lifted card" sitting inside a section —
+	 * the quiet counterpart to {@see contrasting_slug()} (which picks the LOUD
+	 * accent, right for CTAs but garish when every grid item is a card). Prefers
+	 * the muted-light swatch, falls back to the light slug, and returns null
+	 * when nothing differs from the section's own background (the card then
+	 * relies on its border-radius/shadow alone — still visually lifted, and a
+	 * transparent card can never collide with anything by construction).
+	 *
+	 * @param Context     $ctx             Theme/conformance context.
+	 * @param string|null $background_slug The section's own background slug.
+	 * @return string|null
+	 */
+	private function card_slug_for_section( Context $ctx, ?string $background_slug ): ?string {
+		foreach ( array( $ctx->muted_light_slug(), $ctx->light_slug() ) as $candidate ) {
+			if ( null !== $candidate && $candidate !== $background_slug ) {
+				return $candidate;
+			}
+		}
+		return null;
 	}
 }

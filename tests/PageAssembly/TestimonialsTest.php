@@ -77,4 +77,28 @@ class TestimonialsTest extends PageAssemblyTestCase {
 		$once         = $testimonials->render( $this->content(), 'grid-3', $ctx, null );
 		$this->assertSame( $once, $testimonials->render( $this->content(), 'grid-3', $ctx, null ) );
 	}
+
+	public function test_cards_is_the_default_variant(): void {
+		$testimonials = new Testimonials();
+		$out          = $testimonials->render( $this->content(), null, $this->context(), null );
+
+		$this->assertSame( 2, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertStringContainsString( 'This changed everything for us.', $out );
+	}
+
+	public function test_grid_3_variant_stays_flat(): void {
+		$testimonials = new Testimonials();
+		$out          = $testimonials->render( $this->content(), 'grid-3', $this->context(), null );
+
+		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+	}
+
+	public function test_cards_variant_is_correct_by_construction(): void {
+		$testimonials = new Testimonials();
+		$ctx          = $this->context();
+		$v            = new Validator();
+
+		$this->assertSame( array(), $v->validate( $testimonials->render( $this->content(), null, $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $testimonials->render( $this->content(), null, $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
 }

@@ -102,4 +102,38 @@ class FeatureGridTest extends PageAssemblyTestCase {
 		$once = $grid->render( $this->content(), 'cards-3', $ctx, null );
 		$this->assertSame( $once, $grid->render( $this->content(), 'cards-3', $ctx, null ) );
 	}
+
+	public function test_floating_cards_is_the_default_variant(): void {
+		$grid = new FeatureGrid();
+		$out  = $grid->render( $this->content(), null, $this->context(), null );
+
+		$this->assertSame( 3, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertStringContainsString( 'Ethically sourced', $out );
+	}
+
+	public function test_cards_3_variant_stays_flat(): void {
+		$grid = new FeatureGrid();
+		$out  = $grid->render( $this->content(), 'cards-3', $this->context(), null );
+
+		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+	}
+
+	public function test_floating_cards_variant_is_correct_by_construction_with_and_without_background(): void {
+		$grid = new FeatureGrid();
+		$ctx  = $this->context();
+		$v    = new Validator();
+
+		$this->assertSame( array(), $v->validate( $grid->render( $this->content(), null, $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $grid->render( $this->content(), null, $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_floating_cards_never_share_the_section_background(): void {
+		$grid = new FeatureGrid();
+		$ctx  = $this->context();
+		$bg   = $ctx->muted_light_slug();
+		$out  = $grid->render( $this->content(), null, $ctx, $bg );
+
+		// On a muted-light section the cards fall back to the light slug.
+		$this->assertStringNotContainsString( 'wp-block-group has-' . $bg . '-background-color', $out );
+	}
 }
