@@ -326,23 +326,23 @@ trait RendersMarkup {
 			$group_attrs['backgroundColor'] = $background_slug;
 			$group_classes[]                = 'has-' . $background_slug . '-background-color';
 			$group_classes[]                = 'has-background';
-			$group_style                    .= ';background-color:var(--wp--preset--color--' . $background_slug . ')';
+			$group_style                   .= ';background-color:var(--wp--preset--color--' . $background_slug . ')';
 		}
 		if ( null !== $text_slug ) {
 			$group_attrs['textColor'] = $text_slug;
 			$group_classes[]          = 'has-' . $text_slug . '-color';
 			$group_classes[]          = 'has-text-color';
-			$group_style              .= ';color:var(--wp--preset--color--' . $text_slug . ')';
+			$group_style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
 		}
 
-		$content       = '';
+		$content = '';
 		if ( ! empty( $heading ) ) {
 			$content .= $this->render_heading( $heading, 2, null, true );
 		}
 		if ( ! empty( $intro ) ) {
 			$content .= $this->render_paragraph( $intro, null, true );
 		}
-		$content      .= $inner;
+		$content .= $inner;
 
 		// data-aos: scroll-triggered entrance from the canonical motion
 		// vocabulary — the preview iframe and the published front-end both run
@@ -452,22 +452,22 @@ trait RendersMarkup {
 		$group_style   = 'padding-top:' . $ctx->spacing_css( 'lg' ) . ';padding-bottom:' . $ctx->spacing_css( 'lg' )
 			. ';padding-left:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' );
 
-		$text_slug     = $this->text_slug_for_background( $ctx, $background_slug );
+		$text_slug = $this->text_slug_for_background( $ctx, $background_slug );
 
 		if ( null !== $background_slug ) {
 			$group_attrs['backgroundColor'] = $background_slug;
 			$group_classes[]                = 'has-' . $background_slug . '-background-color';
 			$group_classes[]                = 'has-background';
-			$group_style                    .= ';background-color:var(--wp--preset--color--' . $background_slug . ')';
+			$group_style                   .= ';background-color:var(--wp--preset--color--' . $background_slug . ')';
 		}
 		if ( null !== $text_slug ) {
 			$group_attrs['textColor'] = $text_slug;
 			$group_classes[]          = 'has-' . $text_slug . '-color';
 			$group_classes[]          = 'has-text-color';
-			$group_style              .= ';color:var(--wp--preset--color--' . $text_slug . ')';
+			$group_style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
 		}
 
-		$gradient      = $this->gradient_style_declaration( $ctx, $background_slug );
+		$gradient = $this->gradient_style_declaration( $ctx, $background_slug );
 		if ( '' !== $gradient ) {
 			$group_style .= ';' . $gradient;
 		}
@@ -524,13 +524,13 @@ trait RendersMarkup {
 			$group_attrs['backgroundColor'] = $card_slug;
 			$group_classes[]                = 'has-' . $card_slug . '-background-color';
 			$group_classes[]                = 'has-background';
-			$group_style                    .= ';background-color:var(--wp--preset--color--' . $card_slug . ')';
+			$group_style                   .= ';background-color:var(--wp--preset--color--' . $card_slug . ')';
 		}
 		if ( null !== $text_slug ) {
 			$group_attrs['textColor'] = $text_slug;
 			$group_classes[]          = 'has-' . $text_slug . '-color';
 			$group_classes[]          = 'has-text-color';
-			$group_style              .= ';color:var(--wp--preset--color--' . $text_slug . ')';
+			$group_style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
 		}
 
 		return $this->comment_wrap(

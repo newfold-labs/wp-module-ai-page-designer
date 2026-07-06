@@ -82,8 +82,8 @@ class HeroCover implements Archetype {
 	 * Render the `split` variant: text column + floating image card column.
 	 *
 	 * @param array<string, mixed> $content         Slot content.
-	 * @param Context               $ctx             Theme/conformance context.
-	 * @param string|null           $background_slug Section background slug.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Section background slug.
 	 * @return string
 	 */
 	private function render_split( array $content, Context $ctx, ?string $background_slug ): string {
@@ -97,7 +97,7 @@ class HeroCover implements Archetype {
 		$primary_cta   = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
 		$secondary_cta = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
 
-		$text_column  = '';
+		$text_column = '';
 		if ( '' !== $eyebrow ) {
 			$text_column .= $this->render_paragraph( $eyebrow, $text_slug, false );
 		}
@@ -124,8 +124,8 @@ class HeroCover implements Archetype {
 	 * Render the `image-bg` variant: the original full-bleed `core/cover` hero.
 	 *
 	 * @param array<string, mixed> $content         Slot content.
-	 * @param Context               $ctx             Theme/conformance context.
-	 * @param string|null           $background_slug Cover background slug.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Cover background slug.
 	 * @return string
 	 */
 	private function render_image_bg( array $content, Context $ctx, ?string $background_slug ): string {
