@@ -36,6 +36,9 @@ class TeamGrid implements Archetype {
 	 * {@inheritDoc}
 	 *
 	 * No fixed default — see {@see FeatureGrid::default_background()} for why.
+	 *
+	 * @param Context $ctx Theme/conformance context.
+	 * @return string|null
 	 */
 	public function default_background( Context $ctx ): ?string {
 		return null;
@@ -50,6 +53,12 @@ class TeamGrid implements Archetype {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * @param array<string, mixed> $content         Fully-resolved slot content (see the concrete class docblock for its shape).
+	 * @param string|null          $variant         Requested variant, or null for the archetype's default.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Palette slug to use as this section's background, or null for none.
+	 * @return string Gutenberg block markup for one section.
 	 */
 	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';

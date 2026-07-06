@@ -42,6 +42,9 @@ class StatsBar implements Archetype {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * @param Context $ctx Theme/conformance context.
+	 * @return string|null
 	 */
 	public function default_background( Context $ctx ): ?string {
 		$accent = $ctx->accent_slug();
@@ -50,6 +53,12 @@ class StatsBar implements Archetype {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * @param array<string, mixed> $content         Fully-resolved slot content (see the concrete class docblock for its shape).
+	 * @param string|null          $variant         Requested variant, or null for the archetype's default.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Palette slug to use as this section's background, or null for none.
+	 * @return string Gutenberg block markup for one section.
 	 */
 	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
 		$bg_slug = $background_slug ?? $this->default_background( $ctx );
@@ -65,9 +74,9 @@ class StatsBar implements Archetype {
 	 * Render one column per stat.
 	 *
 	 * @param array<int, array<string, string>> $items    [ 'value', 'label' ] items.
-	 * @param Context                            $ctx      Theme/conformance context.
-	 * @param string|null                        $bg_slug  The section's own background slug.
-	 * @param bool                               $as_cards Whether to wrap each stat in a floating card.
+	 * @param Context                           $ctx      Theme/conformance context.
+	 * @param string|null                       $bg_slug  The section's own background slug.
+	 * @param bool                              $as_cards Whether to wrap each stat in a floating card.
 	 * @return string
 	 */
 	private function render_columns( array $items, Context $ctx, ?string $bg_slug, bool $as_cards ): string {

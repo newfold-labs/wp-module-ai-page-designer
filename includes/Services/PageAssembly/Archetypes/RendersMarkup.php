@@ -139,7 +139,7 @@ trait RendersMarkup {
 		$attrs   = array( 'level' => $level );
 		$style   = '';
 		if ( $center ) {
-			$classes[]         = 'has-text-align-center';
+			$classes[]          = 'has-text-align-center';
 			$attrs['textAlign'] = 'center';
 		}
 		if ( null !== $text_slug ) {
@@ -169,7 +169,7 @@ trait RendersMarkup {
 		$attrs   = array();
 		$style   = '';
 		if ( $center ) {
-			$classes[]       = 'has-text-align-center';
+			$classes[]      = 'has-text-align-center';
 			$attrs['align'] = 'center';
 		}
 		if ( null !== $text_slug ) {
@@ -305,7 +305,7 @@ trait RendersMarkup {
 	private function render_section( ?string $heading, ?string $intro, string $inner, Context $ctx, ?string $background_slug ): string {
 		$text_slug = $this->text_slug_for_background( $ctx, $background_slug );
 
-		$group_attrs = array(
+		$group_attrs   = array(
 			'align' => 'wide',
 			'style' => array(
 				'spacing' => array(
@@ -335,14 +335,14 @@ trait RendersMarkup {
 			$group_style              .= ';color:var(--wp--preset--color--' . $text_slug . ')';
 		}
 
-		$content = '';
+		$content       = '';
 		if ( ! empty( $heading ) ) {
 			$content .= $this->render_heading( $heading, 2, null, true );
 		}
 		if ( ! empty( $intro ) ) {
 			$content .= $this->render_paragraph( $intro, null, true );
 		}
-		$content .= $inner;
+		$content      .= $inner;
 
 		// data-aos: scroll-triggered entrance from the canonical motion
 		// vocabulary — the preview iframe and the published front-end both run
@@ -391,8 +391,8 @@ trait RendersMarkup {
 		}
 
 		$base_brightness = $ctx->brightness( $hex );
-		$best_slug        = null;
-		$best_delta       = null;
+		$best_slug       = null;
+		$best_delta      = null;
 		// A same-tone pairing only — anything further apart is a different role
 		// (e.g. dark vs. accent), which is the exact jump we're avoiding here.
 		$max_delta = 60.0;
@@ -435,7 +435,7 @@ trait RendersMarkup {
 	 * @return string
 	 */
 	private function render_gradient_section( string $inner, Context $ctx, ?string $background_slug ): string {
-		$group_attrs = array(
+		$group_attrs   = array(
 			'align' => 'wide',
 			'style' => array(
 				'spacing' => array(
@@ -452,7 +452,7 @@ trait RendersMarkup {
 		$group_style   = 'padding-top:' . $ctx->spacing_css( 'lg' ) . ';padding-bottom:' . $ctx->spacing_css( 'lg' )
 			. ';padding-left:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' );
 
-		$text_slug = $this->text_slug_for_background( $ctx, $background_slug );
+		$text_slug     = $this->text_slug_for_background( $ctx, $background_slug );
 
 		if ( null !== $background_slug ) {
 			$group_attrs['backgroundColor'] = $background_slug;
@@ -467,7 +467,7 @@ trait RendersMarkup {
 			$group_style              .= ';color:var(--wp--preset--color--' . $text_slug . ')';
 		}
 
-		$gradient = $this->gradient_style_declaration( $ctx, $background_slug );
+		$gradient      = $this->gradient_style_declaration( $ctx, $background_slug );
 		if ( '' !== $gradient ) {
 			$group_style .= ';' . $gradient;
 		}
@@ -495,7 +495,7 @@ trait RendersMarkup {
 	 * @return string
 	 */
 	private function render_floating_card( string $inner, Context $ctx, ?string $card_slug, ?string $text_slug, ?int $max_width = null ): string {
-		$group_attrs = array(
+		$group_attrs   = array(
 			// card-hover-lift: hover-gated motion from the canonical vocabulary
 			// (subtle lift + shadow on hover, defined by get_motion_css() for
 			// both preview and front-end). Hover-only — never plays on load,

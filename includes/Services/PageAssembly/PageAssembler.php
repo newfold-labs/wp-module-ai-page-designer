@@ -63,7 +63,7 @@ class PageAssembler {
 	/**
 	 * Constructor.
 	 *
-	 * @param ImageService|null    $image_service Image service (defaults to a new instance).
+	 * @param ImageService|null     $image_service Image service (defaults to a new instance).
 	 * @param array<Archetype>|null $archetypes   Custom archetype set (defaults to the built-in v1 catalogue).
 	 */
 	public function __construct( ?ImageService $image_service = null, ?array $archetypes = null ) {
@@ -136,9 +136,9 @@ class PageAssembler {
 	 * "surface" sections.
 	 *
 	 * @param array<string, mixed> $item         Plan item.
-	 * @param Archetype             $archetype    Resolved archetype.
-	 * @param Context               $ctx          Conformance context.
-	 * @param bool                  $muted_toggle Current alternation state.
+	 * @param Archetype            $archetype    Resolved archetype.
+	 * @param Context              $ctx          Conformance context.
+	 * @param bool                 $muted_toggle Current alternation state.
 	 * @return array{0: string|null, 1: bool} [ background_slug, next muted_toggle state ].
 	 */
 	private function resolve_background( array $item, Archetype $archetype, Context $ctx, bool $muted_toggle ): array {

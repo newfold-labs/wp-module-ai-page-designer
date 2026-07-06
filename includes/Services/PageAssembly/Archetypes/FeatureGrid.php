@@ -52,6 +52,9 @@ class FeatureGrid implements Archetype {
 	 * PageAssembler passes an explicit `Context::muted_light_slug()` override
 	 * when alternating this section against a sibling for a surface/surface-alt
 	 * rhythm.
+	 *
+	 * @param Context $ctx Theme/conformance context.
+	 * @return string|null
 	 */
 	public function default_background( Context $ctx ): ?string {
 		return null;
@@ -59,6 +62,12 @@ class FeatureGrid implements Archetype {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * @param array<string, mixed> $content         Fully-resolved slot content (see the concrete class docblock for its shape).
+	 * @param string|null          $variant         Requested variant, or null for the archetype's default.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Palette slug to use as this section's background, or null for none.
+	 * @return string Gutenberg block markup for one section.
 	 */
 	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
@@ -77,9 +86,9 @@ class FeatureGrid implements Archetype {
 	 * Validator's column-width check always accepts.
 	 *
 	 * @param array<int, array<string, string>> $items           Up to 3 [ 'title', 'body' ] items.
-	 * @param Context                            $ctx             Theme/conformance context.
-	 * @param string|null                        $background_slug The section's own background slug.
-	 * @param bool                               $as_cards        Whether to wrap each item in a floating card.
+	 * @param Context                           $ctx             Theme/conformance context.
+	 * @param string|null                       $background_slug The section's own background slug.
+	 * @param bool                              $as_cards        Whether to wrap each item in a floating card.
 	 * @return string
 	 */
 	private function render_columns( array $items, Context $ctx, ?string $background_slug, bool $as_cards ): string {

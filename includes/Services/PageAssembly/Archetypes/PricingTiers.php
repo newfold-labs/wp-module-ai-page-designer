@@ -55,6 +55,9 @@ class PricingTiers implements Archetype {
 	 * {@inheritDoc}
 	 *
 	 * No fixed default — see {@see FeatureGrid::default_background()} for why.
+	 *
+	 * @param Context $ctx Theme/conformance context.
+	 * @return string|null
 	 */
 	public function default_background( Context $ctx ): ?string {
 		return null;
@@ -62,6 +65,12 @@ class PricingTiers implements Archetype {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * @param array<string, mixed> $content         Fully-resolved slot content (see the concrete class docblock for its shape).
+	 * @param string|null          $variant         Requested variant, or null for the archetype's default.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Palette slug to use as this section's background, or null for none.
+	 * @return string Gutenberg block markup for one section.
 	 */
 	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
@@ -109,8 +118,8 @@ class PricingTiers implements Archetype {
 	 * Render a single tier's content, optionally wrapped in a highlighted card.
 	 *
 	 * @param array<string, mixed> $tier      Tier definition.
-	 * @param Context               $ctx       Theme/conformance context.
-	 * @param string|null           $card_slug Highlighted card background slug, or null for a plain tier.
+	 * @param Context              $ctx       Theme/conformance context.
+	 * @param string|null          $card_slug Highlighted card background slug, or null for a plain tier.
 	 * @return string
 	 */
 	private function render_tier( array $tier, Context $ctx, ?string $card_slug ): string {
@@ -129,8 +138,8 @@ class PricingTiers implements Archetype {
 	 * by both the legacy flat wrap and the floating-card variant.
 	 *
 	 * @param array<string, mixed> $tier      Tier definition.
-	 * @param Context               $ctx       Theme/conformance context.
-	 * @param string|null           $card_slug The tier's card background slug, or null for none.
+	 * @param Context              $ctx       Theme/conformance context.
+	 * @param string|null          $card_slug The tier's card background slug, or null for none.
 	 * @return string
 	 */
 	private function render_tier_content( array $tier, Context $ctx, ?string $card_slug ): string {
@@ -140,8 +149,8 @@ class PricingTiers implements Archetype {
 		$features = isset( $tier['features'] ) && is_array( $tier['features'] ) ? $tier['features'] : array();
 		$cta      = isset( $tier['cta'] ) && is_array( $tier['cta'] ) ? $tier['cta'] : null;
 
-		$text_slug   = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
-		$price_line  = $price . ( '' !== $period ? ' / ' . $period : '' );
+		$text_slug  = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
+		$price_line = $price . ( '' !== $period ? ' / ' . $period : '' );
 
 		$content  = $this->render_heading( $name, 3, $text_slug, true );
 		$content .= $this->render_paragraph( $price_line, $text_slug, true );
@@ -165,7 +174,7 @@ class PricingTiers implements Archetype {
 	 * @return string
 	 */
 	private function render_feature_list( array $features, ?string $text_slug ): string {
-		$classes      = array( 'wp-block-list', 'has-text-align-center' );
+		$classes = array( 'wp-block-list', 'has-text-align-center' );
 		// Centre the list and drop bullet markers — centered bullets read awkwardly;
 		// a clean centered list is the standard pricing-tier treatment. The
 		// browser's default <ul> padding-inline-start (~40px) must go too, or
@@ -214,8 +223,8 @@ class PricingTiers implements Archetype {
 			),
 		);
 		if ( null !== $text_slug ) {
-			$classes[]         = 'has-' . $text_slug . '-color';
-			$classes[]         = 'has-text-color';
+			$classes[]          = 'has-' . $text_slug . '-color';
+			$classes[]          = 'has-text-color';
 			$attrs['textColor'] = $text_slug;
 			$style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
 		}

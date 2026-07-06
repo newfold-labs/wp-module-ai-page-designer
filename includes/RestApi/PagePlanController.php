@@ -51,28 +51,28 @@ class PagePlanController {
 	 * @var array<string, string>
 	 */
 	private const ARCHETYPE_SCHEMAS = array(
-		'heroCover'             => 'eyebrow?: string, heading: string, subheading?: string, '
+		'heroCover'            => 'eyebrow?: string, heading: string, subheading?: string, '
 			. 'primaryCta: { label: string, url: string }, secondaryCta?: { label: string, url: string }, '
 			. 'imageQuery: string (a short Unsplash search phrase for the hero background)',
-		'featureGrid'           => 'heading?: string, intro?: string, items: exactly 3 of { title: string, body: string }',
-		'alternatingMediaText'  => 'heading?: string, intro?: string, rows: array of { heading: string, body: string, '
+		'featureGrid'          => 'heading?: string, intro?: string, items: exactly 3 of { title: string, body: string }',
+		'alternatingMediaText' => 'heading?: string, intro?: string, rows: array of { heading: string, body: string, '
 			. 'imageQuery: string (short Unsplash search phrase), cta?: { label: string, url: string } }',
-		'ctaBanner'             => 'heading: string, subheading?: string, cta: { label: string, url: string }',
-		'bookingForm'           => 'heading?: string, intro?: string, submitLabel?: string, fields: array of '
+		'ctaBanner'            => 'heading: string, subheading?: string, cta: { label: string, url: string }',
+		'bookingForm'          => 'heading?: string, intro?: string, submitLabel?: string, fields: array of '
 			. '{ type: one of "text"|"email"|"tel"|"date"|"time"|"number"|"select"|"textarea", name: string, label: string, '
 			. 'required?: boolean, options?: string[] (only for type "select") }',
-		'testimonials'          => 'heading?: string, quotes: 2-3 of { quote: string, author: string, role?: string, '
+		'testimonials'         => 'heading?: string, quotes: 2-3 of { quote: string, author: string, role?: string, '
 			. 'avatarQuery?: string (short Unsplash search phrase for a headshot) }',
-		'pricingTiers'          => 'heading?: string, tiers: 2-3 of { name: string, price: string, period?: string, '
+		'pricingTiers'         => 'heading?: string, tiers: 2-3 of { name: string, price: string, period?: string, '
 			. 'features: string[], cta: { label: string, url: string }, highlighted?: boolean }',
-		'faqAccordion'          => 'heading?: string, items: array of { q: string, a: string }',
-		'statsBar'              => 'items: 2-4 of { value: string, label: string }',
-		'richText'              => 'heading?: string, body: string, cta?: { label: string, url: string }',
-		'galleryGrid'           => 'heading?: string, intro?: string, images: 3-6 of '
+		'faqAccordion'         => 'heading?: string, items: array of { q: string, a: string }',
+		'statsBar'             => 'items: 2-4 of { value: string, label: string }',
+		'richText'             => 'heading?: string, body: string, cta?: { label: string, url: string }',
+		'galleryGrid'          => 'heading?: string, intro?: string, images: 3-6 of '
 			. '{ imageQuery: string (short Unsplash search phrase; vary the phrases so the images differ) }',
-		'teamGrid'              => 'heading?: string, intro?: string, members: 2-4 of { name: string, role: string, '
+		'teamGrid'             => 'heading?: string, intro?: string, members: 2-4 of { name: string, role: string, '
 			. 'bio?: string (one short sentence), avatarQuery?: string (short Unsplash search phrase for a headshot) }',
-		'processSteps'          => 'heading?: string, intro?: string, steps: 3-4 of { title: string, body: string } '
+		'processSteps'         => 'heading?: string, intro?: string, steps: 3-4 of { title: string, body: string } '
 			. '(a numbered "how it works" sequence)',
 	);
 
@@ -357,7 +357,7 @@ class PagePlanController {
 			return $empty;
 		}
 
-		// Object form: { title, excerpt, sections: [...] }.
+		// The object form format example : { title, excerpt, sections: [...] }.
 		if ( isset( $data['sections'] ) && is_array( $data['sections'] ) ) {
 			return array(
 				'title'    => isset( $data['title'] ) && is_string( $data['title'] ) ? $this->trim_title( $data['title'] ) : '',

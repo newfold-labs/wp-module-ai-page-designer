@@ -53,6 +53,9 @@ class AlternatingMediaText implements Archetype {
 	 * {@inheritDoc}
 	 *
 	 * No fixed default — see {@see FeatureGrid::default_background()} for why.
+	 *
+	 * @param Context $ctx Theme/conformance context.
+	 * @return string|null
 	 */
 	public function default_background( Context $ctx ): ?string {
 		return null;
@@ -60,6 +63,12 @@ class AlternatingMediaText implements Archetype {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * @param array<string, mixed> $content         Fully-resolved slot content (see the concrete class docblock for its shape).
+	 * @param string|null          $variant         Requested variant, or null for the archetype's default.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Palette slug to use as this section's background, or null for none.
+	 * @return string Gutenberg block markup for one section.
 	 */
 	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
@@ -83,10 +92,10 @@ class AlternatingMediaText implements Archetype {
 	 * Render one alternating media/text row.
 	 *
 	 * @param array<string, mixed> $row             Row content.
-	 * @param bool                  $image_first     Whether the image column comes first (even rows).
-	 * @param Context               $ctx             Theme/conformance context.
-	 * @param string|null           $background_slug The section's own background slug.
-	 * @param bool                  $rounded         Whether the row image gets the rounded/shadowed treatment.
+	 * @param bool                 $image_first     Whether the image column comes first (even rows).
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug The section's own background slug.
+	 * @param bool                 $rounded         Whether the row image gets the rounded/shadowed treatment.
 	 * @return string
 	 */
 	private function render_row( array $row, bool $image_first, Context $ctx, ?string $background_slug, bool $rounded = true ): string {
@@ -98,8 +107,8 @@ class AlternatingMediaText implements Archetype {
 		$text_column  = $this->render_heading( $row_heading, 3, null );
 		$text_column .= $this->render_paragraph( $body, null );
 		if ( null !== $cta && ! empty( $cta['label'] ) ) {
-			$button_bg   = $this->contrasting_slug( $ctx, $background_slug );
-			$button_text = $this->text_slug_for_background( $ctx, $button_bg );
+			$button_bg    = $this->contrasting_slug( $ctx, $background_slug );
+			$button_text  = $this->text_slug_for_background( $ctx, $button_bg );
 			$text_column .= $this->render_buttons_wrap( $this->render_button( (string) $cta['label'], isset( $cta['url'] ) ? (string) $cta['url'] : '#', $button_bg, $button_text ), false );
 		}
 		$text_column = $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $text_column . '</div>' );
