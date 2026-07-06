@@ -874,6 +874,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
             setPreviewHtml( merged );
             addHistoryEntry( merged );
             setLastGeneratedHtml( null );
+            // This early return skips the shared post-apply block below, so the
+            // unsaved-changes flag (which gates the Publish button) must be set here.
+            setHasAIGenerated( true );
             clearSelection( iframeRef );
             resetPending();
             return;
