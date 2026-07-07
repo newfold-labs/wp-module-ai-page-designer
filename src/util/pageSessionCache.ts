@@ -16,6 +16,8 @@ export type PageSession = {
   originalMeta: { title: string; excerpt: string; featuredMediaId: number | null } | null;
   publishedHtml: string | null;
   conversation: ConversationSnapshot;
+  selectedPaletteId: string | null;
+  selectedFontPairingId: string;
 };
 
 const MAX_ENTRIES = 5;

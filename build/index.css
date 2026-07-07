@@ -692,6 +692,134 @@ body.nfd-ai-workspace-active {
 }
 
 /* ============================================================
+   DESIGN TAB — palette grid + typography pairing list, third sidebar tab
+   ============================================================ */
+.ai-design-tab {
+  padding: 16px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.ai-design-tab__section + .ai-design-tab__section {
+  margin-top: 24px;
+}
+
+.ai-design-tab__section-title {
+  margin: 0 0 2px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-on-surface);
+}
+
+.ai-design-tab__section-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--color-on-surface-variant);
+}
+
+.ai-design-tab__palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.ai-design-tab__palette {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1.5px solid var(--color-outline-variant);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-bright);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ai-design-tab__palette:hover {
+  border-color: var(--color-outline);
+}
+
+.ai-design-tab__palette.is-selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.ai-design-tab__palette-swatches {
+  display: flex;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.ai-design-tab__palette-swatches--default {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-surface-container),
+    var(--color-surface-container) 4px,
+    var(--color-surface-container-high) 4px,
+    var(--color-surface-container-high) 8px
+  );
+}
+
+.ai-design-tab__palette-swatch {
+  flex: 1;
+}
+
+.ai-design-tab__palette-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-on-surface);
+}
+
+.ai-design-tab__font-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-design-tab__font {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1.5px solid var(--color-outline-variant);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-bright);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ai-design-tab__font:hover {
+  border-color: var(--color-outline);
+}
+
+.ai-design-tab__font.is-selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.ai-design-tab__font-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+.ai-design-tab__font-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-on-surface);
+}
+
+/* ============================================================
    CANVAS — center content region (MetaStrip + PreviewFrame, or the
    no-page-selected empty state)
    ============================================================ */

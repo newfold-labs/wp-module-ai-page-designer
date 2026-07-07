@@ -45,6 +45,7 @@ type UseAiConversationResult = {
     resetAiConversation: () => void;
     restoreConversation: (snapshot: ConversationSnapshot) => void;
     appendAssistantMessage: (message: Message) => void;
+    addHistoryEntry: (label: string) => void;
 };
 export declare const useAiConversation: (options: UseAiConversationOptions) => UseAiConversationResult;
 export default useAiConversation;

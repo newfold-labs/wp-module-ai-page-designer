@@ -6,6 +6,12 @@ type PreviewStylesheets = {
   globalStyles: string;
 };
 
+export type PreviewDesignTokens = {
+  colors: Record<string, string> | null;
+  headingFont: string;
+  bodyFont: string;
+};
+
 type UsePreviewIframeResult = {
   iframeRef: RefObject<HTMLIFrameElement>;
 };
@@ -17,7 +23,8 @@ export const usePreviewIframe = (
   isStreaming: boolean = false,
   externalIframeRef?: RefObject<HTMLIFrameElement>,
   motionCss: string = '',
-  targetBlockIndex: string | null = null
+  targetBlockIndex: string | null = null,
+  designTokens: PreviewDesignTokens | null = null
 ): UsePreviewIframeResult => {
   const localIframeRef = useRef<HTMLIFrameElement>( null );
   // Allow the caller to own the ref so it can be shared with other hooks
@@ -39,6 +46,11 @@ export const usePreviewIframe = (
   // while it's streaming) for the same ready-handler read as isStreamingRef.
   const targetBlockIndexRef = useRef( targetBlockIndex );
   targetBlockIndexRef.current = targetBlockIndex;
+  // Mirrors designTokens so the ready-handler (fresh srcdoc load on page
+  // switch/new page) can reapply the active palette/font selection, which
+  // otherwise only lives in the now-discarded previous document's <head>.
+  const designTokensRef = useRef( designTokens );
+  designTokensRef.current = designTokens;
 
   useEffect( () => {
     // Fetch frontend styles once so the preview matches the actual site.
@@ -374,6 +386,51 @@ export const usePreviewIframe = (
             document.querySelectorAll('#nfd-preview-root [data-aos]').forEach(function(el) { observer.observe(el); });
           }
 
+          // Design tab: instant palette/typography swap, no LLM call. Lives in
+          // <head> (not inside #nfd-preview-root), so it survives content
+          // replacement in _applyContent untouched — only called when the
+          // parent's selection actually changes, not on every streaming delta.
+          //   colors      -> re-declares the theme's own --wp--preset--color--{slug}
+          //                  custom properties at #nfd-preview-root; generated block
+          //                  markup already reads them via var(...), so every block
+          //                  using that slug re-colors immediately (nearest-ancestor
+          //                  cascade wins over the :root-level theme default).
+          //   headingFont/bodyFont -> the theme's own font-family rules are hardcoded
+          //                  (not variable-driven), so these need a direct !important
+          //                  override instead of a custom-property redeclaration.
+          window.nfdSetDesignTokens = function(colors, headingFont, bodyFont) {
+            var styleEl = document.getElementById('nfd-design-tokens-style');
+            if (!styleEl) {
+              styleEl = document.createElement('style');
+              styleEl.id = 'nfd-design-tokens-style';
+              document.head.appendChild(styleEl);
+            }
+
+            if (!colors && !headingFont && !bodyFont) {
+              styleEl.textContent = '';
+              return;
+            }
+
+            var rules = [];
+
+            if (colors) {
+              var vars = Object.keys(colors).map(function(slug) {
+                return '--wp--preset--color--' + slug.replace(/_/g, '-') + ': ' + colors[slug] + ';';
+              }).join(' ');
+              rules.push('#nfd-preview-root { ' + vars + ' }');
+            }
+
+            if (bodyFont) {
+              rules.push('#nfd-preview-root, #nfd-preview-root * { font-family: ' + bodyFont + ' !important; }');
+            }
+
+            if (headingFont) {
+              rules.push('#nfd-preview-root h1, #nfd-preview-root h2, #nfd-preview-root h3, #nfd-preview-root h4, #nfd-preview-root h5, #nfd-preview-root h6, #nfd-preview-root .wp-block-heading { font-family: ' + headingFont + ' !important; }');
+            }
+
+            styleEl.textContent = rules.join(' ');
+          };
+
           // Clears any previous target-skeleton highlight, then (re)applies it to
           // the wrapper whose data-block-index matches — called after every
           // re-render so it survives the innerHTML replacement in _applyContent.
@@ -524,6 +581,10 @@ export const usePreviewIframe = (
         if ( html && iframe.contentWindow ) {
           ( iframe.contentWindow as any ).nfdSetContent?.( html, ! isStreamingRef.current, targetBlockIndexRef.current );
         }
+        const tokens = designTokensRef.current;
+        if ( tokens && iframe.contentWindow ) {
+          ( iframe.contentWindow as any ).nfdSetDesignTokens?.( tokens.colors, tokens.headingFont, tokens.bodyFont );
+        }
       };
 
       // Listen for the iframe's DOMContentLoaded signal — fires before Google Fonts CDN
@@ -585,6 +646,23 @@ export const usePreviewIframe = (
     // Cleanup cancels this frame if another delta arrives before the next paint.
     return () => cancelAnimationFrame( rafId );
   }, [ previewHtml, isStreaming, targetBlockIndex ] );
+
+  // Effect 3: Design tab palette/typography swap. Independent of the content
+  // effects above — it only touches a <head> style tag, never rebuilds srcdoc
+  // or re-renders #nfd-preview-root, so it can't interfere with streaming.
+  // Callers should memoize `designTokens` (new object identity each render
+  // would re-fire this needlessly, though harmlessly).
+  useEffect( () => {
+    if ( ! iframeReadyRef.current || ! iframeRef.current?.contentWindow ) {
+      return;
+    }
+    const tokens = designTokens;
+    ( iframeRef.current.contentWindow as any ).nfdSetDesignTokens?.(
+      tokens?.colors ?? null,
+      tokens?.headingFont ?? '',
+      tokens?.bodyFont ?? ''
+    );
+  }, [ designTokens ] );
 
   return { iframeRef };
 };

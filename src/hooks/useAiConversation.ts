@@ -57,6 +57,7 @@ type UseAiConversationResult = {
   resetAiConversation: () => void;
   restoreConversation: (snapshot: ConversationSnapshot) => void;
   appendAssistantMessage: (message: Message) => void;
+  addHistoryEntry: (label: string) => void;
 };
 
 const REMOVAL_KEYWORDS = [ 'remove', 'delete', 'get rid of', 'take out', 'eliminate', 'cut this', 'hide this' ];
@@ -2123,6 +2124,28 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setPublishTitle,
   ] );
 
+  // Logs a non-AI edit (e.g. a Design tab palette/font change) into the same
+  // History timeline as chat-driven edits, per the plan's "manual Design
+  // changes log to History" requirement — without needing Phase 4's backend
+  // version log, since History here is already a local, in-session list.
+  // The snapshot is the current previewHtml unchanged (palette/font are a
+  // presentation overlay, not a markup change), so reverting to this entry
+  // is a no-op on content but still restores the point in the timeline.
+  const addHistoryEntry = useCallback( ( label: string ) => {
+    if ( ! previewHtml ) {
+      return;
+    }
+    const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+    const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+    setHistoryEntries( ( prev ) => [ ...prev, {
+      id: historyId,
+      html: previewHtml,
+      label,
+      timestamp,
+      publishTitle,
+    } ] );
+  }, [ previewHtml, publishTitle ] );
+
   const handleConfirmRevertChanges = useCallback( () => {
     parsedInitialRef.current = false;
     setParsedBlocks( [] );
@@ -2223,6 +2246,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     resetAiConversation,
     restoreConversation,
     appendAssistantMessage,
+    addHistoryEntry,
   };
 };
 

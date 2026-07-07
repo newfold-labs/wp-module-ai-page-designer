@@ -13,12 +13,16 @@ type Props = {
     selectedBlockLabel: string | null;
     historyEntries: HistoryEntry[];
     previewHtml: string | null;
+    selectedPaletteId: string | null;
+    selectedFontPairingId: string;
     onInputChange: (value: string) => void;
     onSend: () => void;
     onClearSelection: () => void;
     onPublish: () => void;
     onRevertTo: (id: string) => void;
+    onSelectPalette: (paletteId: string | null) => void;
+    onSelectFontPairing: (fontPairingId: string) => void;
 };
-declare const SidePanel: ({ messages, chatMessagesRef, isLoading, hasAIGenerated, metaDirty, publishing, selectedItem, input, selectedBlockIndex, selectedBlockLabel, historyEntries, previewHtml, onInputChange, onSend, onClearSelection, onPublish, onRevertTo, }: Props) => React.JSX.Element;
+declare const SidePanel: ({ messages, chatMessagesRef, isLoading, hasAIGenerated, metaDirty, publishing, selectedItem, input, selectedBlockIndex, selectedBlockLabel, historyEntries, previewHtml, selectedPaletteId, selectedFontPairingId, onInputChange, onSend, onClearSelection, onPublish, onRevertTo, onSelectPalette, onSelectFontPairing, }: Props) => React.JSX.Element;
 export default SidePanel;
 //# sourceMappingURL=SidePanel.d.ts.map

@@ -10,10 +10,11 @@ import PreviewFrame from './components/PreviewFrame';
 import PublishModal from './components/PublishModal';
 import RevertConfirm from './components/RevertConfirm';
 import SidePanel from './components/SidePanel';
+import { CURATED_FONT_PAIRINGS, CURATED_PALETTES } from './designTokens';
 import { useAiConversation } from './hooks/useAiConversation';
 import { useBlockSelection } from './hooks/useBlockSelection';
 import { usePageRoute } from './hooks/usePageRoute';
-import { usePreviewIframe } from './hooks/usePreviewIframe';
+import { usePreviewIframe, type PreviewDesignTokens } from './hooks/usePreviewIframe';
 import { usePublishFlow } from './hooks/usePublishFlow';
 import { useRecentItems } from './hooks/useRecentItems';
 import { useSiteContent } from './hooks/useSiteContent';
@@ -21,6 +22,8 @@ import { STORE_NAME } from './store/workspaceStore';
 import { convertHtmlToGutenberg, decodeHtmlEntities, hasGutenbergMarkers } from './util/aiDesignerHelpers';
 import { createPageSessionCache, type PageSession } from './util/pageSessionCache';
 import type { WPItem } from './types';
+
+const DEFAULT_FONT_PAIRING_ID = 'default';
 
 declare global {
   interface Window {
@@ -59,6 +62,10 @@ const App = () => {
     excerpt: string;
     featuredMediaId: number | null;
   } | null>( null );
+  // Design tab: per-page palette/font selection. null palette = theme default
+  // (no CSS-var override); 'default' font pairing = theme default fonts.
+  const [ selectedPaletteId, setSelectedPaletteId ] = useState<string | null>( null );
+  const [ selectedFontPairingId, setSelectedFontPairingId ] = useState( DEFAULT_FONT_PAIRING_ID );
 
   // get_the_title() entity-escapes ("&#038;" for "&") since it's meant for
   // inline HTML output — decode so plain-text fields like the meta title
@@ -123,6 +130,20 @@ const App = () => {
   const streamingTargetBlockIndex =
     conversation.isLoading && selectedBlockIndex !== null ? selectedBlockIndex : null;
 
+  // Memoized so usePreviewIframe's design-tokens effect only re-fires when the
+  // actual selection changes, not on every unrelated App render.
+  const designTokens: PreviewDesignTokens = useMemo( () => {
+    const palette = selectedPaletteId
+      ? CURATED_PALETTES.find( ( item ) => item.id === selectedPaletteId )
+      : null;
+    const fontPairing = CURATED_FONT_PAIRINGS.find( ( item ) => item.id === selectedFontPairingId );
+    return {
+      colors: palette?.colors ?? null,
+      headingFont: fontPairing?.headingFont || '',
+      bodyFont: fontPairing?.bodyFont || '',
+    };
+  }, [ selectedPaletteId, selectedFontPairingId ] );
+
   usePreviewIframe(
     previewHtml,
     previewUrl,
@@ -130,7 +151,8 @@ const App = () => {
     conversation.isLoading,
     iframeRef,
     nfdAIPageDesigner.previewMotionCss || '',
-    streamingTargetBlockIndex
+    streamingTargetBlockIndex,
+    designTokens
   );
 
   const publishFlow = usePublishFlow( {
@@ -235,6 +257,8 @@ const App = () => {
         conversationId: conversation.conversationId,
         responseId: conversation.responseId,
       },
+      selectedPaletteId,
+      selectedFontPairingId,
     } );
   };
 
@@ -249,6 +273,8 @@ const App = () => {
     setMetaFeaturedImageUrl( session.metaFeaturedImageUrl );
     setOriginalMeta( session.originalMeta );
     setPublishTitle( session.publishTitle );
+    setSelectedPaletteId( session.selectedPaletteId );
+    setSelectedFontPairingId( session.selectedFontPairingId );
   };
 
   const handleSelectItem = ( item: WPItem ) => {
@@ -284,6 +310,8 @@ const App = () => {
       featuredMediaId: nextFeaturedMediaId,
     } );
     setPublishTitle( '' );
+    setSelectedPaletteId( null );
+    setSelectedFontPairingId( DEFAULT_FONT_PAIRING_ID );
   };
 
   const handleCreateNew = () => {
@@ -303,6 +331,8 @@ const App = () => {
     setMetaFeaturedImageUrl( null );
     setOriginalMeta( null );
     setPublishTitle( '' );
+    setSelectedPaletteId( null );
+    setSelectedFontPairingId( DEFAULT_FONT_PAIRING_ID );
   };
 
   const handleCreateWithPrompt = ( prompt: string ) => {
@@ -319,6 +349,8 @@ const App = () => {
     setMetaFeaturedImageUrl( null );
     setOriginalMeta( null );
     setPublishTitle( '' );
+    setSelectedPaletteId( null );
+    setSelectedFontPairingId( DEFAULT_FONT_PAIRING_ID );
     conversation.handleSend( prompt );
   };
 
@@ -457,6 +489,18 @@ const App = () => {
     handleSelectItem( item );
   };
 
+  const handleSelectPalette = ( paletteId: string | null ) => {
+    setSelectedPaletteId( paletteId );
+    const palette = paletteId ? CURATED_PALETTES.find( ( item ) => item.id === paletteId ) : null;
+    conversation.addHistoryEntry( `Palette → ${ palette ? palette.name : 'Theme default' }` );
+  };
+
+  const handleSelectFontPairing = ( fontPairingId: string ) => {
+    setSelectedFontPairingId( fontPairingId );
+    const pairing = CURATED_FONT_PAIRINGS.find( ( item ) => item.id === fontPairingId );
+    conversation.addHistoryEntry( `Typography → ${ pairing ? pairing.name : 'Theme default' }` );
+  };
+
   // admin-ajax.php's directory is always the wp-admin root, regardless of
   // multisite subdirectory installs — a reliable base without a new
   // localized value. `page=web#/home` is the parent plugin's own "Home" menu
@@ -522,11 +566,15 @@ const App = () => {
       selectedBlockLabel={ selectedBlockLabel }
       historyEntries={ conversation.historyEntries }
       previewHtml={ previewHtml }
+      selectedPaletteId={ selectedPaletteId }
+      selectedFontPairingId={ selectedFontPairingId }
       onInputChange={ conversation.setInput }
       onSend={ () => conversation.handleSend() }
       onClearSelection={ () => clearSelection( iframeRef ) }
       onPublish={ handlePublishBarClick }
       onRevertTo={ conversation.handleRevertToEntry }
+      onSelectPalette={ handleSelectPalette }
+      onSelectFontPairing={ handleSelectFontPairing }
     />
   ) : null;
 
