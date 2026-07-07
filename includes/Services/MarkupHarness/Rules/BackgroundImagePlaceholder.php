@@ -49,7 +49,7 @@ class BackgroundImagePlaceholder implements Rule {
 
 				// Total background-image declarations vs. placeholder ones. Only strip
 				// placeholders when a real background-image remains to take over.
-				$total_bg = preg_match_all( '/background-image\s*:/i', $style );
+				$total_bg       = preg_match_all( '/background-image\s*:/i', $style );
 				$placeholder_bg = preg_match_all( self::PLACEHOLDER_DECLARATION, $style );
 
 				if ( $placeholder_bg < 1 || $total_bg <= $placeholder_bg ) {

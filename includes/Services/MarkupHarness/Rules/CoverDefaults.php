@@ -108,7 +108,7 @@ class CoverDefaults implements Rule {
 		$add_min_height = empty( $attrs['minHeight'] );
 		$add_dim        = ! isset( $attrs['dimRatio'] );
 		$dark_slug      = $ctx->has_palette() ? $ctx->dark_slug() : null;
-		$add_background  = empty( $attrs['backgroundColor'] ) && null !== $dark_slug;
+		$add_background = empty( $attrs['backgroundColor'] ) && null !== $dark_slug;
 
 		if ( ! $add_min_height && ! $add_dim && ! $add_background ) {
 			return false;

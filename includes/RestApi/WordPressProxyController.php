@@ -83,30 +83,30 @@ class WordPressProxyController extends \WP_REST_Controller {
 					'methods'             => \WP_REST_Server::CREATABLE,
 					'callback'            => array( $this, 'create_content' ),
 					'args'                => array(
-						'type'    => array(
+						'type'           => array(
 							'required' => true,
 							'type'     => 'string',
 							'enum'     => array( 'pages', 'posts' ),
 						),
-						'title'   => array(
+						'title'          => array(
 							'required' => true,
 							'type'     => 'string',
 						),
-						'content' => array(
+						'content'        => array(
 							'required' => true,
 							'type'     => 'string',
 						),
-						'status'  => array(
+						'status'         => array(
 							'required' => false,
 							'type'     => 'string',
 							'default'  => 'publish',
 							'enum'     => array( 'publish', 'draft', 'pending', 'private' ),
 						),
-						'slug'    => array(
+						'slug'           => array(
 							'required' => false,
 							'type'     => 'string',
 						),
-						'excerpt' => array(
+						'excerpt'        => array(
 							'required' => false,
 							'type'     => 'string',
 						),
@@ -423,29 +423,29 @@ class WordPressProxyController extends \WP_REST_Controller {
 	 * @return array
 	 */
 	private function build_item_data( $post ) {
-		$post_type = $post->post_type;
-		$excerpt_raw = $post->post_excerpt ?? '';
+		$post_type      = $post->post_type;
+		$excerpt_raw    = $post->post_excerpt ?? '';
 		$featured_media = get_post_thumbnail_id( $post->ID );
 
 		return array(
-			'id'      => $post->ID,
-			'title'   => array(
+			'id'                 => $post->ID,
+			'title'              => array(
 				'rendered' => get_the_title( $post->ID ),
 			),
-			'content' => array(
+			'content'            => array(
 				'rendered' => apply_filters( 'the_content', $post->post_content ),
 				'raw'      => $post->post_content,
 			),
-			'excerpt' => array(
+			'excerpt'            => array(
 				'rendered' => apply_filters( 'the_excerpt', $excerpt_raw ),
 				'raw'      => $excerpt_raw,
 			),
 			'featured_media'     => $featured_media,
 			'featured_image_url' => $this->get_featured_image_url( $featured_media ),
 			'supports_thumbnail' => post_type_supports( $post_type, 'thumbnail' ),
-			'status'  => $post->post_status,
-			'link'    => get_permalink( $post->ID ),
-			'type'    => $post_type,
+			'status'             => $post->post_status,
+			'link'               => get_permalink( $post->ID ),
+			'type'               => $post_type,
 		);
 	}
 

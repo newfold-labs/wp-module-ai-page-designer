@@ -109,9 +109,9 @@ class IntentClassifierController {
 							'sanitize_callback' => 'sanitize_text_field',
 						),
 						'markup' => array(
-							'required'          => true,
-							'type'              => 'string',
-							'description'       => __( 'The current page content to summarise.', 'wp-module-ai-page-designer' ),
+							'required'    => true,
+							'type'        => 'string',
+							'description' => __( 'The current page content to summarise.', 'wp-module-ai-page-designer' ),
 						),
 					),
 					'permission_callback' => array( $this, 'check_permission' ),

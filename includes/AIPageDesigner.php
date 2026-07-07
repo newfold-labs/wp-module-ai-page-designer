@@ -180,12 +180,12 @@ class AIPageDesigner {
 				'previewMotionCss'        => self::get_motion_css( '#nfd-preview-root' ),
 				// Route edits through the AI intent classifier instead of the
 				// frontend keyword regexes. On by default; disable via the filter:
-				//   add_filter( 'nfd_ai_page_designer_enable_intent_classifier', '__return_false' );
+				// add_filter( 'nfd_ai_page_designer_enable_intent_classifier', '__return_false' );
 				'enableIntentClassifier'  => (bool) apply_filters( 'nfd_ai_page_designer_enable_intent_classifier', true ),
 				// Render a new page from a PageAssembler page-plan (typed archetypes)
 				// instead of freeform AI markup. On by default now that the v1
 				// catalogue (10 archetypes) is complete; disable via the filter:
-				//   add_filter( 'nfd_ai_page_designer_enable_page_plan', '__return_false' );
+				// add_filter( 'nfd_ai_page_designer_enable_page_plan', '__return_false' );
 				'enablePagePlan'          => (bool) apply_filters( 'nfd_ai_page_designer_enable_page_plan', true ),
 			)
 		);

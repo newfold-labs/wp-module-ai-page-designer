@@ -301,7 +301,7 @@ class AiClientWorker {
 			AIPageDesignerDebug::debug_log(
 				'Streaming returned error status',
 				array(
-					'status_code' => $response_code,
+					'status_code'  => $response_code,
 					// On an error the Worker returns a JSON body (not SSE), so it has no "\n\n"
 					// terminator and stays unprocessed in the buffer — surface it for debugging.
 					'raw_response' => substr( (string) $buffer, 0, 2000 ),

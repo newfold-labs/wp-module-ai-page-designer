@@ -74,8 +74,8 @@ class CtaBanner implements Archetype {
 	 * Render the `floating-card` variant.
 	 *
 	 * @param array<string, mixed> $content         Slot content.
-	 * @param Context               $ctx             Theme/conformance context.
-	 * @param string|null           $background_slug Section background slug.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Section background slug.
 	 * @return string
 	 */
 	private function render_floating_card_variant( array $content, Context $ctx, ?string $background_slug ): string {
@@ -110,8 +110,8 @@ class CtaBanner implements Archetype {
 	 * Render the `accent-band` variant: the original flat accent-background band.
 	 *
 	 * @param array<string, mixed> $content         Slot content.
-	 * @param Context               $ctx             Theme/conformance context.
-	 * @param string|null           $background_slug Section background slug.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Section background slug.
 	 * @return string
 	 */
 	private function render_accent_band( array $content, Context $ctx, ?string $background_slug ): string {
@@ -125,7 +125,7 @@ class CtaBanner implements Archetype {
 			$button_bg   = $this->contrasting_slug( $ctx, $bg_slug );
 			$button_text = $this->text_slug_for_background( $ctx, $button_bg );
 			$button      = $this->render_button( (string) $cta['label'], isset( $cta['url'] ) ? (string) $cta['url'] : '#', $button_bg, $button_text );
-			$inner        = $this->render_buttons_wrap( $button );
+			$inner       = $this->render_buttons_wrap( $button );
 		}
 
 		return $this->render_section( $heading, $subheading, $inner, $ctx, $bg_slug );

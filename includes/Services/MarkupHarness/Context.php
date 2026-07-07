@@ -87,7 +87,7 @@ class Context {
 	 * @param string[]                          $spacing_slugs Theme spacing preset slugs (ascending by size).
 	 */
 	public function __construct( array $palette = array(), array $spacing_slugs = array() ) {
-		$this->palette = $this->deduplicate_palette(
+		$this->palette       = $this->deduplicate_palette(
 			array_values(
 				array_map(
 					static function ( $swatch ) {
@@ -215,7 +215,7 @@ class Context {
 		// Muted-light: a light-ish swatch (brightness >= 180) distinct from both
 		// light_slug (the brightest, excluded via the slice) and accent_slug, used
 		// to alternate section backgrounds without repeating the page's own bg.
-		$muted_candidates = array_values(
+		$muted_candidates       = array_values(
 			array_filter(
 				array_slice( $sorted, 0, count( $sorted ) - 1 ),
 				function ( $swatch ) {

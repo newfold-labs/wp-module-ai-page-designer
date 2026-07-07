@@ -64,7 +64,7 @@ class FastPathHandler {
 		$prompt_lower = strtolower( $last_user_prompt );
 
 		$has_image_noun   = (bool) preg_match( '/\b(images?|pictures?|photos?|pics?)\b/i', $prompt_lower );
-		$has_background    = (bool) preg_match( '/\bbackgrounds?\b/i', $prompt_lower );
+		$has_background   = (bool) preg_match( '/\bbackgrounds?\b/i', $prompt_lower );
 		$has_replace_verb = (bool) preg_match( '/\b(change|update|replace|swap|regenerate|refresh|new|different)\b/i', $prompt_lower );
 		$has_add_verb     = (bool) preg_match( '/\b(add|insert|include|put|place|append)\b/i', $prompt_lower );
 
