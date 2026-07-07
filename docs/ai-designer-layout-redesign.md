@@ -6,12 +6,25 @@
 
 ---
 
+## Implementation Status (as of 2026-07-07)
+
+**Phases 0, 1, and 2 are complete and merged into `update/aipd-redesign`.** See `ai-designer-layout-redesign-todo.md` for the itemized checklist. Notable deviations from this plan as originally written:
+
+- **Routing (§1):** shipped as the query param `nfd_page_id` (`?nfd_page_id=123`), not `#/page/:id`. The parent plugin (`wp-plugin-web`) owns `location.hash` exclusively via its own `HashRouter` — a hash-based scheme here would have collided with it. Deep-linkability and no-reload page switching are preserved; only the URL shape differs.
+- **Rail recents (§3):** backed by a dedicated module endpoint (`_apd_recent_ids` user meta, `GET/POST /recent`) rather than `GET /wp/v2/pages?orderby=modified`. Needed so opening a page can *touch* its recency per-user, which a sitewide `orderby=modified` query can't express.
+- **Pinned pages:** not stubbed in Phase 1 as planned — deferred whole to Phase 4. The drawer currently shows Recent only.
+- **⌘K command palette:** ships without the type/status filters described in §2/Phase 1 todo; search-as-you-type only.
+- **Migration (§8):** the old Dashboard route wasn't kept as a redirect — it was replaced outright by the workspace's empty state, and legacy `?page_id=` deep links are not remapped. Low-risk for an internal wp-admin tool, but flagging since the plan called for an explicit redirect shim.
+- **Phase 2's canvas upgrades turned out mostly pre-existing:** section selection (hover/click outline, scope chip in chat) and contextual composer suggestion chips were already built pre-redesign and needed no new work. Only the viewport toggle and the streaming skeleton highlight were net-new for Phase 2. The "feature-detect + graceful degrade if the postMessage bridge fails" item (§9 risks) was not built — still open.
+
+---
+
 ## 1. Architecture Decisions
 
 | Decision | Choice | Rationale |
 |---|---|---|
 | Shell framework | `@wordpress/components` + `@wordpress/interface` | Free Gutenberg spacing, focus states, keyboard behavior; native plugin feel; ports cleanly to hosting panel later |
-| Routing | Hash-based state (`#/page/:id`), no page reloads | Deep-linkable, but switching pages is a state change, not navigation |
+| Routing | ~~Hash-based state (`#/page/:id`)~~ → **shipped as `?nfd_page_id=` query param** (see Implementation Status above), no page reloads | Deep-linkable, but switching pages is a state change, not navigation |
 | Fullscreen | Take over viewport on entry (Gutenberg fullscreen pattern), `← Back to WP Admin` escape hatch top-left | Buys back 160px of admin menu; users already expect this from the block editor |
 | Responsive strategy | CSS container queries (`@container`) on app root, not media queries | wp-admin menu can be expanded/collapsed independently of viewport; respond to actual available space |
 | Sidebar width | ~380px default, user-resizable via drag handle | Gutenberg's 280px is too cramped for chat |
@@ -95,36 +108,37 @@ Header grammar (back square, title, Publish, toggles) is invariant across all st
 
 ## 7. Phased Delivery
 
-### Phase 1 — Shell & navigation (the core UX win)
-- Fullscreen takeover + header + hash routing
-- Page drawer with Recent (server-persisted) + ⌘K palette (server search)
-- Page switching swaps chat thread + preview without remount
-- Port existing Chat and History panels into the sidebar as-is
-- Dashboard hero becomes the no-page-selected empty state
-- **Exit criteria:** edit page A → switch to page B → back to A in ≤ 2 clicks, no reloads, threads intact
+### Phase 1 — Shell & navigation (the core UX win) — ✅ Done
+- [x] Fullscreen takeover + header + routing (query param, not hash — see Implementation Status)
+- [x] Page drawer with Recent (server-persisted) + ⌘K palette (server search; no type/status filters yet)
+- [x] Page switching swaps chat thread + preview without remount
+- [x] Port existing Chat and History panels into the sidebar as-is
+- [x] Dashboard hero becomes the no-page-selected empty state
+- **Exit criteria:** edit page A → switch to page B → back to A in ≤ 2 clicks, no reloads, threads intact — ✅ verified
 
-### Phase 2 — Canvas upgrades
-- Section selection on preview + scope chips in chat
-- Viewport toggle (desktop/tablet/mobile)
-- Streaming/skeleton highlight during edits
-- Contextual suggestion chips in composer (replace static "create a homepage" prompts)
+### Phase 2 — Canvas upgrades — ✅ Done
+- [x] Section selection on preview + scope chips in chat *(already existed pre-redesign)*
+- [x] Viewport toggle (desktop/tablet/mobile)
+- [x] Streaming/skeleton highlight during edits
+- [x] Contextual suggestion chips in composer (replace static "create a homepage" prompts) *(already existed pre-redesign)*
+- [ ] Feature-detect + graceful degrade if the postMessage bridge fails *(not built — still open, see §9)*
 
-### Phase 3 — Design tab
-- Token endpoints + palette/typography UI + live preview swap
-- AI palette suggestion
-- Design changes logged into unified History
+### Phase 3 — Design tab — Not started
+- [ ] Token endpoints + palette/typography UI + live preview swap
+- [ ] AI palette suggestion
+- [ ] Design changes logged into unified History
 
-### Phase 4 — Scale & polish
-- History hover-to-preview + non-destructive restore
-- Library overlay (virtualized, thumbnails, filters, bulk actions)
-- Pinned pages
-- Responsive slide-over state + container-query breakpoints hardening
-- A11y pass: focus trap in drawer/palette, keyboard nav, reduced motion
+### Phase 4 — Scale & polish — Not started
+- [ ] History hover-to-preview + non-destructive restore
+- [ ] Library overlay (virtualized, thumbnails, filters, bulk actions)
+- [ ] Pinned pages
+- [ ] Responsive slide-over state + container-query breakpoints hardening
+- [ ] A11y pass: focus trap in drawer/palette, keyboard nav, reduced motion
 
 ## 8. Migration & Compatibility
 
-- Old Dashboard route: keep temporarily, redirect into workspace empty state; remove after one release
-- Old Designer deep links (`?page_id=`): map to `#/page/:id`
+- Old Dashboard route: keep temporarily, redirect into workspace empty state; remove after one release — **not done as planned; the old route was replaced outright rather than redirected (see Implementation Status)**
+- Old Designer deep links (`?page_id=`): map to `#/page/:id` — **not done; legacy `?page_id=` links are not remapped to `?nfd_page_id=`**
 - Existing chat threads/history: already page-keyed — no data migration expected; version log needs a backfill entry ("Initial generation") per existing page
 - Decide: rail shows **all** site content (badging AI-designed items) vs AI-managed only → recommend **all**, since "open any old post and restyle with AI" is an upsell moment
 
