@@ -24,6 +24,19 @@ type UseAiConversationOptions = {
   clearSelection: (iframeRef?: RefObject<HTMLIFrameElement>) => void;
 };
 
+// Thread state that's worth restoring on an instant switch back to a page
+// (plan: "cache last ~5 pages' chat threads in memory for instant
+// switch-back") — the rest of the hook's internal state (parsedBlocks,
+// lastGeneratedHtml, etc.) self-heals from previewHtml once this is set,
+// same as it does today on a fresh page load.
+export type ConversationSnapshot = {
+  messages: Message[];
+  historyEntries: HistoryEntry[];
+  hasAIGenerated: boolean;
+  conversationId: string | null;
+  responseId: string | null;
+};
+
 type UseAiConversationResult = {
   messages: Message[];
   input: string;
@@ -32,6 +45,8 @@ type UseAiConversationResult = {
   isHistoryOpen: boolean;
   hasAIGenerated: boolean;
   publishTitle: string;
+  conversationId: string | null;
+  responseId: string | null;
   chatMessagesRef: RefObject<HTMLDivElement>;
   setInput: (value: string) => void;
   setIsHistoryOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
@@ -40,6 +55,7 @@ type UseAiConversationResult = {
   handleConfirmRevertChanges: () => void;
   handleRevertToEntry: (id: string) => void;
   resetAiConversation: () => void;
+  restoreConversation: (snapshot: ConversationSnapshot) => void;
   appendAssistantMessage: (message: Message) => void;
 };
 
@@ -2169,6 +2185,24 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     clearSelection( iframeRef );
   }, [ clearSelection, iframeRef ] );
 
+  // Same shape as resetAiConversation, but hydrates from a cached snapshot
+  // instead of clearing — the caller is expected to also call setPreviewHtml
+  // with the snapshot's page content; parsedInitialRef reset below makes the
+  // initial-load effect above reparse it into parsedBlocks, same as a fresh
+  // page load does.
+  const restoreConversation = useCallback( ( snapshot: ConversationSnapshot ) => {
+    parsedInitialRef.current = false;
+    setParsedBlocks( [] );
+    setMessages( snapshot.messages );
+    setInput( '' );
+    setHistoryEntries( snapshot.historyEntries );
+    setIsHistoryOpen( false );
+    setHasAIGenerated( snapshot.hasAIGenerated );
+    setConversationId( snapshot.conversationId );
+    setResponseId( snapshot.responseId );
+    clearSelection( iframeRef );
+  }, [ clearSelection, iframeRef ] );
+
   return {
     messages,
     input,
@@ -2177,6 +2211,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     isHistoryOpen,
     hasAIGenerated,
     publishTitle,
+    conversationId,
+    responseId,
     chatMessagesRef,
     setInput,
     setIsHistoryOpen,
@@ -2185,6 +2221,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     handleConfirmRevertChanges,
     handleRevertToEntry,
     resetAiConversation,
+    restoreConversation,
     appendAssistantMessage,
   };
 };

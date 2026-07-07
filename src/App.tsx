@@ -17,6 +17,7 @@ import { usePublishFlow } from './hooks/usePublishFlow';
 import { useSiteContent } from './hooks/useSiteContent';
 import { STORE_NAME } from './store/workspaceStore';
 import { convertHtmlToGutenberg, hasGutenbergMarkers } from './util/aiDesignerHelpers';
+import { createPageSessionCache, type PageSession } from './util/pageSessionCache';
 import type { WPItem } from './types';
 
 declare global {
@@ -67,7 +68,13 @@ const App = () => {
   // without a declaration-order cycle (the preview hook needs conversation.isLoading).
   const iframeRef = useRef<HTMLIFrameElement>( null );
   // Last published preview snapshot; drives the unsaved-changes guard below.
+  // Per-page (not a single global baseline) via the session cache below —
+  // otherwise publishing page B would make a clean, already-published page A
+  // look dirty the next time it's reopened.
   const publishedHtmlRef = useRef<string | null>( null );
+  // Last ~5 visited pages' full editing state, so switching back is instant
+  // instead of re-fetching/resetting (plan section 3: Client state).
+  const sessionCacheRef = useRef( createPageSessionCache() );
   const { selectedBlockIndex, selectedBlockHtml, selectedBlockLabel, clearSelection } = useBlockSelection();
   const canUseMedia = Boolean( ( window as any )?.wp?.media );
   const supportsThumbnail = selectedItem?.supports_thumbnail !== false;
@@ -190,11 +197,59 @@ const App = () => {
     return () => window.removeEventListener( 'beforeunload', handler );
   }, [] );
 
+  // Snapshot the page being left (if it's a real, previously-published item —
+  // an unsaved new-page draft has no stable id to cache under and is
+  // intentionally lost on navigating away, same as before this feature).
+  const snapshotOutgoingPage = () => {
+    if ( ! selectedItem ) {
+      return;
+    }
+    sessionCacheRef.current.set( selectedItem.id, {
+      previewHtml,
+      originalPreviewHtml,
+      metaTitle,
+      metaExcerpt,
+      metaFeaturedMediaId,
+      metaFeaturedImageUrl,
+      publishTitle,
+      originalMeta,
+      publishedHtml: publishedHtmlRef.current,
+      conversation: {
+        messages: conversation.messages,
+        historyEntries: conversation.historyEntries,
+        hasAIGenerated: conversation.hasAIGenerated,
+        conversationId: conversation.conversationId,
+        responseId: conversation.responseId,
+      },
+    } );
+  };
+
+  const restorePageSession = ( session: PageSession ) => {
+    conversation.restoreConversation( session.conversation );
+    publishedHtmlRef.current = session.publishedHtml;
+    setOriginalPreviewHtml( session.originalPreviewHtml );
+    setPreviewHtml( session.previewHtml );
+    setMetaTitle( session.metaTitle );
+    setMetaExcerpt( session.metaExcerpt );
+    setMetaFeaturedMediaId( session.metaFeaturedMediaId );
+    setMetaFeaturedImageUrl( session.metaFeaturedImageUrl );
+    setOriginalMeta( session.originalMeta );
+    setPublishTitle( session.publishTitle );
+  };
+
   const handleSelectItem = ( item: WPItem ) => {
-    conversation.resetAiConversation();
+    snapshotOutgoingPage();
     publishFlow.resetPublishState();
     setSelectedItem( item );
 
+    const cached = sessionCacheRef.current.get( item.id );
+    if ( cached ) {
+      restorePageSession( cached );
+      return;
+    }
+
+    conversation.resetAiConversation();
+    publishedHtmlRef.current = null;
     const rawHtml = item.content?.raw || item.content?.rendered || '';
     const baseHtml = rawHtml && ! hasGutenbergMarkers( rawHtml )
       ? convertHtmlToGutenberg( rawHtml )
@@ -220,8 +275,10 @@ const App = () => {
     if ( ! confirmDiscard() ) {
       return;
     }
+    snapshotOutgoingPage();
     conversation.resetAiConversation();
     publishFlow.resetPublishState();
+    publishedHtmlRef.current = null;
     setSelectedItem( null );
     setPreviewHtml( null );
     setOriginalPreviewHtml( null );
@@ -234,8 +291,10 @@ const App = () => {
   };
 
   const handleCreateWithPrompt = ( prompt: string ) => {
+    snapshotOutgoingPage();
     conversation.resetAiConversation();
     publishFlow.resetPublishState();
+    publishedHtmlRef.current = null;
     setSelectedItem( null );
     setPreviewHtml( null );
     setOriginalPreviewHtml( null );
