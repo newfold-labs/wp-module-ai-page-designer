@@ -1,7 +1,14 @@
 import { useCallback, useState } from 'react';
+import type { PersistedDesignTokens } from '../designTokens';
 import type { Message, PublishStatus, WPItem } from '../types';
-import { publishNewContent, setHomepage, updateExistingItem } from '../api';
+import { publishNewContent, saveDesignTokens, setHomepage, updateExistingItem } from '../api';
 import { stripLocalStyles } from '../util/aiDesignerHelpers';
+
+// Only worth a follow-up save when there's an actual non-default selection —
+// a brand-new page with nothing chosen in the Design tab shouldn't write an
+// empty meta row.
+const hasNonDefaultSelection = ( tokens: PersistedDesignTokens | null | undefined ): boolean =>
+  !! tokens && ( tokens.paletteId !== null || tokens.fontPairingId !== 'default' );
 
 type UsePublishFlowOptions = {
   apiUrl: string;
@@ -10,6 +17,7 @@ type UsePublishFlowOptions = {
   metaTitle?: string;
   metaExcerpt?: string;
   metaFeaturedMediaId?: number | null;
+  designTokens?: PersistedDesignTokens | null;
   onMetaUpdated?: (item: WPItem) => void;
   onPublished?: (item: WPItem) => void;
   appendAssistantMessage: (message: Message) => void;
@@ -38,6 +46,7 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     metaTitle,
     metaExcerpt,
     metaFeaturedMediaId,
+    designTokens,
     onMetaUpdated,
     onPublished,
     appendAssistantMessage,
@@ -94,6 +103,18 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
       if ( 'homepage' === type && result?.id ) {
         await setHomepage( result.id );
       }
+      if ( result?.id && hasNonDefaultSelection( designTokens ) ) {
+        // publishNewContent hits WP core's /wp/v2/posts|pages directly, which
+        // has no design_tokens field — save it through the module's own
+        // endpoint now that the post exists. Best-effort: a failure here
+        // shouldn't block a publish that otherwise succeeded.
+        saveDesignTokens(
+          apiUrl,
+          publishType === 'new_page' ? 'page' : 'post',
+          result.id,
+          designTokens ?? null
+        ).catch( ( error ) => console.error( 'Failed to save design tokens:', error ) );
+      }
       const url = result?.link || null;
       setPublishedUrl( url );
       setPublishStatus( { type: 'success', message: 'Published successfully!' } );
@@ -116,7 +137,7 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
     } finally {
       setPublishing( false );
     }
-  }, [ appendAssistantMessage, metaTitle, onPublished, previewHtml, publishTitle ] );
+  }, [ apiUrl, appendAssistantMessage, designTokens, metaTitle, onPublished, previewHtml, publishTitle ] );
 
   const handleReplaceItem = useCallback( async ( item: WPItem ) => {
     if ( ! previewHtml ) {
@@ -130,6 +151,7 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
         title: typeof metaTitle === 'string' ? metaTitle : undefined,
         excerpt: typeof metaExcerpt === 'string' ? metaExcerpt : undefined,
         featuredMedia: typeof metaFeaturedMediaId === 'number' ? metaFeaturedMediaId : undefined,
+        designTokens,
       } );
       const url = item.link || null;
       if ( response && typeof onMetaUpdated === 'function' ) {
@@ -156,6 +178,7 @@ export const usePublishFlow = ( options: UsePublishFlowOptions ): UsePublishFlow
   }, [
     apiUrl,
     appendAssistantMessage,
+    designTokens,
     metaExcerpt,
     metaFeaturedMediaId,
     metaTitle,

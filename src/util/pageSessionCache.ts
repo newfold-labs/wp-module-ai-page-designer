@@ -18,6 +18,7 @@ export type PageSession = {
   conversation: ConversationSnapshot;
   selectedPaletteId: string | null;
   selectedFontPairingId: string;
+  originalDesignTokens: { paletteId: string | null; fontPairingId: string } | null;
 };
 
 const MAX_ENTRIES = 5;

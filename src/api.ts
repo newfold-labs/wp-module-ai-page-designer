@@ -1,4 +1,5 @@
 import apiFetch from '@wordpress/api-fetch';
+import type { PersistedDesignTokens } from './designTokens';
 import type { Message, WPItem } from './types';
 
 export const fetchSitePages = ( apiUrl: string ) => apiFetch<WPItem[]>( {
@@ -215,6 +216,7 @@ type UpdateExistingMeta = {
   title?: string;
   excerpt?: string;
   featuredMedia?: number;
+  designTokens?: PersistedDesignTokens | null;
 };
 
 export const updateExistingItem = (
@@ -235,11 +237,33 @@ export const updateExistingItem = (
   if ( typeof meta.featuredMedia === 'number' ) {
     data.featured_media = meta.featuredMedia;
   }
+  if ( 'designTokens' in meta ) {
+    data.design_tokens = meta.designTokens;
+  }
 
   return apiFetch<any>( {
     path: `${ apiUrl }/content/${ itemType }/${ item.id }`,
     method: 'POST',
     data,
+  } );
+};
+
+// publishNewContent (above) hits WP core's /wp/v2/posts|pages directly, which
+// has no knowledge of design_tokens — this is a lightweight follow-up call
+// through the module's own content endpoint instead, sending only
+// design_tokens so it doesn't re-run the content conform/sanitize pipeline
+// for a field that hasn't changed.
+export const saveDesignTokens = (
+  apiUrl: string,
+  itemType: 'post' | 'page',
+  id: number,
+  designTokens: PersistedDesignTokens | null
+) => {
+  const type = itemType === 'post' ? 'posts' : 'pages';
+  return apiFetch<any>( {
+    path: `${ apiUrl }/content/${ type }/${ id }`,
+    method: 'POST',
+    data: { design_tokens: designTokens },
   } );
 };
 

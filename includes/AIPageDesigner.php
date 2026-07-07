@@ -352,6 +352,57 @@ class AIPageDesigner {
 	}
 
 	/**
+	 * Build the CSS that re-colors/re-types a published page for a saved Design
+	 * tab selection. Mirrors `window.nfdSetDesignTokens` in usePreviewIframe.ts
+	 * exactly (same variable names, same override strategy) so a page looks
+	 * identical in the designer preview and once published — colors override
+	 * the theme's own `--wp--preset--color--{slug}` custom properties (block
+	 * markup already reads them via var(...)), fonts need a direct !important
+	 * override since the theme's font-family rules aren't variable-driven.
+	 *
+	 * @param array<string,string>|null $colors       Slug => hex color map.
+	 * @param string                    $heading_font CSS font-family value, or '' for theme default.
+	 * @param string                    $body_font    CSS font-family value, or '' for theme default.
+	 * @return string
+	 */
+	private static function get_design_tokens_css( $colors, $heading_font, $body_font ) {
+		$rules = array();
+
+		if ( ! empty( $colors ) && is_array( $colors ) ) {
+			$vars = array();
+			foreach ( $colors as $slug => $value ) {
+				$hex = sanitize_hex_color( $value );
+				if ( ! $hex ) {
+					continue;
+				}
+				$css_slug = str_replace( '_', '-', sanitize_key( $slug ) );
+				// !important: WP core's own global-styles inline stylesheet
+				// (also a `:root { --wp--preset--color--*: ... }` block, same
+				// specificity) is enqueued after wp-block-library's inline
+				// styles, so on equal specificity it would otherwise win by
+				// source order alone and silently discard this override. The
+				// iframe preview avoids this by scoping to a high-specificity
+				// #nfd-preview-root ID instead — :root has no such advantage
+				// here, so !important is the only reliable way to win.
+				$vars[] = '--wp--preset--color--' . $css_slug . ': ' . $hex . ' !important;';
+			}
+			if ( ! empty( $vars ) ) {
+				$rules[] = ':root { ' . implode( ' ', $vars ) . ' }';
+			}
+		}
+
+		if ( ! empty( $body_font ) ) {
+			$rules[] = 'body, body * { font-family: ' . sanitize_text_field( $body_font ) . ' !important; }';
+		}
+
+		if ( ! empty( $heading_font ) ) {
+			$rules[] = 'h1, h2, h3, h4, h5, h6, .wp-block-heading { font-family: ' . sanitize_text_field( $heading_font ) . ' !important; }';
+		}
+
+		return implode( ' ', $rules );
+	}
+
+	/**
 	 * Enqueue frontend animation styles and scripts
 	 */
 	public function enqueue_frontend_animations() {
@@ -361,7 +412,10 @@ class AIPageDesigner {
 
 		wp_enqueue_style(
 			'nfd-ai-page-fonts',
-			'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Raleway:wght@400;600;700&display=swap',
+			// Includes Inter/Manrope alongside the archetype fonts so every
+			// curated Design tab font pairing (designTokens.ts) is available
+			// on the published page, not just inside the admin preview build.
+			'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Raleway:wght@400;600;700&family=Inter:wght@400;500;600&family=Manrope:wght@400;600;700;800&display=swap',
 			array(),
 			NFD_MODULE_AI_PAGE_DESIGNER_VERSION
 		);
@@ -370,6 +424,21 @@ class AIPageDesigner {
 		$animation_css = self::get_motion_css( $content_scope, 'nfd-' );
 
 		wp_add_inline_style( 'wp-block-library', $animation_css );
+
+		$queried_id = get_queried_object_id();
+		if ( $queried_id ) {
+			$design_tokens = get_post_meta( $queried_id, RestApi\WordPressProxyController::DESIGN_TOKENS_META_KEY, true );
+			if ( is_array( $design_tokens ) ) {
+				$tokens_css = self::get_design_tokens_css(
+					isset( $design_tokens['colors'] ) ? $design_tokens['colors'] : null,
+					isset( $design_tokens['headingFont'] ) ? $design_tokens['headingFont'] : '',
+					isset( $design_tokens['bodyFont'] ) ? $design_tokens['bodyFont'] : ''
+				);
+				if ( '' !== $tokens_css ) {
+					wp_add_inline_style( 'wp-block-library', $tokens_css );
+				}
+			}
+		}
 
 		wp_register_script( 'nfd-ai-page-animations', false, array(), NFD_MODULE_AI_PAGE_DESIGNER_VERSION, true );
 		wp_enqueue_script( 'nfd-ai-page-animations' );

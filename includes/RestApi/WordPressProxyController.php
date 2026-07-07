@@ -114,6 +114,10 @@ class WordPressProxyController extends \WP_REST_Controller {
 							'required' => false,
 							'type'     => 'integer',
 						),
+						'design_tokens'  => array(
+							'required' => false,
+							'type'     => 'object',
+						),
 					),
 					'permission_callback' => array( $this, 'check_permission' ),
 				),
@@ -157,6 +161,10 @@ class WordPressProxyController extends \WP_REST_Controller {
 						'excerpt' => array(
 							'required' => false,
 							'type'     => 'string',
+						),
+						'design_tokens' => array(
+							'required' => false,
+							'type'     => 'object',
 						),
 					),
 					'permission_callback' => array( $this, 'check_permission' ),
@@ -299,6 +307,10 @@ class WordPressProxyController extends \WP_REST_Controller {
 			);
 		}
 
+		if ( isset( $request['design_tokens'] ) ) {
+			$this->save_design_tokens( $post_id, $request['design_tokens'] );
+		}
+
 		$post = get_post( $post_id );
 
 		$data = array(
@@ -378,6 +390,10 @@ class WordPressProxyController extends \WP_REST_Controller {
 			}
 		}
 
+		if ( isset( $request['design_tokens'] ) ) {
+			$this->save_design_tokens( $id, $request['design_tokens'] );
+		}
+
 		$data = $this->build_item_data( $post );
 
 		return new \WP_REST_Response( $data, 200 );
@@ -413,6 +429,17 @@ class WordPressProxyController extends \WP_REST_Controller {
 			200
 		);
 	}
+
+	/**
+	 * The post meta key storing a page's saved Design tab selection
+	 * (palette/font pairing ids for restoring the UI, plus the resolved
+	 * colors/fonts so the public-facing render — AIPageDesigner::
+	 * enqueue_frontend_animations() — doesn't need to know about the
+	 * curated palette definitions in designTokens.ts at all).
+	 *
+	 * @var string
+	 */
+	const DESIGN_TOKENS_META_KEY = '_apd_design_tokens';
 
 	/**
 	 * The user meta key storing the current user's recent-pages list.
@@ -505,6 +532,56 @@ class WordPressProxyController extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Sanitize and persist a page's Design tab selection, or clear it when the
+	 * client sends an empty/default selection (palette null, font 'default').
+	 *
+	 * @param int   $post_id Post ID.
+	 * @param mixed $raw     The `design_tokens` request value — expected shape:
+	 *                       { paletteId: string|null, fontPairingId: string,
+	 *                         colors: {slug: hex}|null, headingFont: string, bodyFont: string }.
+	 */
+	private function save_design_tokens( $post_id, $raw ) {
+		if ( ! is_array( $raw ) ) {
+			delete_post_meta( $post_id, self::DESIGN_TOKENS_META_KEY );
+			return;
+		}
+
+		$colors = null;
+		if ( ! empty( $raw['colors'] ) && is_array( $raw['colors'] ) ) {
+			$colors = array();
+			foreach ( $raw['colors'] as $slug => $value ) {
+				$hex = sanitize_hex_color( (string) $value );
+				if ( $hex ) {
+					$colors[ sanitize_key( $slug ) ] = $hex;
+				}
+			}
+			if ( empty( $colors ) ) {
+				$colors = null;
+			}
+		}
+
+		$heading_font = isset( $raw['headingFont'] ) ? sanitize_text_field( $raw['headingFont'] ) : '';
+		$body_font    = isset( $raw['bodyFont'] ) ? sanitize_text_field( $raw['bodyFont'] ) : '';
+
+		if ( null === $colors && '' === $heading_font && '' === $body_font ) {
+			delete_post_meta( $post_id, self::DESIGN_TOKENS_META_KEY );
+			return;
+		}
+
+		update_post_meta(
+			$post_id,
+			self::DESIGN_TOKENS_META_KEY,
+			array(
+				'paletteId'     => isset( $raw['paletteId'] ) ? sanitize_key( $raw['paletteId'] ) : null,
+				'fontPairingId' => isset( $raw['fontPairingId'] ) ? sanitize_key( $raw['fontPairingId'] ) : 'default',
+				'colors'        => $colors,
+				'headingFont'   => $heading_font,
+				'bodyFont'      => $body_font,
+			)
+		);
+	}
+
+	/**
 	 * Conform markup for persistence: run the idempotent harness, then guarantee
 	 * no placehold.co image is ever saved by swapping any survivor for a real
 	 * Unsplash image, and finally sanitize with wp_kses_post.
@@ -542,6 +619,7 @@ class WordPressProxyController extends \WP_REST_Controller {
 		$post_type      = $post->post_type;
 		$excerpt_raw    = $post->post_excerpt ?? '';
 		$featured_media = get_post_thumbnail_id( $post->ID );
+		$design_tokens  = get_post_meta( $post->ID, self::DESIGN_TOKENS_META_KEY, true );
 
 		return array(
 			'id'                 => $post->ID,
@@ -562,6 +640,7 @@ class WordPressProxyController extends \WP_REST_Controller {
 			'status'             => $post->post_status,
 			'link'               => get_permalink( $post->ID ),
 			'type'               => $post_type,
+			'design_tokens'      => is_array( $design_tokens ) ? $design_tokens : null,
 		);
 	}
 

@@ -27,6 +27,18 @@ export type DesignPalette = {
   colors: Record<ColorSlug, string>;
 };
 
+// Persisted per-page (post meta, see WordPressProxyController::DESIGN_TOKENS_META_KEY).
+// Carries both the ids (so the Design tab can restore which swatch/pairing was
+// selected) and the resolved values (so the PHP-side published-page render
+// doesn't need to know the curated palette definitions at all).
+export type PersistedDesignTokens = {
+  paletteId: string | null;
+  fontPairingId: string;
+  colors: Record<ColorSlug, string> | null;
+  headingFont: string;
+  bodyFont: string;
+};
+
 export const CURATED_PALETTES: DesignPalette[] = [
   {
     id: 'midnight',

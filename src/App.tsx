@@ -10,11 +10,11 @@ import PreviewFrame from './components/PreviewFrame';
 import PublishModal from './components/PublishModal';
 import RevertConfirm from './components/RevertConfirm';
 import SidePanel from './components/SidePanel';
-import { CURATED_FONT_PAIRINGS, CURATED_PALETTES } from './designTokens';
+import { CURATED_FONT_PAIRINGS, CURATED_PALETTES, type PersistedDesignTokens } from './designTokens';
 import { useAiConversation } from './hooks/useAiConversation';
 import { useBlockSelection } from './hooks/useBlockSelection';
 import { usePageRoute } from './hooks/usePageRoute';
-import { usePreviewIframe, type PreviewDesignTokens } from './hooks/usePreviewIframe';
+import { usePreviewIframe } from './hooks/usePreviewIframe';
 import { usePublishFlow } from './hooks/usePublishFlow';
 import { useRecentItems } from './hooks/useRecentItems';
 import { useSiteContent } from './hooks/useSiteContent';
@@ -66,6 +66,13 @@ const App = () => {
   // (no CSS-var override); 'default' font pairing = theme default fonts.
   const [ selectedPaletteId, setSelectedPaletteId ] = useState<string | null>( null );
   const [ selectedFontPairingId, setSelectedFontPairingId ] = useState( DEFAULT_FONT_PAIRING_ID );
+  // Baseline to diff selectedPaletteId/selectedFontPairingId against for
+  // dirtiness (mirrors originalMeta) — null means "no saved selection to
+  // compare against" (new page, or an existing page that's never had one).
+  const [ originalDesignTokens, setOriginalDesignTokens ] = useState<{
+    paletteId: string | null;
+    fontPairingId: string;
+  } | null>( null );
 
   // get_the_title() entity-escapes ("&#038;" for "&") since it's meant for
   // inline HTML output — decode so plain-text fields like the meta title
@@ -101,6 +108,17 @@ const App = () => {
       metaFeaturedMediaId !== originalMeta.featuredMediaId
     );
   }, [ metaExcerpt, metaFeaturedMediaId, metaTitle, originalMeta, selectedItem ] );
+  // Whether the current selection differs from what's saved (or, with no
+  // baseline yet, whether anything non-default is selected at all).
+  const designTokensDirty = useMemo( () => {
+    if ( ! originalDesignTokens ) {
+      return selectedPaletteId !== null || selectedFontPairingId !== DEFAULT_FONT_PAIRING_ID;
+    }
+    return (
+      selectedPaletteId !== originalDesignTokens.paletteId ||
+      selectedFontPairingId !== originalDesignTokens.fontPairingId
+    );
+  }, [ originalDesignTokens, selectedFontPairingId, selectedPaletteId ] );
 
   const conversation = useAiConversation( {
     apiUrl: nfdAIPageDesigner.apiUrl,
@@ -130,14 +148,19 @@ const App = () => {
   const streamingTargetBlockIndex =
     conversation.isLoading && selectedBlockIndex !== null ? selectedBlockIndex : null;
 
-  // Memoized so usePreviewIframe's design-tokens effect only re-fires when the
-  // actual selection changes, not on every unrelated App render.
-  const designTokens: PreviewDesignTokens = useMemo( () => {
+  // Memoized so usePreviewIframe's design-tokens effect (and usePublishFlow's
+  // save-on-publish) only re-fire when the actual selection changes, not on
+  // every unrelated App render. Carries paletteId/fontPairingId (for
+  // persistence/UI restore) alongside the resolved colors/fonts (for the
+  // live preview swap) — see PersistedDesignTokens.
+  const designTokens: PersistedDesignTokens = useMemo( () => {
     const palette = selectedPaletteId
       ? CURATED_PALETTES.find( ( item ) => item.id === selectedPaletteId )
       : null;
     const fontPairing = CURATED_FONT_PAIRINGS.find( ( item ) => item.id === selectedFontPairingId );
     return {
+      paletteId: selectedPaletteId,
+      fontPairingId: selectedFontPairingId,
       colors: palette?.colors ?? null,
       headingFont: fontPairing?.headingFont || '',
       bodyFont: fontPairing?.bodyFont || '',
@@ -162,6 +185,7 @@ const App = () => {
     metaTitle,
     metaExcerpt,
     metaFeaturedMediaId,
+    designTokens,
     onMetaUpdated: ( item ) => {
       const nextTitle = stripHtml( item.title?.rendered || '' );
       const nextExcerpt = item.excerpt?.raw || '';
@@ -176,6 +200,10 @@ const App = () => {
         excerpt: nextExcerpt,
         featuredMediaId: nextFeaturedMediaId,
       } );
+      // Design tokens were saved alongside this update (usePublishFlow
+      // includes them in the same request) — the current selection is now
+      // the saved baseline, so the publish gate goes quiet until it changes.
+      setOriginalDesignTokens( { paletteId: selectedPaletteId, fontPairingId: selectedFontPairingId } );
       publishedHtmlRef.current = previewHtml;
     },
     onPublished: ( item ) => {
@@ -185,6 +213,7 @@ const App = () => {
         excerpt: metaExcerpt,
         featuredMediaId: metaFeaturedMediaId,
       } );
+      setOriginalDesignTokens( { paletteId: selectedPaletteId, fontPairingId: selectedFontPairingId } );
       // Mark the current preview as the published baseline so the
       // unsaved-changes guard goes quiet until the next edit.
       publishedHtmlRef.current = previewHtml;
@@ -198,10 +227,16 @@ const App = () => {
   // refresh / full WP-admin navigation) and the in-app guard (New Page, page
   // switching), which reset state without triggering a page unload.
   const isDirty = () =>
-    !! previewHtml &&
-    ( conversation.hasAIGenerated || metaDirty ) &&
-    previewHtml !== publishedHtmlRef.current &&
-    ! publishFlow.publishing;
+    ! publishFlow.publishing &&
+    (
+      // Content/meta dirty only counts once the markup itself has actually
+      // moved away from the last published snapshot.
+      ( !! previewHtml && ( conversation.hasAIGenerated || metaDirty ) && previewHtml !== publishedHtmlRef.current ) ||
+      // Design tokens are a presentation overlay, not a markup change — they
+      // never move previewHtml, so they need their own independent check
+      // rather than being ANDed against the previewHtml-changed condition.
+      designTokensDirty
+    );
 
   // Confirm before an in-app action that would discard unpublished work.
   // Returns true when it's safe to proceed (clean, or the user accepted).
@@ -259,6 +294,7 @@ const App = () => {
       },
       selectedPaletteId,
       selectedFontPairingId,
+      originalDesignTokens,
     } );
   };
 
@@ -275,6 +311,7 @@ const App = () => {
     setPublishTitle( session.publishTitle );
     setSelectedPaletteId( session.selectedPaletteId );
     setSelectedFontPairingId( session.selectedFontPairingId );
+    setOriginalDesignTokens( session.originalDesignTokens );
   };
 
   const handleSelectItem = ( item: WPItem ) => {
@@ -310,8 +347,17 @@ const App = () => {
       featuredMediaId: nextFeaturedMediaId,
     } );
     setPublishTitle( '' );
-    setSelectedPaletteId( null );
-    setSelectedFontPairingId( DEFAULT_FONT_PAIRING_ID );
+    // Restore the page's saved Design tab selection (post meta, per
+    // WordPressProxyController::DESIGN_TOKENS_META_KEY) rather than always
+    // resetting to theme default — otherwise a saved palette would silently
+    // "disappear" from the UI (though not the published page) every time
+    // the page is reopened in a fresh session.
+    setSelectedPaletteId( item.design_tokens?.paletteId ?? null );
+    setSelectedFontPairingId( item.design_tokens?.fontPairingId ?? DEFAULT_FONT_PAIRING_ID );
+    setOriginalDesignTokens( {
+      paletteId: item.design_tokens?.paletteId ?? null,
+      fontPairingId: item.design_tokens?.fontPairingId ?? DEFAULT_FONT_PAIRING_ID,
+    } );
   };
 
   const handleCreateNew = () => {
@@ -333,6 +379,7 @@ const App = () => {
     setPublishTitle( '' );
     setSelectedPaletteId( null );
     setSelectedFontPairingId( DEFAULT_FONT_PAIRING_ID );
+    setOriginalDesignTokens( null );
   };
 
   const handleCreateWithPrompt = ( prompt: string ) => {
@@ -351,6 +398,7 @@ const App = () => {
     setPublishTitle( '' );
     setSelectedPaletteId( null );
     setSelectedFontPairingId( DEFAULT_FONT_PAIRING_ID );
+    setOriginalDesignTokens( null );
     conversation.handleSend( prompt );
   };
 
@@ -515,7 +563,7 @@ const App = () => {
   const pageStatus: 'draft' | 'publish' | null = selectedItem
     ? ( selectedItem.status === 'publish' ? 'publish' : 'draft' )
     : ( conversation.hasAIGenerated ? 'draft' : null );
-  const canPublish = conversation.hasAIGenerated || metaDirty;
+  const canPublish = conversation.hasAIGenerated || metaDirty || designTokensDirty;
   // conversation.isLoading is included so submitting a prompt swaps the
   // canvas away from the empty-state hero immediately — without it,
   // hasContent stays false (nothing loaded yet) until the AI's first
@@ -558,7 +606,7 @@ const App = () => {
       chatMessagesRef={ conversation.chatMessagesRef }
       isLoading={ conversation.isLoading }
       hasAIGenerated={ conversation.hasAIGenerated }
-      metaDirty={ metaDirty }
+      metaDirty={ metaDirty || designTokensDirty }
       publishing={ publishFlow.publishing }
       selectedItem={ selectedItem }
       input={ conversation.input }
