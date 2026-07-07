@@ -119,3 +119,27 @@ export const generateMetadata = async (
     return null;
   }
 };
+
+/**
+ * Design tab "Suggest with AI": asks the model to pick the best-fit palette
+ * for the current page content, choosing only from the ids passed in (never
+ * a free-form color — matches the plan's "no free-form color picker"
+ * constraint). Returns the chosen palette id, or null on any failure so the
+ * caller can leave the current selection untouched.
+ */
+export const suggestPalette = async (
+  apiUrl: string,
+  markup: string,
+  palettes: Array<{ id: string; name: string }>
+): Promise<string | null> => {
+  try {
+    const result = await apiFetch<{ paletteId: string }>( {
+      path: `${ apiUrl }/suggest-palette`,
+      method: 'POST',
+      data: { markup, palettes },
+    } );
+    return result?.paletteId || null;
+  } catch {
+    return null;
+  }
+};

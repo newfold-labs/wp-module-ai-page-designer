@@ -20,6 +20,8 @@ type Props = {
   previewHtml: string | null;
   selectedPaletteId: string | null;
   selectedFontPairingId: string;
+  canSuggestPalette: boolean;
+  suggestingPalette: boolean;
   onInputChange: ( value: string ) => void;
   onSend: () => void;
   onClearSelection: () => void;
@@ -27,6 +29,7 @@ type Props = {
   onRevertTo: ( id: string ) => void;
   onSelectPalette: ( paletteId: string | null ) => void;
   onSelectFontPairing: ( fontPairingId: string ) => void;
+  onSuggestPalette: () => void;
 };
 
 const TABS = [
@@ -50,6 +53,8 @@ const SidePanel = ( {
   previewHtml,
   selectedPaletteId,
   selectedFontPairingId,
+  canSuggestPalette,
+  suggestingPalette,
   onInputChange,
   onSend,
   onClearSelection,
@@ -57,6 +62,7 @@ const SidePanel = ( {
   onRevertTo,
   onSelectPalette,
   onSelectFontPairing,
+  onSuggestPalette,
 }: Props ) => {
   const [ activeTab, setActiveTab ] = useState( 0 );
 
@@ -116,8 +122,11 @@ const SidePanel = ( {
           <DesignTab
             selectedPaletteId={ selectedPaletteId }
             selectedFontPairingId={ selectedFontPairingId }
+            canSuggest={ canSuggestPalette }
+            suggesting={ suggestingPalette }
             onSelectPalette={ onSelectPalette }
             onSelectFontPairing={ onSelectFontPairing }
+            onSuggestPalette={ onSuggestPalette }
           />
         </div>
         <div

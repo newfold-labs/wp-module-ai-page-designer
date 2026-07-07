@@ -118,6 +118,33 @@ class IntentClassifierController {
 				),
 			)
 		);
+
+		// Design tab "Suggest with AI": the curated palette catalog lives entirely
+		// in designTokens.ts, so the client sends it as {id,name} pairs rather
+		// than this endpoint hardcoding a duplicate copy that could drift.
+		register_rest_route(
+			$this->namespace,
+			'/suggest-palette',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'suggest_palette' ),
+					'args'                => array(
+						'markup'   => array(
+							'required'    => true,
+							'type'        => 'string',
+							'description' => __( 'The current page content to base the suggestion on.', 'wp-module-ai-page-designer' ),
+						),
+						'palettes' => array(
+							'required'    => true,
+							'type'        => 'array',
+							'description' => __( 'Candidate palettes to choose from: [{id, name}].', 'wp-module-ai-page-designer' ),
+						),
+					),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -232,6 +259,78 @@ class IntentClassifierController {
 				'value' => $value,
 			)
 		);
+	}
+
+	/**
+	 * Design tab "Suggest with AI": pick the best-fit curated palette for the
+	 * current page content. The model chooses only from the ids the client
+	 * sent — this endpoint never invents a palette or a color, matching the
+	 * plan's "no free-form color picker" constraint.
+	 *
+	 * @param \WP_REST_Request $request The request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function suggest_palette( \WP_REST_Request $request ) {
+		$palettes_param = $request->get_param( 'palettes' );
+		$palettes       = array();
+		if ( is_array( $palettes_param ) ) {
+			foreach ( $palettes_param as $entry ) {
+				$id   = isset( $entry['id'] ) ? sanitize_key( $entry['id'] ) : '';
+				$name = isset( $entry['name'] ) ? sanitize_text_field( $entry['name'] ) : '';
+				if ( $id && $name ) {
+					$palettes[ $id ] = $name;
+				}
+			}
+		}
+		if ( empty( $palettes ) ) {
+			return new \WP_Error( 'invalid_palettes', __( 'No candidate palettes provided.', 'wp-module-ai-page-designer' ), array( 'status' => 400 ) );
+		}
+
+		$page_text = $this->markup_to_text( (string) $request->get_param( 'markup' ) );
+		if ( '' === $page_text ) {
+			return new \WP_Error( 'empty_content', __( 'There is no page content to base a suggestion on yet.', 'wp-module-ai-page-designer' ), array( 'status' => 400 ) );
+		}
+
+		$palette_lines = '';
+		foreach ( $palettes as $id => $name ) {
+			$palette_lines .= "- {$id}: {$name}\n";
+		}
+
+		$system = 'You are a design assistant choosing a color palette for a webpage. '
+			. "Given the page's content and a list of named candidate palettes, pick the ONE palette whose mood/tone best "
+			. "fits the page's subject matter, industry, and voice. "
+			. 'Return ONLY a JSON object, no prose, no code fences: {"paletteId": "<id>"}. '
+			. "You must choose an id from exactly this list (id: name):\n" . $palette_lines;
+
+		$ai_messages = array(
+			array(
+				'role'    => 'system',
+				'content' => $system,
+			),
+			array(
+				'role'    => 'user',
+				'content' => "Page content:\n\n" . $page_text,
+			),
+		);
+
+		$result = $this->ai_client->analyze( $ai_messages );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		if ( empty( $result['content'] ) ) {
+			return new \WP_Error( 'generation_failed', __( 'Could not suggest a palette right now. Please try again.', 'wp-module-ai-page-designer' ), array( 'status' => 502 ) );
+		}
+
+		$content    = preg_replace( '/```(?:json)?/i', '', (string) $result['content'] );
+		$data       = json_decode( trim( (string) $content ), true );
+		$palette_id = is_array( $data ) && isset( $data['paletteId'] ) ? sanitize_key( $data['paletteId'] ) : '';
+
+		if ( ! isset( $palettes[ $palette_id ] ) ) {
+			return new \WP_Error( 'generation_failed', __( 'Could not suggest a palette right now. Please try again.', 'wp-module-ai-page-designer' ), array( 'status' => 502 ) );
+		}
+
+		return rest_ensure_response( array( 'paletteId' => $palette_id ) );
 	}
 
 	/**

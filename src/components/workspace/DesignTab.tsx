@@ -1,24 +1,44 @@
 import React from 'react';
+import { SparklesIcon } from '@heroicons/react/24/outline';
 import { CURATED_FONT_PAIRINGS, CURATED_PALETTES } from '../../designTokens';
 
 type Props = {
   selectedPaletteId: string | null;
   selectedFontPairingId: string;
+  canSuggest: boolean;
+  suggesting: boolean;
   onSelectPalette: ( paletteId: string | null ) => void;
   onSelectFontPairing: ( fontPairingId: string ) => void;
+  onSuggestPalette: () => void;
 };
 
 const DesignTab = ( {
   selectedPaletteId,
   selectedFontPairingId,
+  canSuggest,
+  suggesting,
   onSelectPalette,
   onSelectFontPairing,
+  onSuggestPalette,
 }: Props ) => {
   return (
     <div className="ai-design-tab">
       <div className="ai-design-tab__section">
-        <h4 className="ai-design-tab__section-title">Color palette</h4>
-        <p className="ai-design-tab__section-hint">Swaps instantly in the preview — no AI call.</p>
+        <div className="ai-design-tab__section-header">
+          <div>
+            <h4 className="ai-design-tab__section-title">Color palette</h4>
+            <p className="ai-design-tab__section-hint">Swaps instantly in the preview — no AI call.</p>
+          </div>
+          <button
+            type="button"
+            className="ai-design-tab__suggest-btn"
+            onClick={ onSuggestPalette }
+            disabled={ ! canSuggest || suggesting }
+          >
+            <SparklesIcon className="icon-sm" />
+            { suggesting ? 'Thinking...' : 'Suggest with AI' }
+          </button>
+        </div>
         <div className="ai-design-tab__palette-grid">
           <button
             type="button"

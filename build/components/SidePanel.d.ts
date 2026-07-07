@@ -15,6 +15,8 @@ type Props = {
     previewHtml: string | null;
     selectedPaletteId: string | null;
     selectedFontPairingId: string;
+    canSuggestPalette: boolean;
+    suggestingPalette: boolean;
     onInputChange: (value: string) => void;
     onSend: () => void;
     onClearSelection: () => void;
@@ -22,7 +24,8 @@ type Props = {
     onRevertTo: (id: string) => void;
     onSelectPalette: (paletteId: string | null) => void;
     onSelectFontPairing: (fontPairingId: string) => void;
+    onSuggestPalette: () => void;
 };
-declare const SidePanel: ({ messages, chatMessagesRef, isLoading, hasAIGenerated, metaDirty, publishing, selectedItem, input, selectedBlockIndex, selectedBlockLabel, historyEntries, previewHtml, selectedPaletteId, selectedFontPairingId, onInputChange, onSend, onClearSelection, onPublish, onRevertTo, onSelectPalette, onSelectFontPairing, }: Props) => React.JSX.Element;
+declare const SidePanel: ({ messages, chatMessagesRef, isLoading, hasAIGenerated, metaDirty, publishing, selectedItem, input, selectedBlockIndex, selectedBlockLabel, historyEntries, previewHtml, selectedPaletteId, selectedFontPairingId, canSuggestPalette, suggestingPalette, onInputChange, onSend, onClearSelection, onPublish, onRevertTo, onSelectPalette, onSelectFontPairing, onSuggestPalette, }: Props) => React.JSX.Element;
 export default SidePanel;
 //# sourceMappingURL=SidePanel.d.ts.map

@@ -21,6 +21,7 @@ import { useSiteContent } from './hooks/useSiteContent';
 import { STORE_NAME } from './store/workspaceStore';
 import { convertHtmlToGutenberg, decodeHtmlEntities, hasGutenbergMarkers } from './util/aiDesignerHelpers';
 import { createPageSessionCache, type PageSession } from './util/pageSessionCache';
+import { suggestPalette } from './util/intentClassifier';
 import type { WPItem } from './types';
 
 const DEFAULT_FONT_PAIRING_ID = 'default';
@@ -73,6 +74,7 @@ const App = () => {
     paletteId: string | null;
     fontPairingId: string;
   } | null>( null );
+  const [ suggestingPalette, setSuggestingPalette ] = useState( false );
 
   // get_the_title() entity-escapes ("&#038;" for "&") since it's meant for
   // inline HTML output — decode so plain-text fields like the meta title
@@ -543,6 +545,25 @@ const App = () => {
     conversation.addHistoryEntry( `Palette → ${ palette ? palette.name : 'Theme default' }` );
   };
 
+  const handleSuggestPalette = async () => {
+    if ( ! previewHtml || suggestingPalette ) {
+      return;
+    }
+    setSuggestingPalette( true );
+    try {
+      const paletteId = await suggestPalette(
+        nfdAIPageDesigner.apiUrl,
+        previewHtml,
+        CURATED_PALETTES.map( ( palette ) => ( { id: palette.id, name: palette.name } ) )
+      );
+      if ( paletteId ) {
+        handleSelectPalette( paletteId );
+      }
+    } finally {
+      setSuggestingPalette( false );
+    }
+  };
+
   const handleSelectFontPairing = ( fontPairingId: string ) => {
     setSelectedFontPairingId( fontPairingId );
     const pairing = CURATED_FONT_PAIRINGS.find( ( item ) => item.id === fontPairingId );
@@ -623,6 +644,9 @@ const App = () => {
       onRevertTo={ conversation.handleRevertToEntry }
       onSelectPalette={ handleSelectPalette }
       onSelectFontPairing={ handleSelectFontPairing }
+      canSuggestPalette={ Boolean( previewHtml ) }
+      suggestingPalette={ suggestingPalette }
+      onSuggestPalette={ handleSuggestPalette }
     />
   ) : null;
 
