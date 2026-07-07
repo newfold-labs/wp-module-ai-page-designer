@@ -114,8 +114,11 @@
   min-height: 0 !important;
 }
 
+/* The old embedded-card layout sized itself to 80% of the viewport; the
+   fullscreen workspace shell (.ai-workspace-shell, position:fixed;inset:0)
+   now owns this element's sizing entirely, so this just avoids fighting it. */
 #nfd-ai-page-designer-root {
-  height: calc(80vh - 10px);
+  height: 100%;
   width: 100%;
 }
 

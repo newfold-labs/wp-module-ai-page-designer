@@ -1,0 +1,118 @@
+import React from 'react';
+import { Button } from '@wordpress/components';
+import {
+  ArrowLeftIcon,
+  Bars3Icon,
+  ComputerDesktopIcon,
+  DevicePhoneMobileIcon,
+  DeviceTabletIcon,
+  PlusIcon,
+  ViewColumnsIcon,
+} from '@heroicons/react/24/outline';
+
+type PageStatus = 'draft' | 'publish' | null;
+
+type Props = {
+  pageTitle: string;
+  pageStatus: PageStatus;
+  drawerOpen: boolean;
+  onToggleDrawer: () => void;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
+  onNewPage: () => void;
+  onBackToAdmin: () => void;
+  canPublish: boolean;
+  publishing: boolean;
+  onPublish: () => void;
+};
+
+// ViewportToggle is a visual stub in Phase 1 — the header's grammar (back
+// square, title, publish, toggles) must stay invariant across phases per the
+// layout plan, so the control is present but inert until Phase 2 wires
+// actual iframe resizing behind it.
+const Header = ( {
+  pageTitle,
+  pageStatus,
+  drawerOpen,
+  onToggleDrawer,
+  sidebarOpen,
+  onToggleSidebar,
+  onNewPage,
+  onBackToAdmin,
+  canPublish,
+  publishing,
+  onPublish,
+}: Props ) => (
+  <div className="ai-workspace-header">
+    <div className="ai-workspace-header__left">
+      <Button
+        className="ai-workspace-header__back"
+        icon={ () => <ArrowLeftIcon className="icon-sm" /> }
+        label="Back to WP Admin"
+        onClick={ onBackToAdmin }
+      />
+      <Button
+        className="ai-workspace-header__drawer-toggle"
+        icon={ () => <Bars3Icon className="icon-sm" /> }
+        label={ drawerOpen ? 'Close pages drawer' : 'Open pages drawer' }
+        isPressed={ drawerOpen }
+        onClick={ onToggleDrawer }
+      />
+      <Button
+        variant="primary"
+        className="ai-workspace-header__new-page"
+        icon={ () => <PlusIcon className="icon-sm" /> }
+        onClick={ onNewPage }
+      >
+        New Page
+      </Button>
+    </div>
+
+    <div className="ai-workspace-header__center">
+      <span className="ai-workspace-header__title">{ pageTitle || 'Untitled' }</span>
+      { pageStatus && (
+        <span className={ `ai-badge ai-badge--${ pageStatus === 'publish' ? 'published' : 'draft' }` }>
+          { pageStatus === 'publish' ? 'Published' : 'Draft' }
+        </span>
+      ) }
+    </div>
+
+    <div className="ai-workspace-header__right">
+      <div className="ai-workspace-header__viewport-toggle" role="group" aria-label="Preview viewport (coming soon)">
+        <Button
+          className="is-active"
+          icon={ () => <ComputerDesktopIcon className="icon-sm" /> }
+          label="Desktop preview"
+          disabled
+        />
+        <Button
+          icon={ () => <DeviceTabletIcon className="icon-sm" /> }
+          label="Tablet preview (coming soon)"
+          disabled
+        />
+        <Button
+          icon={ () => <DevicePhoneMobileIcon className="icon-sm" /> }
+          label="Mobile preview (coming soon)"
+          disabled
+        />
+      </div>
+      <Button
+        variant="primary"
+        className="ai-workspace-header__publish"
+        disabled={ ! canPublish || publishing }
+        onClick={ onPublish }
+      >
+        { publishing ? 'Publishing...' : 'Publish' }
+      </Button>
+      <Button
+        className="ai-workspace-header__sidebar-toggle"
+        icon={ () => <ViewColumnsIcon className="icon-sm" /> }
+        label={ sidebarOpen ? 'Close sidebar' : 'Open sidebar' }
+        isPressed={ sidebarOpen }
+        onClick={ onToggleSidebar }
+      />
+    </div>
+  </div>
+);
+
+export default Header;

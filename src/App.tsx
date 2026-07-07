@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { PlusIcon, SparklesIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
-import DashboardView from './components/DashboardView';
+import { useDispatch, useSelect } from '@wordpress/data';
+import EmptyState from './components/workspace/EmptyState';
+import Header from './components/workspace/Header';
+import PageDrawer from './components/workspace/PageDrawer';
+import WorkspaceShell from './components/workspace/WorkspaceShell';
 import MetaStrip from './components/MetaStrip';
 import PreviewFrame from './components/PreviewFrame';
 import PublishModal from './components/PublishModal';
@@ -8,9 +11,11 @@ import RevertConfirm from './components/RevertConfirm';
 import SidePanel from './components/SidePanel';
 import { useAiConversation } from './hooks/useAiConversation';
 import { useBlockSelection } from './hooks/useBlockSelection';
+import { usePageRoute } from './hooks/usePageRoute';
 import { usePreviewIframe } from './hooks/usePreviewIframe';
 import { usePublishFlow } from './hooks/usePublishFlow';
 import { useSiteContent } from './hooks/useSiteContent';
+import { STORE_NAME } from './store/workspaceStore';
 import { convertHtmlToGutenberg, hasGutenbergMarkers } from './util/aiDesignerHelpers';
 import type { WPItem } from './types';
 
@@ -41,11 +46,6 @@ const App = () => {
   const [ previewHtml, setPreviewHtml ] = useState<string | null>( null );
   const [ originalPreviewHtml, setOriginalPreviewHtml ] = useState<string | null>( null );
   const [ selectedItem, setSelectedItem ] = useState<WPItem | null>( null );
-  const [ view, setView ] = useState<'dashboard' | 'designer'>( 'dashboard' );
-  const [ pagesExpanded, setPagesExpanded ] = useState( false );
-  const [ postsExpanded, setPostsExpanded ] = useState( false );
-  const [ pagesSearchQuery, setPagesSearchQuery ] = useState( '' );
-  const [ postsSearchQuery, setPostsSearchQuery ] = useState( '' );
   const [ publishTitle, setPublishTitle ] = useState( '' );
   const [ metaTitle, setMetaTitle ] = useState( '' );
   const [ metaExcerpt, setMetaExcerpt ] = useState( '' );
@@ -59,10 +59,9 @@ const App = () => {
 
   const stripHtml = ( value: string ) => value.replace( /<[^>]*>/g, '' );
 
-  const { sitePages, sitePosts, loadingSite } = useSiteContent(
-    nfdAIPageDesigner.apiUrl,
-    'dashboard' === view
-  );
+  // Always active now — the page drawer needs the recent list regardless of
+  // whether a page is currently open, unlike the old dashboard-only fetch.
+  const { sitePages, sitePosts, loadingSite } = useSiteContent( nfdAIPageDesigner.apiUrl, true );
   const previewUrl = selectedItem?.link || nfdAIPageDesigner.siteUrl;
   // Owned here so it can be shared between useAiConversation and usePreviewIframe
   // without a declaration-order cycle (the preview hook needs conversation.isLoading).
@@ -153,10 +152,9 @@ const App = () => {
   // Warn before leaving with generated/edited content that hasn't been published.
   // publishedHtmlRef holds the last published snapshot; anything newer is unsaved.
   // Single source of truth shared by the native beforeunload handler (tab close /
-  // refresh / full WP-admin navigation) and the in-app guard (Dashboard / Designer
-  // / Create New, which reset state without triggering a page unload).
+  // refresh / full WP-admin navigation) and the in-app guard (New Page, page
+  // switching), which reset state without triggering a page unload.
   const isDirty = () =>
-    'designer' === view &&
     !! previewHtml &&
     ( conversation.hasAIGenerated || metaDirty ) &&
     previewHtml !== publishedHtmlRef.current &&
@@ -196,7 +194,6 @@ const App = () => {
     conversation.resetAiConversation();
     publishFlow.resetPublishState();
     setSelectedItem( item );
-    setView( 'designer' );
 
     const rawHtml = item.content?.raw || item.content?.rendered || '';
     const baseHtml = rawHtml && ! hasGutenbergMarkers( rawHtml )
@@ -234,7 +231,6 @@ const App = () => {
     setMetaFeaturedImageUrl( null );
     setOriginalMeta( null );
     setPublishTitle( '' );
-    setView( 'designer' );
   };
 
   const handleCreateWithPrompt = ( prompt: string ) => {
@@ -249,35 +245,7 @@ const App = () => {
     setMetaFeaturedImageUrl( null );
     setOriginalMeta( null );
     setPublishTitle( '' );
-    setView( 'designer' );
     conversation.handleSend( prompt );
-  };
-
-  const handleShowDashboard = () => {
-    if ( ! confirmDiscard() ) {
-      return;
-    }
-    conversation.resetAiConversation();
-    publishFlow.resetPublishState();
-    setSelectedItem( null );
-    setPreviewHtml( null );
-    setOriginalPreviewHtml( null );
-    setMetaTitle( '' );
-    setMetaExcerpt( '' );
-    setMetaFeaturedMediaId( null );
-    setMetaFeaturedImageUrl( null );
-    setOriginalMeta( null );
-    setPublishTitle( '' );
-    setView( 'dashboard' );
-  };
-
-  const handleShowDesigner = () => {
-    if ( ! confirmDiscard() ) {
-      return;
-    }
-    conversation.resetAiConversation();
-    publishFlow.resetPublishState();
-    setView( 'designer' );
   };
 
   const handleRevertConfirm = () => {
@@ -339,124 +307,154 @@ const App = () => {
     setMetaFeaturedImageUrl( selectedItem.featured_image_url || null );
   }, [ selectedItem ] );
 
-  const header = (
-    <header className="ai-designer-header">
-      <div className="ai-designer-header__left">
-        <span className="ai-designer-header__logo">AI Page Designer</span>
-        <nav className="ai-designer-header__nav">
-          <button
-            type="button"
-            className={ `ai-designer-header__nav-btn ${ view === 'dashboard' ? 'active' : '' }` }
-            onClick={ handleShowDashboard }
-          >
-            <Squares2X2Icon className="icon" />
-            Dashboard
-          </button>
-          <button
-            type="button"
-            className={ `ai-designer-header__nav-btn ${ view === 'designer' ? 'active' : '' }` }
-            onClick={ handleShowDesigner }
-          >
-            <SparklesIcon className="icon" />
-            Designer
-          </button>
-        </nav>
-      </div>
-      <div className="ai-designer-header__right">
-        { view === 'designer' && ( conversation.hasAIGenerated || metaDirty ) && (
-          <button
-            type="button"
-            className="ai-btn ai-btn--primary"
-            onClick={ handlePublishBarClick }
-            disabled={ publishFlow.publishing }
-          >
-            { publishFlow.publishing ? 'Publishing...' : 'Publish Page' }
-          </button>
-        ) }
-        <button
-          type="button"
-          className="ai-btn ai-btn--primary ai-btn--create-new"
-          onClick={ handleCreateNew }
-        >
-          <PlusIcon className="icon" />
-          Create New
-        </button>
-      </div>
-    </header>
+  // --- Workspace chrome: page routing + drawer/sidebar open state --------
+
+  const { pageId: routePageId, setPageId } = usePageRoute();
+  const { drawerOpen, sidebarOpen } = useSelect( ( select ) => {
+    const store = select( STORE_NAME ) as any;
+    return {
+      drawerOpen: store.isDrawerOpen(),
+      sidebarOpen: store.isSidebarOpen(),
+    };
+  }, [] );
+  const { setDrawerOpen, setSidebarOpen } = useDispatch( STORE_NAME ) as any;
+
+  const combinedSiteItems = useMemo(
+    () => [ ...sitePages, ...sitePosts ],
+    [ sitePages, sitePosts ]
   );
 
-  if ( 'dashboard' === view ) {
-    return (
-      <div id="nfd-ai-page-designer-root" className="ai-designer-container">
-        { header }
-        <div className="ai-designer-body">
-          <DashboardView
-            loadingSite={ loadingSite }
-            sitePages={ sitePages }
-            sitePosts={ sitePosts }
-            pagesSearchQuery={ pagesSearchQuery }
-            postsSearchQuery={ postsSearchQuery }
-            pagesExpanded={ pagesExpanded }
-            postsExpanded={ postsExpanded }
-            onCreateWithPrompt={ handleCreateWithPrompt }
-            onSelectItem={ handleSelectItem }
-            onPagesSearchChange={ setPagesSearchQuery }
-            onPostsSearchChange={ setPostsSearchQuery }
-            onTogglePagesExpanded={ () => setPagesExpanded( ( value ) => ! value ) }
-            onTogglePostsExpanded={ () => setPostsExpanded( ( value ) => ! value ) }
-          />
-        </div>
-      </div>
-    );
-  }
+  // Resolve an incoming nfd_page_id (deep link, back/forward, manual edit)
+  // to the matching page once site content is loaded.
+  useEffect( () => {
+    if ( routePageId === null || routePageId === selectedItem?.id ) {
+      return;
+    }
+    const match = combinedSiteItems.find( ( item ) => item.id === routePageId );
+    if ( match ) {
+      handleSelectItem( match );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ routePageId, combinedSiteItems ] );
+
+  // Keep nfd_page_id in sync whenever the open page changes via the drawer, a
+  // fresh generation being published, etc.
+  useEffect( () => {
+    setPageId( selectedItem?.id ?? null );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ selectedItem ] );
+
+  const handleDrawerSelectItem = ( item: WPItem ) => {
+    if ( ! confirmDiscard() ) {
+      return;
+    }
+    handleSelectItem( item );
+    setDrawerOpen( false );
+  };
+
+  const handleNewPage = () => {
+    handleCreateNew();
+    setDrawerOpen( false );
+  };
+
+  // admin-ajax.php's directory is always the wp-admin root, regardless of
+  // multisite subdirectory installs — a reliable base without a new
+  // localized value.
+  const handleBackToAdmin = () => {
+    const adminUrl = nfdAIPageDesigner.ajaxUrl.replace( /admin-ajax\.php$/, '' );
+    window.location.href = adminUrl;
+  };
+
+  const pageTitle = metaTitle || conversation.publishTitle;
+  const pageStatus: 'draft' | 'publish' | null = selectedItem
+    ? ( selectedItem.status === 'publish' ? 'publish' : 'draft' )
+    : ( conversation.hasAIGenerated ? 'draft' : null );
+  const canPublish = conversation.hasAIGenerated || metaDirty;
+  const hasContent = Boolean( previewHtml || selectedItem );
+
+  const header = (
+    <Header
+      pageTitle={ pageTitle }
+      pageStatus={ pageStatus }
+      drawerOpen={ drawerOpen }
+      onToggleDrawer={ () => setDrawerOpen( ! drawerOpen ) }
+      sidebarOpen={ sidebarOpen }
+      onToggleSidebar={ () => setSidebarOpen( ! sidebarOpen ) }
+      onNewPage={ handleNewPage }
+      onBackToAdmin={ handleBackToAdmin }
+      canPublish={ canPublish }
+      publishing={ publishFlow.publishing }
+      onPublish={ handlePublishBarClick }
+    />
+  );
+
+  const drawer = drawerOpen ? (
+    <PageDrawer
+      loading={ loadingSite }
+      sitePages={ sitePages }
+      sitePosts={ sitePosts }
+      selectedItemId={ selectedItem?.id ?? null }
+      onSelectItem={ handleDrawerSelectItem }
+    />
+  ) : null;
+
+  const sidebar = sidebarOpen ? (
+    <SidePanel
+      messages={ conversation.messages }
+      chatMessagesRef={ conversation.chatMessagesRef }
+      isLoading={ conversation.isLoading }
+      hasAIGenerated={ conversation.hasAIGenerated }
+      metaDirty={ metaDirty }
+      publishing={ publishFlow.publishing }
+      selectedItem={ selectedItem }
+      input={ conversation.input }
+      selectedBlockIndex={ selectedBlockIndex }
+      selectedBlockLabel={ selectedBlockLabel }
+      historyEntries={ conversation.historyEntries }
+      previewHtml={ previewHtml }
+      onInputChange={ conversation.setInput }
+      onSend={ () => conversation.handleSend() }
+      onClearSelection={ () => clearSelection( iframeRef ) }
+      onPublish={ handlePublishBarClick }
+      onRevertTo={ conversation.handleRevertToEntry }
+    />
+  ) : null;
+
+  const content = (
+    <div className="ai-workspace-canvas">
+      <MetaStrip
+        visible={ Boolean( selectedItem ) || conversation.hasAIGenerated }
+        title={ metaTitle }
+        excerpt={ metaExcerpt }
+        featuredImageUrl={ metaFeaturedImageUrl }
+        featuredMediaId={ metaFeaturedMediaId }
+        supportsThumbnail={ supportsThumbnail }
+        canUseMedia={ canUseMedia }
+        onChangeTitle={ setMetaTitle }
+        onChangeExcerpt={ setMetaExcerpt }
+        onPickImage={ handlePickImage }
+        onRemoveImage={ handleRemoveImage }
+      />
+      { hasContent ? (
+        <PreviewFrame
+          previewHtml={ previewHtml }
+          selectedItem={ selectedItem }
+          iframeRef={ iframeRef }
+        />
+      ) : (
+        <EmptyState onCreateWithPrompt={ handleCreateWithPrompt } />
+      ) }
+    </div>
+  );
 
   return (
-    <div id="nfd-ai-page-designer-root" className="ai-designer-container">
-      { header }
-      <div className="ai-designer-body">
-        <div className="ai-designer-main">
-          <MetaStrip
-            visible={ Boolean( selectedItem ) || conversation.hasAIGenerated }
-            title={ metaTitle }
-            excerpt={ metaExcerpt }
-            featuredImageUrl={ metaFeaturedImageUrl }
-            featuredMediaId={ metaFeaturedMediaId }
-            supportsThumbnail={ supportsThumbnail }
-            canUseMedia={ canUseMedia }
-            onChangeTitle={ setMetaTitle }
-            onChangeExcerpt={ setMetaExcerpt }
-            onPickImage={ handlePickImage }
-            onRemoveImage={ handleRemoveImage }
-          />
-          <div className="ai-designer-content">
-            <SidePanel
-              messages={ conversation.messages }
-              chatMessagesRef={ conversation.chatMessagesRef }
-              isLoading={ conversation.isLoading }
-              hasAIGenerated={ conversation.hasAIGenerated }
-              metaDirty={ metaDirty }
-              publishing={ publishFlow.publishing }
-              selectedItem={ selectedItem }
-              input={ conversation.input }
-              selectedBlockIndex={ selectedBlockIndex }
-              selectedBlockLabel={ selectedBlockLabel }
-              historyEntries={ conversation.historyEntries }
-              previewHtml={ previewHtml }
-              onInputChange={ conversation.setInput }
-              onSend={ () => conversation.handleSend() }
-              onClearSelection={ () => clearSelection( iframeRef ) }
-              onPublish={ handlePublishBarClick }
-              onRevertTo={ conversation.handleRevertToEntry }
-            />
-
-            <PreviewFrame
-              previewHtml={ previewHtml }
-              selectedItem={ selectedItem }
-              iframeRef={ iframeRef }
-            />
-          </div>
-        </div>
-      </div>
+    <>
+      <WorkspaceShell
+        header={ header }
+        drawer={ drawer }
+        sidebar={ sidebar }
+        content={ content }
+      />
 
       <RevertConfirm
         open={ publishFlow.showRevertConfirm }
@@ -476,7 +474,7 @@ const App = () => {
         onPublish={ publishFlow.handlePublish }
         onReplaceItem={ publishFlow.handleReplaceItem }
       />
-    </div>
+    </>
   );
 };
 
