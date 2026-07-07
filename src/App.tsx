@@ -450,10 +450,12 @@ const App = () => {
 
   // admin-ajax.php's directory is always the wp-admin root, regardless of
   // multisite subdirectory installs — a reliable base without a new
-  // localized value.
+  // localized value. `page=web#/home` is the parent plugin's own "Home" menu
+  // item (registered in wp-plugin-web's Admin::subpages()), so this returns
+  // to the Network Solutions dashboard rather than generic wp-admin.
   const handleBackToAdmin = () => {
-    const adminUrl = nfdAIPageDesigner.ajaxUrl.replace( /admin-ajax\.php$/, '' );
-    window.location.href = adminUrl;
+    const adminRoot = nfdAIPageDesigner.ajaxUrl.replace( /admin-ajax\.php$/, '' );
+    window.location.href = `${ adminRoot }admin.php?page=web#/home`;
   };
 
   const pageTitle = metaTitle || conversation.publishTitle;

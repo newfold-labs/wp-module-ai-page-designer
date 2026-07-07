@@ -48,7 +48,7 @@ const Header = ( {
       <Button
         className="ai-workspace-header__back"
         icon={ () => <ArrowLeftIcon className="icon-sm" /> }
-        label="Back to WP Admin"
+        label="Back to Dashboard"
         onClick={ onBackToAdmin }
       />
       <Button
