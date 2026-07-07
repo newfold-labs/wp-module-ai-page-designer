@@ -8,7 +8,7 @@
 
 ## Implementation Status (as of 2026-07-07)
 
-**Phases 0, 1, and 2 are complete and merged into `update/aipd-redesign`.** See `ai-designer-layout-redesign-todo.md` for the itemized checklist. Notable deviations from this plan as originally written:
+**Phases 0 through 3 are complete and merged into `update/aipd-redesign`.** See `ai-designer-layout-redesign-todo.md` for the itemized checklist. Notable deviations from this plan as originally written:
 
 - **Routing (§1):** shipped as the query param `nfd_page_id` (`?nfd_page_id=123`), not `#/page/:id`. The parent plugin (`wp-plugin-web`) owns `location.hash` exclusively via its own `HashRouter` — a hash-based scheme here would have collided with it. Deep-linkability and no-reload page switching are preserved; only the URL shape differs.
 - **Rail recents (§3):** backed by a dedicated module endpoint (`_apd_recent_ids` user meta, `GET/POST /recent`) rather than `GET /wp/v2/pages?orderby=modified`. Needed so opening a page can *touch* its recency per-user, which a sitewide `orderby=modified` query can't express.
@@ -16,6 +16,11 @@
 - **⌘K command palette:** ships without the type/status filters described in §2/Phase 1 todo; search-as-you-type only.
 - **Migration (§8):** the old Dashboard route wasn't kept as a redirect — it was replaced outright by the workspace's empty state, and legacy `?page_id=` deep links are not remapped. Low-risk for an internal wp-admin tool, but flagging since the plan called for an explicit redirect shim.
 - **Phase 2's canvas upgrades turned out mostly pre-existing:** section selection (hover/click outline, scope chip in chat) and contextual composer suggestion chips were already built pre-redesign and needed no new work. Only the viewport toggle and the streaming skeleton highlight were net-new for Phase 2. The "feature-detect + graceful degrade if the postMessage bridge fails" item (§9 risks) was not built — still open.
+- **§4's "primary/secondary/accent/background" CSS custom properties don't exist as such.** The actual theme.json schema (Newfold's Blueprint theme, consistent across sites) exposes 10 roles — `base`/`contrast` + `accent_1`–`accent_6` + `base_midtone`/`contrast_midtone` — each backed by `--wp--preset--color--{slug}`. Curated palettes (7 shipped, not a hardcoded 6–8) map all 10 roles; confirmed by inspecting real generated block markup rather than assuming the plan's framing.
+- **Design tokens persist per-page** (`_apd_design_tokens` post meta) via the existing content update/create endpoints (a `design_tokens` param) rather than the dedicated `GET/PUT .../design-tokens` route sketched in §3 — one fewer endpoint, same effect, and it piggybacks on the existing publish flow instead of a separate save step.
+- **Published pages apply the same override the preview uses** (`AIPageDesigner::enqueue_frontend_animations()`, reading the page's saved design tokens), which needed `!important` on the color custom properties — the preview avoids that fight by scoping to a high-specificity `#nfd-preview-root` id, but the public page's `:root`-level override has no such advantage against WP core's own global-styles stylesheet at equal specificity/later load order.
+- **"Suggest with AI"** ships as a new `/suggest-palette` route on the existing `IntentClassifierController` (same cheap-AI-call pattern as `/classify`/`/metadata`) rather than a new controller. The model chooses only from palette ids the client sends — it can't invent a color, per §4's "no free-form color picker."
+- **Bidirectional chat↔Design sync (§4) is one-directional only:** manual Design tab changes log to History (via a small additive `addHistoryEntry()` on `useAiConversation`, not Phase 4's not-yet-built unified version log). Chat-driven style language ("make it feel premium") does **not** select a palette in the Design tab — that direction wasn't built.
 
 ---
 
@@ -123,10 +128,10 @@ Header grammar (back square, title, Publish, toggles) is invariant across all st
 - [x] Contextual suggestion chips in composer (replace static "create a homepage" prompts) *(already existed pre-redesign)*
 - [ ] Feature-detect + graceful degrade if the postMessage bridge fails *(not built — still open, see §9)*
 
-### Phase 3 — Design tab — Not started
-- [ ] Token endpoints + palette/typography UI + live preview swap
-- [ ] AI palette suggestion
-- [ ] Design changes logged into unified History
+### Phase 3 — Design tab — ✅ Done
+- [x] Token endpoints + palette/typography UI + live preview swap *(persisted via the existing content endpoints' `design_tokens` param, not a dedicated route — see Implementation Status)*
+- [x] AI palette suggestion *(`/suggest-palette` on `IntentClassifierController`; chooses only from client-provided ids)*
+- [x] Design changes logged into unified History *(one-directional: manual Design changes → History. Chat-driven style language does not select a Design tab palette — that direction not built)*
 
 ### Phase 4 — Scale & polish — Not started
 - [ ] History hover-to-preview + non-destructive restore

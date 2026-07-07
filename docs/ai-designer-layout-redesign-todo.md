@@ -6,7 +6,7 @@ Companion to `ai-designer-layout-redesign.md`. Breaks the plan into actionable t
 
 **Assumption / open risk:** the plan's own Risks table flags "leadership placement decision (plugin vs panel) still open" — this estimate assumes it resolves after the Phase 1 demo without a rework of the shell. If it flips to "panel," expect Phase 1 shell work to be partially redone.
 
-**Status as of 2026-07-07: Phases 0–2 complete**, on branch `update/aipd-redesign`. Phase 3 (Design tab) not started.
+**Status as of 2026-07-07: Phases 0–3 complete**, on branch `update/aipd-redesign`. Phase 4 (Scale & Polish) not started.
 
 ---
 
@@ -51,18 +51,18 @@ Companion to `ai-designer-layout-redesign.md`. Breaks the plan into actionable t
 
 ---
 
-## Phase 3 — Design Tab
+## Phase 3 — Design Tab — ✅ Done
 
-- [ ] Backend: `GET/PUT /ai-page-designer/v1/pages/:id/design-tokens` — **1 day**
-- [ ] Define 6–8 curated palettes mapped to existing CSS custom properties (two-layer styling contract) — **1 day**
-- [ ] `<DesignTab>` UI: palette grid, typography selects, curated font pairings, Google Fonts enqueue — **2 days**
-- [ ] Live preview: CSS-variable swap in iframe (instant, no LLM call) — **1 day**
-- [ ] "Suggest with AI" — single LLM call proposing a palette from page content — **1.5 days**
-- [ ] Bidirectional sync: chat-driven style change reflects as selected in Design tab; manual Design change logs to History — **2 days**
+- [x] Backend: design-tokens persistence — **1 day** — *shipped as `design_tokens` param on the existing content update/create endpoints + `_apd_design_tokens` post meta (`WordPressProxyController::DESIGN_TOKENS_META_KEY`), not a dedicated `GET/PUT .../design-tokens` route — one fewer endpoint, same result*
+- [x] Define curated palettes mapped to existing CSS custom properties — **1 day** — *7 palettes (not the originally-scoped 6–8 minimum edge, landed at 7), each mapping all 10 of the Blueprint theme.json color roles (`base`/`contrast`/`accent_1-6`/`base_midtone`/`contrast_midtone`) — not the plan's assumed generic `--primary`/`--secondary` set, which doesn't exist; confirmed by inspecting real generated markup*
+- [x] `<DesignTab>` UI: palette grid, typography selects, curated font pairings — **2 days** — *Google Fonts enqueue not new: reused the fonts the preview iframe and published-page animations already load (Playfair Display/Montserrat/Lora/Raleway), extended with Inter/Manrope for the "Modern" pairing*
+- [x] Live preview: CSS-variable swap in iframe (instant, no LLM call) — **1 day**
+- [x] "Suggest with AI" — single LLM call proposing a palette from page content — **1.5 days** — *new `/suggest-palette` route on the existing `IntentClassifierController`; client sends the palette catalog as {id,name}, server validates the model's choice against it (never free-form)*
+- [x] Bidirectional sync: manual Design change logs to History — **2 days** — *shipped without waiting on Phase 4's version-log endpoint, as flagged below: History here is already a local in-session list (`useAiConversation`'s `historyEntries`), so a small additive `addHistoryEntry()` export was enough. Chat-driven style changes reflecting as a Design tab selection was NOT built — the two surfaces (chat's free-form AI edits vs. the Design tab's curated-palette swap) remain independent; "make it feel premium" in chat does not select a palette in the Design tab.*
 
 **Phase 3 subtotal: 8.5–9.5 days (~2 weeks)**
 
-*(Depends on the version-log endpoint built in Phase 4 for the "logs to History" requirement — sequence Phase 4's backend versioning work first, or stub it here and wire later.)*
+**Two real bugs found only through end-to-end manual testing** (not visible from code review alone): the Publish button was silently a no-op for Design-tab-only changes (the dirty-state gate never checked palette/font selection), and the published page didn't actually show the saved palette at all (the `:root` color override lost the CSS cascade to WP core's own global-styles stylesheet at equal specificity — fixed with `!important`). Both are documented in the slice 2 commit.
 
 ---
 
@@ -96,11 +96,11 @@ Companion to `ai-designer-layout-redesign.md`. Breaks the plan into actionable t
 | Phase 0 — Setup | 2.5–3 | ✅ Done |
 | Phase 1 — Shell & Navigation | 13–14 | ✅ Done |
 | Phase 2 — Canvas Upgrades | 9 | ✅ Done |
-| Phase 3 — Design Tab | 8.5–9.5 | Not started |
+| Phase 3 — Design Tab | 8.5–9.5 | ✅ Done |
 | Phase 4 — Scale & Polish | 12.5 | Not started |
 | Cross-cutting | 1.5 | Not started |
-| **Subtotal** | **47–49.5 days** | ~24.5–26 days done |
+| **Subtotal** | **47–49.5 days** | ~33–35.5 days done |
 | Buffer (~15% — iteration, review cycles, unknowns) | ~7 days | |
 | **Total** | **~54–57 days ≈ 11 weeks (~2.5 months)** solo, full-time | |
 
-**Shippable checkpoint:** Phase 1 alone (~3–3.5 weeks incl. Phase 0) delivers the "core UX win" per the plan and can go out as its own release, with Phases 2–4 following incrementally — matches the plan's phased-delivery intent and de-risks the placement decision in section 9. **Phases 0–2 are now both complete**, so this checkpoint plus the Phase 2 canvas upgrades are shippable together; Phase 3 (Design tab) is the next chunk of work.
+**Shippable checkpoint:** Phase 1 alone (~3–3.5 weeks incl. Phase 0) delivers the "core UX win" per the plan and can go out as its own release, with Phases 2–4 following incrementally — matches the plan's phased-delivery intent and de-risks the placement decision in section 9. **Phases 0–3 are now all complete** — shell/navigation, canvas upgrades, and the Design tab (palettes, typography, persistence, AI suggestion) are all shippable together. Phase 4 (Scale & Polish — history hover-preview, library overlay, pinned pages, responsive hardening, a11y) is the next and final chunk of work per this plan.
