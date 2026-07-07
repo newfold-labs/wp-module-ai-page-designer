@@ -461,7 +461,12 @@ const App = () => {
     ? ( selectedItem.status === 'publish' ? 'publish' : 'draft' )
     : ( conversation.hasAIGenerated ? 'draft' : null );
   const canPublish = conversation.hasAIGenerated || metaDirty;
-  const hasContent = Boolean( previewHtml || selectedItem );
+  // conversation.isLoading is included so submitting a prompt swaps the
+  // canvas away from the empty-state hero immediately — without it,
+  // hasContent stays false (nothing loaded yet) until the AI's first
+  // streamed content actually lands, leaving the hero (and its input box)
+  // sitting on screen for the whole generation instead of going away on submit.
+  const hasContent = Boolean( previewHtml || selectedItem || conversation.isLoading );
 
   const header = (
     <Header

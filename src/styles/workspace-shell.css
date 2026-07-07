@@ -93,12 +93,39 @@ body.nfd-ai-workspace-active {
 .ai-workspace-header__right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex: 1;
 }
 
 .ai-workspace-header__right {
   justify-content: flex-end;
+}
+
+/* The global .icon-sm (14px, used for compact chat/dashboard UI) reads as
+   cramped at header scale — size up here, and give the plain icon-only
+   buttons (back/drawer-toggle/sidebar-toggle) a fixed, generously-padded
+   square instead of wp-components' tight default icon-button padding. */
+.ai-workspace-header .icon-sm {
+  width: 18px;
+  height: 18px;
+}
+
+.ai-workspace-header__back,
+.ai-workspace-header__drawer-toggle,
+.ai-workspace-header__sidebar-toggle {
+  width: 36px;
+  height: 36px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md) !important;
+}
+
+.ai-workspace-header__new-page,
+.ai-workspace-header__publish {
+  height: 36px;
+  padding: 0 16px !important;
 }
 
 .ai-workspace-header__center {
@@ -122,10 +149,18 @@ body.nfd-ai-workspace-active {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 2px;
+  padding: 3px;
   border-radius: var(--radius-md);
   background: var(--color-surface-container);
-  margin-right: 8px;
+}
+
+.ai-workspace-header__viewport-toggle .components-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ai-workspace-header__viewport-toggle .is-active {
