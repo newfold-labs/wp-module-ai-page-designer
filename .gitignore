@@ -1,6 +1,7 @@
 build/
 node_modules/
 vendor/
+.DS_Store
 
 .claude/*
 .gitnexus/*
