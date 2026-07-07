@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 type PageStatus = 'draft' | 'publish' | null;
+type Viewport = 'desktop' | 'tablet' | 'mobile';
 
 type Props = {
   pageTitle: string;
@@ -24,12 +25,10 @@ type Props = {
   canPublish: boolean;
   publishing: boolean;
   onPublish: () => void;
+  viewport: Viewport;
+  onViewportChange: ( viewport: Viewport ) => void;
 };
 
-// ViewportToggle is a visual stub in Phase 1 — the header's grammar (back
-// square, title, publish, toggles) must stay invariant across phases per the
-// layout plan, so the control is present but inert until Phase 2 wires
-// actual iframe resizing behind it.
 const Header = ( {
   pageTitle,
   pageStatus,
@@ -42,6 +41,8 @@ const Header = ( {
   canPublish,
   publishing,
   onPublish,
+  viewport,
+  onViewportChange,
 }: Props ) => (
   <div className="ai-workspace-header">
     <div className="ai-workspace-header__left">
@@ -78,22 +79,27 @@ const Header = ( {
     </div>
 
     <div className="ai-workspace-header__right">
-      <div className="ai-workspace-header__viewport-toggle" role="group" aria-label="Preview viewport (coming soon)">
+      <div className="ai-workspace-header__viewport-toggle" role="group" aria-label="Preview viewport">
         <Button
-          className="is-active"
+          className={ viewport === 'desktop' ? 'is-active' : '' }
           icon={ () => <ComputerDesktopIcon className="icon-sm" /> }
           label="Desktop preview"
-          disabled
+          isPressed={ viewport === 'desktop' }
+          onClick={ () => onViewportChange( 'desktop' ) }
         />
         <Button
+          className={ viewport === 'tablet' ? 'is-active' : '' }
           icon={ () => <DeviceTabletIcon className="icon-sm" /> }
-          label="Tablet preview (coming soon)"
-          disabled
+          label="Tablet preview"
+          isPressed={ viewport === 'tablet' }
+          onClick={ () => onViewportChange( 'tablet' ) }
         />
         <Button
+          className={ viewport === 'mobile' ? 'is-active' : '' }
           icon={ () => <DevicePhoneMobileIcon className="icon-sm" /> }
-          label="Mobile preview (coming soon)"
-          disabled
+          label="Mobile preview"
+          isPressed={ viewport === 'mobile' }
+          onClick={ () => onViewportChange( 'mobile' ) }
         />
       </div>
       <Button

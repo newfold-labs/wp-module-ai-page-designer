@@ -116,13 +116,21 @@ const App = () => {
 
   // Declared after conversation so the preview can finalize (play animations once)
   // exactly when streaming ends, driven by conversation.isLoading.
+  // Non-null only while a scoped (selected-block) edit is actively streaming —
+  // clearSelection() isn't called until the response settles, so selectedBlockIndex
+  // stays populated for the whole generation and doubles as the "which section is
+  // this edit targeting" signal for the skeleton highlight.
+  const streamingTargetBlockIndex =
+    conversation.isLoading && selectedBlockIndex !== null ? selectedBlockIndex : null;
+
   usePreviewIframe(
     previewHtml,
     previewUrl,
     nfdAIPageDesigner.previewStylesheets,
     conversation.isLoading,
     iframeRef,
-    nfdAIPageDesigner.previewMotionCss || ''
+    nfdAIPageDesigner.previewMotionCss || '',
+    streamingTargetBlockIndex
   );
 
   const publishFlow = usePublishFlow( {
@@ -376,14 +384,15 @@ const App = () => {
   // --- Workspace chrome: page routing + drawer/sidebar open state --------
 
   const { pageId: routePageId, setPageId } = usePageRoute();
-  const { drawerOpen, sidebarOpen } = useSelect( ( select ) => {
+  const { drawerOpen, sidebarOpen, viewport } = useSelect( ( select ) => {
     const store = select( STORE_NAME ) as any;
     return {
       drawerOpen: store.isDrawerOpen(),
       sidebarOpen: store.isSidebarOpen(),
+      viewport: store.getViewport(),
     };
   }, [] );
-  const { setDrawerOpen, setSidebarOpen } = useDispatch( STORE_NAME ) as any;
+  const { setDrawerOpen, setSidebarOpen, setViewport } = useDispatch( STORE_NAME ) as any;
   const [ commandPaletteOpen, setCommandPaletteOpen ] = useState( false );
 
   // Cmd/Ctrl+K opens the command palette from anywhere in the workspace
@@ -483,6 +492,8 @@ const App = () => {
       canPublish={ canPublish }
       publishing={ publishFlow.publishing }
       onPublish={ handlePublishBarClick }
+      viewport={ viewport }
+      onViewportChange={ setViewport }
     />
   );
 
@@ -539,6 +550,7 @@ const App = () => {
           previewHtml={ previewHtml }
           selectedItem={ selectedItem }
           iframeRef={ iframeRef }
+          viewport={ viewport }
         />
       ) : (
         <EmptyState onCreateWithPrompt={ handleCreateWithPrompt } />

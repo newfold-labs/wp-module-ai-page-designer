@@ -300,6 +300,34 @@ body.nfd-ai-workspace-active {
   flex-shrink: initial;
 }
 
+/* ============================================================
+   VIEWPORT TOGGLE — constrains the preview frame to emulate
+   tablet/mobile widths; desktop stays full-bleed (no wrapper sizing).
+   ============================================================ */
+.preview-viewport-frame {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.ai-preview-panel[data-viewport="tablet"] .preview-viewport-frame,
+.ai-preview-panel[data-viewport="mobile"] .preview-viewport-frame {
+  padding-top: 8px;
+}
+
+.ai-preview-panel[data-viewport="tablet"] .preview-iframe {
+  width: 820px;
+  max-width: 100%;
+  flex: none;
+}
+
+.ai-preview-panel[data-viewport="mobile"] .preview-iframe {
+  width: 390px;
+  max-width: 100%;
+  flex: none;
+}
+
 /* ≥ 1600px — drawer overlay (closed by default), sidebar docked at 380px */
 .ai-workspace-shell {
   --ai-workspace-sidebar-width: 380px;
