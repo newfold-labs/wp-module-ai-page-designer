@@ -154,18 +154,26 @@ body.nfd-ai-workspace-active {
   background: var(--color-surface-container);
 }
 
+/* wp-components' own .has-icon button base style adds a lopsided
+   `padding: 0 16px 0 0` (room for a label next to the icon) which wins over
+   the rule above on equal specificity since its stylesheet is enqueued
+   after ours — it left these icon-only buttons uncentered with uneven
+   gaps. !important forces our fixed square over it, matching the same
+   override already used for the header's other icon-only buttons above. */
 .ai-workspace-header__viewport-toggle .components-button {
-  width: 28px;
-  height: 28px;
-  padding: 0;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  padding: 0 !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-sm) !important;
 }
 
-.ai-workspace-header__viewport-toggle .is-active {
-  background: var(--color-surface-bright);
-  border-radius: var(--radius-sm);
+.ai-workspace-header__viewport-toggle .components-button.is-pressed {
+  background: var(--color-surface-bright) !important;
+  color: var(--color-on-surface) !important;
 }
 
 /* ============================================================

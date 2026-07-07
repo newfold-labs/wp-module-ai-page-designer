@@ -81,21 +81,18 @@ const Header = ( {
     <div className="ai-workspace-header__right">
       <div className="ai-workspace-header__viewport-toggle" role="group" aria-label="Preview viewport">
         <Button
-          className={ viewport === 'desktop' ? 'is-active' : '' }
           icon={ () => <ComputerDesktopIcon className="icon-sm" /> }
           label="Desktop preview"
           isPressed={ viewport === 'desktop' }
           onClick={ () => onViewportChange( 'desktop' ) }
         />
         <Button
-          className={ viewport === 'tablet' ? 'is-active' : '' }
           icon={ () => <DeviceTabletIcon className="icon-sm" /> }
           label="Tablet preview"
           isPressed={ viewport === 'tablet' }
           onClick={ () => onViewportChange( 'tablet' ) }
         />
         <Button
-          className={ viewport === 'mobile' ? 'is-active' : '' }
           icon={ () => <DevicePhoneMobileIcon className="icon-sm" /> }
           label="Mobile preview"
           isPressed={ viewport === 'mobile' }
