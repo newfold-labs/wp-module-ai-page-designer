@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelect } from '@wordpress/data';
+import CommandPalette from './components/workspace/CommandPalette';
 import EmptyState from './components/workspace/EmptyState';
 import Header from './components/workspace/Header';
 import PageDrawer from './components/workspace/PageDrawer';
@@ -14,9 +15,10 @@ import { useBlockSelection } from './hooks/useBlockSelection';
 import { usePageRoute } from './hooks/usePageRoute';
 import { usePreviewIframe } from './hooks/usePreviewIframe';
 import { usePublishFlow } from './hooks/usePublishFlow';
+import { useRecentItems } from './hooks/useRecentItems';
 import { useSiteContent } from './hooks/useSiteContent';
 import { STORE_NAME } from './store/workspaceStore';
-import { convertHtmlToGutenberg, hasGutenbergMarkers } from './util/aiDesignerHelpers';
+import { convertHtmlToGutenberg, decodeHtmlEntities, hasGutenbergMarkers } from './util/aiDesignerHelpers';
 import { createPageSessionCache, type PageSession } from './util/pageSessionCache';
 import type { WPItem } from './types';
 
@@ -58,11 +60,15 @@ const App = () => {
     featuredMediaId: number | null;
   } | null>( null );
 
-  const stripHtml = ( value: string ) => value.replace( /<[^>]*>/g, '' );
+  // get_the_title() entity-escapes ("&#038;" for "&") since it's meant for
+  // inline HTML output — decode so plain-text fields like the meta title
+  // input show the real character instead of the raw entity.
+  const stripHtml = ( value: string ) => decodeHtmlEntities( value.replace( /<[^>]*>/g, '' ) );
 
   // Always active now — the page drawer needs the recent list regardless of
   // whether a page is currently open, unlike the old dashboard-only fetch.
-  const { sitePages, sitePosts, loadingSite } = useSiteContent( nfdAIPageDesigner.apiUrl, true );
+  const { sitePages, sitePosts } = useSiteContent( nfdAIPageDesigner.apiUrl, true );
+  const { recentItems, loadingRecent, touchRecent } = useRecentItems( nfdAIPageDesigner.apiUrl );
   const previewUrl = selectedItem?.link || nfdAIPageDesigner.siteUrl;
   // Owned here so it can be shared between useAiConversation and usePreviewIframe
   // without a declaration-order cycle (the preview hook needs conversation.isLoading).
@@ -241,6 +247,7 @@ const App = () => {
     snapshotOutgoingPage();
     publishFlow.resetPublishState();
     setSelectedItem( item );
+    touchRecent( item.id );
 
     const cached = sessionCacheRef.current.get( item.id );
     if ( cached ) {
@@ -377,6 +384,24 @@ const App = () => {
     };
   }, [] );
   const { setDrawerOpen, setSidebarOpen } = useDispatch( STORE_NAME ) as any;
+  const [ commandPaletteOpen, setCommandPaletteOpen ] = useState( false );
+
+  // Cmd/Ctrl+K opens the command palette from anywhere in the workspace
+  // (plan section 2: <CommandPalette /> — server-side search). Captured
+  // ahead of bubble-phase listeners and stopped there so WP core's own
+  // Cmd+K admin command palette doesn't also fire underneath our fullscreen
+  // shell — the two would otherwise show a confusing double overlay.
+  useEffect( () => {
+    const handler = ( event: KeyboardEvent ) => {
+      if ( ( event.metaKey || event.ctrlKey ) && event.key.toLowerCase() === 'k' ) {
+        event.preventDefault();
+        event.stopPropagation();
+        setCommandPaletteOpen( true );
+      }
+    };
+    window.addEventListener( 'keydown', handler, { capture: true } );
+    return () => window.removeEventListener( 'keydown', handler, { capture: true } );
+  }, [] );
 
   const combinedSiteItems = useMemo(
     () => [ ...sitePages, ...sitePosts ],
@@ -416,6 +441,13 @@ const App = () => {
     setDrawerOpen( false );
   };
 
+  const handleCommandPaletteSelectItem = ( item: WPItem ) => {
+    if ( ! confirmDiscard() ) {
+      return;
+    }
+    handleSelectItem( item );
+  };
+
   // admin-ajax.php's directory is always the wp-admin root, regardless of
   // multisite subdirectory installs — a reliable base without a new
   // localized value.
@@ -449,7 +481,8 @@ const App = () => {
 
   const drawer = drawerOpen ? (
     <PageDrawer
-      loading={ loadingSite }
+      loadingRecent={ loadingRecent }
+      recentItems={ recentItems }
       sitePages={ sitePages }
       sitePosts={ sitePosts }
       selectedItemId={ selectedItem?.id ?? null }
@@ -532,6 +565,13 @@ const App = () => {
         onClose={ publishFlow.closePublishModal }
         onPublish={ publishFlow.handlePublish }
         onReplaceItem={ publishFlow.handleReplaceItem }
+      />
+
+      <CommandPalette
+        open={ commandPaletteOpen }
+        apiUrl={ nfdAIPageDesigner.apiUrl }
+        onClose={ () => setCommandPaletteOpen( false ) }
+        onSelectItem={ handleCommandPaletteSelectItem }
       />
     </>
   );

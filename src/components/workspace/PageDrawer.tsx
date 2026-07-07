@@ -3,14 +3,15 @@ import { DocumentIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import type { WPItem } from '../../types';
 
 type Props = {
-  loading: boolean;
+  loadingRecent: boolean;
+  recentItems: WPItem[];
   sitePages: WPItem[];
   sitePosts: WPItem[];
   selectedItemId: number | null;
   onSelectItem: ( item: WPItem ) => void;
 };
 
-const RECENT_LIMIT = 15;
+const SEARCH_RESULTS_LIMIT = 15;
 
 const stripHtml = ( value: string ) => value.replace( /<[^>]*>/g, '' );
 
@@ -24,28 +25,32 @@ const formatDate = ( dateString: string ) => {
   return `${ Math.floor( diffDays / 30 ) }mo ago`;
 };
 
-// True per-user server-persisted recents (_apd_recent_ids) land in a later
-// slice once the backend endpoint exists — this sorts what's already loaded
-// by modified date so the drawer is useful today without blocking on that.
-const PageDrawer = ( { loading, sitePages, sitePosts, selectedItemId, onSelectItem }: Props ) => {
+// Recent (server-persisted via _apd_recent_ids) when the search box is
+// empty; typing switches to filtering everything already loaded for this
+// site. Full server-side search lives in the Cmd+K command palette instead.
+const PageDrawer = ( {
+  loadingRecent,
+  recentItems,
+  sitePages,
+  sitePosts,
+  selectedItemId,
+  onSelectItem,
+}: Props ) => {
   const [ query, setQuery ] = useState( '' );
+  const normalizedQuery = query.trim().toLowerCase();
+  const isSearching = normalizedQuery.length > 0;
 
-  const recent = useMemo( () => {
-    const merged = [ ...sitePages, ...sitePosts ]
-      .slice()
-      .sort( ( a, b ) => {
-        const aTime = new Date( a.modified || a.date || 0 ).getTime();
-        const bTime = new Date( b.modified || b.date || 0 ).getTime();
-        return bTime - aTime;
-      } );
+  const searchResults = useMemo( () => {
+    if ( ! isSearching ) {
+      return [];
+    }
+    return [ ...sitePages, ...sitePosts ]
+      .filter( ( item ) => stripHtml( item.title?.rendered || '' ).toLowerCase().includes( normalizedQuery ) )
+      .slice( 0, SEARCH_RESULTS_LIMIT );
+  }, [ sitePages, sitePosts, isSearching, normalizedQuery ] );
 
-    const normalizedQuery = query.trim().toLowerCase();
-    const filtered = normalizedQuery
-      ? merged.filter( ( item ) => stripHtml( item.title?.rendered || '' ).toLowerCase().includes( normalizedQuery ) )
-      : merged;
-
-    return filtered.slice( 0, RECENT_LIMIT );
-  }, [ sitePages, sitePosts, query ] );
+  const visibleItems = isSearching ? searchResults : recentItems;
+  const loading = ! isSearching && loadingRecent;
 
   return (
     <div className="ai-page-drawer">
@@ -60,15 +65,15 @@ const PageDrawer = ( { loading, sitePages, sitePosts, selectedItemId, onSelectIt
         />
       </div>
 
-      <div className="ai-page-drawer__section-label">Recent</div>
+      <div className="ai-page-drawer__section-label">{ isSearching ? 'Results' : 'Recent' }</div>
       <ul className="ai-page-drawer__list">
         { loading && (
           <li className="ai-page-drawer__loading">Loading...</li>
         ) }
-        { ! loading && recent.length === 0 && (
+        { ! loading && visibleItems.length === 0 && (
           <li className="ai-page-drawer__empty">Nothing found.</li>
         ) }
-        { ! loading && recent.map( ( item ) => (
+        { ! loading && visibleItems.map( ( item ) => (
           <li
             key={ `${ item.type }-${ item.id }` }
             className={ `ai-page-drawer__item ${ item.id === selectedItemId ? 'is-active' : '' }` }

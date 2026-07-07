@@ -23,6 +23,17 @@ export const extractHtml = ( content: string ): string | null => {
 export const stripLocalStyles = ( html: string ): string =>
   html.replace( /<style data-nfd-local-style="true">[\s\S]*?<\/style>\n?/gu, '' );
 
+// WP entity-escapes rendered strings ("&#038;" for "&") since they're meant
+// for inline HTML output. Decoding via a <textarea>'s value (not
+// innerHTML/dangerouslySetInnerHTML rendering) parses entities as text
+// only — nothing here is ever interpreted as markup — so it's safe for
+// plain-text display of API-sourced strings (search results, titles, etc).
+export const decodeHtmlEntities = ( value: string ): string => {
+  const textarea = document.createElement( 'textarea' );
+  textarea.innerHTML = value;
+  return textarea.value;
+};
+
 /**
  * Convert plain HTML to Gutenberg block markup using wp.blocks.rawHandler.
  * Returns the original HTML unchanged if wp.blocks is unavailable or conversion fails.

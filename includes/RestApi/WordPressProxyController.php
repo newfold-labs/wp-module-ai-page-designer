@@ -182,6 +182,32 @@ class WordPressProxyController extends \WP_REST_Controller {
 				),
 			)
 		);
+
+		// Recent pages/posts (server-persisted per user via _apd_recent_ids,
+		// so the workspace drawer's Recent list follows the user across
+		// devices — plan section 3: Client state).
+		register_rest_route(
+			$this->namespace,
+			'/recent',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'list_recent' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'touch_recent' ),
+					'args'                => array(
+						'id' => array(
+							'required' => true,
+							'type'     => 'integer',
+						),
+					),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -386,6 +412,96 @@ class WordPressProxyController extends \WP_REST_Controller {
 			),
 			200
 		);
+	}
+
+	/**
+	 * The user meta key storing the current user's recent-pages list.
+	 *
+	 * @var string
+	 */
+	const RECENT_META_KEY = '_apd_recent_ids';
+
+	/**
+	 * Cap on stored entries — comfortably above the drawer's displayed 15
+	 * (plan section 2: PinnedList max=5, RecentList max=15) so trimming to
+	 * that limit stays a client-side display concern, not a data-loss one.
+	 *
+	 * @var int
+	 */
+	const RECENT_MAX_ENTRIES = 20;
+
+	/**
+	 * List the current user's recent pages/posts.
+	 *
+	 * @param \WP_REST_Request $request The REST request
+	 * @return \WP_REST_Response The response
+	 */
+	public function list_recent( \WP_REST_Request $request ) {
+		$entries = $this->get_recent_entries();
+		$data    = array();
+
+		foreach ( $entries as $entry ) {
+			$id   = isset( $entry['id'] ) ? absint( $entry['id'] ) : 0;
+			$post = $id ? get_post( $id ) : null;
+			if ( ! $post ) {
+				continue;
+			}
+			$data[] = $this->build_item_data( $post );
+		}
+
+		return new \WP_REST_Response( $data, 200 );
+	}
+
+	/**
+	 * Record that the current user just opened a page/post — moves it to the
+	 * front of their recent list (or adds it), then returns the updated list.
+	 *
+	 * @param \WP_REST_Request $request The REST request
+	 * @return \WP_REST_Response|\WP_Error The response
+	 */
+	public function touch_recent( \WP_REST_Request $request ) {
+		$id   = absint( $request['id'] );
+		$post = get_post( $id );
+
+		if ( ! $post ) {
+			return new \WP_Error(
+				'not_found',
+				__( 'Content not found', 'wp-module-ai-page-designer' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$entries = $this->get_recent_entries();
+		$entries = array_values(
+			array_filter(
+				$entries,
+				function ( $entry ) use ( $id ) {
+					return ! isset( $entry['id'] ) || absint( $entry['id'] ) !== $id;
+				}
+			)
+		);
+		array_unshift(
+			$entries,
+			array(
+				'id'   => $id,
+				'type' => $post->post_type,
+			)
+		);
+		$entries = array_slice( $entries, 0, self::RECENT_MAX_ENTRIES );
+
+		update_user_meta( get_current_user_id(), self::RECENT_META_KEY, $entries );
+
+		return $this->list_recent( $request );
+	}
+
+	/**
+	 * Read the current user's raw recent-entries list from user meta.
+	 *
+	 * @return array
+	 */
+	private function get_recent_entries() {
+		$stored = get_user_meta( get_current_user_id(), self::RECENT_META_KEY, true );
+		return is_array( $stored ) ? $stored : array();
 	}
 
 	/**

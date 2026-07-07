@@ -9,6 +9,39 @@ export const fetchSitePosts = ( apiUrl: string ) => apiFetch<WPItem[]>( {
   path: `${ apiUrl }/content/posts`,
 } );
 
+// Server-persisted per user (_apd_recent_ids) so the workspace drawer's
+// Recent list follows the user across devices.
+export const fetchRecentItems = ( apiUrl: string ) => apiFetch<WPItem[]>( {
+  path: `${ apiUrl }/recent`,
+} );
+
+export const touchRecentItem = ( apiUrl: string, id: number ) => apiFetch<WPItem[]>( {
+  path: `${ apiUrl }/recent`,
+  method: 'POST',
+  data: { id },
+} );
+
+export type SearchResult = {
+  id: number;
+  title: string;
+  url: string;
+  type: string;
+  subtype: string;
+};
+
+// WP core's search endpoint returns a lightweight shape (no content/status) —
+// selecting a result fetches the full item via fetchContentItem below.
+export const searchSite = ( query: string ) => apiFetch<SearchResult[]>( {
+  path: `/wp/v2/search?search=${ encodeURIComponent( query ) }&per_page=20&subtype=page,post`,
+} );
+
+export const fetchContentItem = ( apiUrl: string, subtype: string, id: number ) => {
+  const type = 'page' === subtype ? 'pages' : 'posts';
+  return apiFetch<WPItem>( {
+    path: `${ apiUrl }/content/${ type }/${ id }`,
+  } );
+};
+
 export type GenerateContentContext = {
   current_markup: string;
   post_id?: number;
