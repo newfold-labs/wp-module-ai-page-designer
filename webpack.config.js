@@ -42,5 +42,8 @@ module.exports = {
     'react-dom': 'ReactDOM',
     'react-dom/client': 'ReactDOM',
     '@wordpress/api-fetch': 'wp.apiFetch',
+    '@wordpress/components': 'wp.components',
+    '@wordpress/data': 'wp.data',
+    '@wordpress/element': 'wp.element',
   },
 };

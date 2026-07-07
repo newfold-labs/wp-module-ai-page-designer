@@ -1,0 +1,40 @@
+/* ============================================================
+   WORKSPACE SHELL — container-query scaffold (Phase 0)
+
+   Not yet applied to the live app root (App.tsx still renders the legacy
+   dashboard/designer shell). Phase 1 adopts `.ai-workspace-shell` on
+   <WorkspaceShell> and wires the drawer/sidebar to these tiers.
+
+   Responds to the shell's own available width, not the viewport — the
+   wp-admin menu can be expanded/collapsed independently, so a media query
+   would give the wrong answer at the same viewport width.
+   ============================================================ */
+
+.ai-workspace-shell {
+  container-type: inline-size;
+  container-name: ai-workspace;
+}
+
+/* ≥ 1600px — drawer overlay (closed by default), sidebar docked at 380px */
+.ai-workspace-shell {
+  --ai-workspace-sidebar-width: 380px;
+  --ai-workspace-drawer-mode: overlay;
+}
+
+/* 1200–1600px — drawer overlay, sidebar docked but narrower (min 340px) */
+@container ai-workspace (max-width: 1600px) {
+  .ai-workspace-shell {
+    --ai-workspace-sidebar-width: 340px;
+    --ai-workspace-drawer-mode: overlay;
+  }
+}
+
+/* < 1200px — sidebar detaches into a floating slide-over; canvas goes full
+   width; viewport toggle auto-selects mobile (user can still override it) */
+@container ai-workspace (max-width: 1199px) {
+  .ai-workspace-shell {
+    --ai-workspace-sidebar-width: 100%;
+    --ai-workspace-drawer-mode: overlay;
+    --ai-workspace-sidebar-mode: slide-over;
+  }
+}

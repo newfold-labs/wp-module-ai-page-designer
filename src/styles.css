@@ -1,3 +1,9 @@
+/* @wordpress/interface ships its own compiled CSS (InterfaceSkeleton layout
+   primitives) — bundled here since wp-interface has no WP-core script handle
+   to load it from (unlike wp-components, which core registers separately). */
+@import '@wordpress/interface/build-style/style.css';
+@import './styles/workspace-shell.css';
+
 /* ============================================================
    FONTS
    ============================================================ */

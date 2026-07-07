@@ -103,7 +103,7 @@ class AIPageDesigner {
 		wp_enqueue_script(
 			'nfd-ai-page-designer',
 			NFD_MODULE_AI_PAGE_DESIGNER_URL . 'build/index.js',
-			array( 'react', 'react-dom', 'wp-api-fetch', 'wp-element', 'wp-blocks' ),
+			array( 'react', 'react-dom', 'wp-api-fetch', 'wp-element', 'wp-blocks', 'wp-components', 'wp-data' ),
 			$script_version,
 			true
 		);
@@ -111,11 +111,15 @@ class AIPageDesigner {
 		// Ensure media picker is available for featured image selection.
 		wp_enqueue_media();
 
+		// Core component styles (buttons, popovers, etc.) used by the workspace
+		// shell's @wordpress/interface + @wordpress/components primitives.
+		wp_enqueue_style( 'wp-components' );
+
 		// Enqueue styles with cache busting
 		wp_enqueue_style(
 			'nfd-ai-page-designer',
 			NFD_MODULE_AI_PAGE_DESIGNER_URL . 'build/index.css',
-			array(),
+			array( 'wp-components' ),
 			NFD_MODULE_AI_PAGE_DESIGNER_VERSION . '.' . time()
 		);
 
