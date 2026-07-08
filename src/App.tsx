@@ -10,7 +10,7 @@ import PreviewFrame from './components/PreviewFrame';
 import PublishModal from './components/PublishModal';
 import RevertConfirm from './components/RevertConfirm';
 import SidePanel from './components/SidePanel';
-import { CURATED_FONT_PAIRINGS, CURATED_PALETTES, type PersistedDesignTokens } from './designTokens';
+import { buildThemePalettes, CURATED_FONT_PAIRINGS, CURATED_PALETTES, type PersistedDesignTokens } from './designTokens';
 import { useAiConversation } from './hooks/useAiConversation';
 import { useBlockSelection } from './hooks/useBlockSelection';
 import { usePageRoute } from './hooks/usePageRoute';
@@ -86,6 +86,19 @@ const App = () => {
   const { sitePages, sitePosts } = useSiteContent( nfdAIPageDesigner.apiUrl, true );
   const { recentItems, loadingRecent, touchRecent } = useRecentItems( nfdAIPageDesigner.apiUrl );
   const previewUrl = selectedItem?.link || nfdAIPageDesigner.siteUrl;
+  // On-brand alternative to the hand-picked CURATED_PALETTES, derived from
+  // this site's own theme.json colors (empty if the active theme doesn't
+  // expose the full 10-role Blueprint schema — Design tab falls back to
+  // curated-only in that case). nfdAIPageDesigner is a stable window global
+  // localized once on page load, so this never needs to recompute.
+  const themePalettes = useMemo(
+    () => buildThemePalettes( nfdAIPageDesigner.colorPalette ),
+    [ nfdAIPageDesigner.colorPalette ]
+  );
+  const allPalettes = useMemo(
+    () => [ ...themePalettes, ...CURATED_PALETTES ],
+    [ themePalettes ]
+  );
   // Owned here so it can be shared between useAiConversation and usePreviewIframe
   // without a declaration-order cycle (the preview hook needs conversation.isLoading).
   const iframeRef = useRef<HTMLIFrameElement>( null );
@@ -157,7 +170,7 @@ const App = () => {
   // live preview swap) — see PersistedDesignTokens.
   const designTokens: PersistedDesignTokens = useMemo( () => {
     const palette = selectedPaletteId
-      ? CURATED_PALETTES.find( ( item ) => item.id === selectedPaletteId )
+      ? allPalettes.find( ( item ) => item.id === selectedPaletteId )
       : null;
     const fontPairing = CURATED_FONT_PAIRINGS.find( ( item ) => item.id === selectedFontPairingId );
     return {
@@ -167,7 +180,7 @@ const App = () => {
       headingFont: fontPairing?.headingFont || '',
       bodyFont: fontPairing?.bodyFont || '',
     };
-  }, [ selectedPaletteId, selectedFontPairingId ] );
+  }, [ selectedPaletteId, selectedFontPairingId, allPalettes ] );
 
   usePreviewIframe(
     previewHtml,
@@ -541,7 +554,7 @@ const App = () => {
 
   const handleSelectPalette = ( paletteId: string | null ) => {
     setSelectedPaletteId( paletteId );
-    const palette = paletteId ? CURATED_PALETTES.find( ( item ) => item.id === paletteId ) : null;
+    const palette = paletteId ? allPalettes.find( ( item ) => item.id === paletteId ) : null;
     conversation.addHistoryEntry( `Palette → ${ palette ? palette.name : 'Theme default' }` );
   };
 
@@ -554,7 +567,7 @@ const App = () => {
       const paletteId = await suggestPalette(
         nfdAIPageDesigner.apiUrl,
         previewHtml,
-        CURATED_PALETTES.map( ( palette ) => ( { id: palette.id, name: palette.name } ) )
+        allPalettes.map( ( palette ) => ( { id: palette.id, name: palette.name } ) )
       );
       if ( paletteId ) {
         handleSelectPalette( paletteId );
@@ -637,6 +650,7 @@ const App = () => {
       previewHtml={ previewHtml }
       selectedPaletteId={ selectedPaletteId }
       selectedFontPairingId={ selectedFontPairingId }
+      themePalettes={ themePalettes }
       onInputChange={ conversation.setInput }
       onSend={ () => conversation.handleSend() }
       onClearSelection={ () => clearSelection( iframeRef ) }

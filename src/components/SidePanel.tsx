@@ -3,6 +3,7 @@ import { ChatBubbleLeftRightIcon, ClockIcon, SwatchIcon } from '@heroicons/react
 import ChatPanel from './ChatPanel';
 import DesignTab from './workspace/DesignTab';
 import HistoryPane from './HistoryPane';
+import type { DesignPalette } from '../designTokens';
 import type { HistoryEntry, Message, WPItem } from '../types';
 
 type Props = {
@@ -20,6 +21,7 @@ type Props = {
   previewHtml: string | null;
   selectedPaletteId: string | null;
   selectedFontPairingId: string;
+  themePalettes: DesignPalette[];
   canSuggestPalette: boolean;
   suggestingPalette: boolean;
   onInputChange: ( value: string ) => void;
@@ -53,6 +55,7 @@ const SidePanel = ( {
   previewHtml,
   selectedPaletteId,
   selectedFontPairingId,
+  themePalettes,
   canSuggestPalette,
   suggestingPalette,
   onInputChange,
@@ -122,6 +125,7 @@ const SidePanel = ( {
           <DesignTab
             selectedPaletteId={ selectedPaletteId }
             selectedFontPairingId={ selectedFontPairingId }
+            themePalettes={ themePalettes }
             canSuggest={ canSuggestPalette }
             suggesting={ suggestingPalette }
             onSelectPalette={ onSelectPalette }

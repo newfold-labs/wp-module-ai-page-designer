@@ -161,6 +161,159 @@ export const CURATED_PALETTES: DesignPalette[] = [
   },
 ];
 
+const hexToRgb = ( hex: string ): [ number, number, number ] => {
+  const clean = hex.replace( '#', '' );
+  const normalized = clean.length === 3
+    ? clean.split( '' ).map( ( c ) => c + c ).join( '' )
+    : clean;
+  const bigint = parseInt( normalized, 16 );
+  return [ ( bigint >> 16 ) & 255, ( bigint >> 8 ) & 255, bigint & 255 ];
+};
+
+const rgbToHex = ( r: number, g: number, b: number ): string =>
+  '#' + [ r, g, b ]
+    .map( ( v ) => Math.max( 0, Math.min( 255, Math.round( v ) ) ).toString( 16 ).padStart( 2, '0' ) )
+    .join( '' );
+
+const rgbToHsl = ( r: number, g: number, b: number ): [ number, number, number ] => {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max( r, g, b );
+  const min = Math.min( r, g, b );
+  let h = 0;
+  let s = 0;
+  const l = ( max + min ) / 2;
+  if ( max !== min ) {
+    const d = max - min;
+    s = l > 0.5 ? d / ( 2 - max - min ) : d / ( max + min );
+    switch ( max ) {
+      case r: h = ( g - b ) / d + ( g < b ? 6 : 0 ); break;
+      case g: h = ( b - r ) / d + 2; break;
+      default: h = ( r - g ) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return [ h * 360, s * 100, l * 100 ];
+};
+
+const hslToRgb = ( h: number, s: number, l: number ): [ number, number, number ] => {
+  h /= 360; s /= 100; l /= 100;
+  if ( s === 0 ) {
+    const v = l * 255;
+    return [ v, v, v ];
+  }
+  const hue2rgb = ( p: number, q: number, t: number ) => {
+    let tt = t;
+    if ( tt < 0 ) tt += 1;
+    if ( tt > 1 ) tt -= 1;
+    if ( tt < 1 / 6 ) return p + ( q - p ) * 6 * tt;
+    if ( tt < 1 / 2 ) return q;
+    if ( tt < 2 / 3 ) return p + ( q - p ) * ( 2 / 3 - tt ) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * ( 1 + s ) : l + s - l * s;
+  const p = 2 * l - q;
+  return [
+    hue2rgb( p, q, h + 1 / 3 ) * 255,
+    hue2rgb( p, q, h ) * 255,
+    hue2rgb( p, q, h - 1 / 3 ) * 255,
+  ];
+};
+
+// Nudges a hex color's lightness/saturation by relative HSL percentage-point
+// deltas. Used to derive palette variants from the site's own theme.json
+// colors below without pulling in a color-manipulation dependency.
+const adjustHex = ( hex: string, lightnessDelta: number, saturationDelta = 0 ): string => {
+  const [ r, g, b ] = hexToRgb( hex );
+  const [ h, s, l ] = rgbToHsl( r, g, b );
+  const newS = Math.max( 0, Math.min( 100, s + saturationDelta ) );
+  const newL = Math.max( 0, Math.min( 100, l + lightnessDelta ) );
+  const [ nr, ng, nb ] = hslToRgb( h, newS, newL );
+  return rgbToHex( nr, ng, nb );
+};
+
+const THEME_PALETTE_PREVIEW_SLUGS: ColorSlug[] = [ 'base', 'contrast_midtone', 'accent_1', 'accent_6' ];
+
+const previewFor = ( colors: Record<ColorSlug, string> ): [ string, string, string, string ] => [
+  colors[ THEME_PALETTE_PREVIEW_SLUGS[ 0 ] ],
+  colors[ THEME_PALETTE_PREVIEW_SLUGS[ 1 ] ],
+  colors[ THEME_PALETTE_PREVIEW_SLUGS[ 2 ] ],
+  colors[ THEME_PALETTE_PREVIEW_SLUGS[ 3 ] ],
+];
+
+// Derives 3 palettes from the site's own active theme.json colors (as
+// localized in `nfdAIPageDesigner.colorPalette`) rather than only offering
+// the hand-picked CURATED_PALETTES above — an on-brand alternative for sites
+// that want variation without leaving their theme's color family. Returns
+// an empty array for themes that don't expose the full 10-role Blueprint
+// schema (see the ColorSlug comment above), so the Design tab silently falls
+// back to curated-only.
+export const buildThemePalettes = (
+  themeSwatches?: Array<{ slug: string; name: string; color: string }>
+): DesignPalette[] => {
+  if ( ! themeSwatches || themeSwatches.length === 0 ) {
+    return [];
+  }
+  const bySlug: Partial<Record<ColorSlug, string>> = {};
+  themeSwatches.forEach( ( swatch ) => {
+    bySlug[ swatch.slug as ColorSlug ] = swatch.color;
+  } );
+  const requiredSlugs: ColorSlug[] = [
+    'base', 'contrast', 'accent_1', 'accent_2', 'accent_3',
+    'accent_4', 'accent_5', 'accent_6', 'base_midtone', 'contrast_midtone',
+  ];
+  if ( requiredSlugs.some( ( slug ) => ! bySlug[ slug ] ) ) {
+    return [];
+  }
+  const siteColors = bySlug as Record<ColorSlug, string>;
+
+  const classic: DesignPalette = {
+    id: 'theme-classic',
+    name: 'Site colors',
+    preview: previewFor( siteColors ),
+    colors: siteColors,
+  };
+
+  const boldColors: Record<ColorSlug, string> = {
+    base: siteColors.base,
+    contrast: adjustHex( siteColors.contrast, -8, 10 ),
+    accent_1: adjustHex( siteColors.accent_1, -10, 15 ),
+    accent_2: adjustHex( siteColors.accent_2, -6, 12 ),
+    accent_3: adjustHex( siteColors.accent_3, -4, 10 ),
+    accent_4: adjustHex( siteColors.accent_4, 0, 10 ),
+    accent_5: adjustHex( siteColors.accent_5, 4, 10 ),
+    accent_6: adjustHex( siteColors.accent_6, 8, 10 ),
+    base_midtone: siteColors.base_midtone,
+    contrast_midtone: adjustHex( siteColors.contrast_midtone, -6, 5 ),
+  };
+  const bold: DesignPalette = {
+    id: 'theme-bold',
+    name: 'Site bold',
+    preview: previewFor( boldColors ),
+    colors: boldColors,
+  };
+
+  const softColors: Record<ColorSlug, string> = {
+    base: adjustHex( siteColors.base, 2, -5 ),
+    contrast: adjustHex( siteColors.contrast, 10, -15 ),
+    accent_1: adjustHex( siteColors.accent_1, 14, -18 ),
+    accent_2: adjustHex( siteColors.accent_2, 12, -15 ),
+    accent_3: adjustHex( siteColors.accent_3, 10, -12 ),
+    accent_4: adjustHex( siteColors.accent_4, 8, -10 ),
+    accent_5: adjustHex( siteColors.accent_5, 6, -8 ),
+    accent_6: adjustHex( siteColors.accent_6, 4, -6 ),
+    base_midtone: adjustHex( siteColors.base_midtone, 2, -5 ),
+    contrast_midtone: adjustHex( siteColors.contrast_midtone, 6, -10 ),
+  };
+  const soft: DesignPalette = {
+    id: 'theme-soft',
+    name: 'Site soft',
+    preview: previewFor( softColors ),
+    colors: softColors,
+  };
+
+  return [ classic, bold, soft ];
+};
+
 export type FontPairing = {
   id: string;
   name: string;

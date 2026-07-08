@@ -1,10 +1,11 @@
 import React from 'react';
 import { SparklesIcon } from '@heroicons/react/24/outline';
-import { CURATED_FONT_PAIRINGS, CURATED_PALETTES } from '../../designTokens';
+import { CURATED_FONT_PAIRINGS, CURATED_PALETTES, type DesignPalette } from '../../designTokens';
 
 type Props = {
   selectedPaletteId: string | null;
   selectedFontPairingId: string;
+  themePalettes: DesignPalette[];
   canSuggest: boolean;
   suggesting: boolean;
   onSelectPalette: ( paletteId: string | null ) => void;
@@ -15,6 +16,7 @@ type Props = {
 const DesignTab = ( {
   selectedPaletteId,
   selectedFontPairingId,
+  themePalettes,
   canSuggest,
   suggesting,
   onSelectPalette,
@@ -48,6 +50,25 @@ const DesignTab = ( {
             <span className="ai-design-tab__palette-swatches ai-design-tab__palette-swatches--default" />
             <span className="ai-design-tab__palette-name">Theme default</span>
           </button>
+          { themePalettes.map( ( palette ) => (
+            <button
+              key={ palette.id }
+              type="button"
+              className={ `ai-design-tab__palette ${ selectedPaletteId === palette.id ? 'is-selected' : '' }` }
+              onClick={ () => onSelectPalette( palette.id ) }
+            >
+              <span className="ai-design-tab__palette-swatches">
+                { palette.preview.map( ( color, index ) => (
+                  <span
+                    key={ index }
+                    className="ai-design-tab__palette-swatch"
+                    style={ { backgroundColor: color } }
+                  />
+                ) ) }
+              </span>
+              <span className="ai-design-tab__palette-name">{ palette.name }</span>
+            </button>
+          ) ) }
           { CURATED_PALETTES.map( ( palette ) => (
             <button
               key={ palette.id }
