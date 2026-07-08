@@ -231,7 +231,7 @@ const adjustHex = ( hex: string, lightnessDelta: number, saturationDelta = 0 ): 
   return rgbToHex( nr, ng, nb );
 };
 
-const THEME_PALETTE_PREVIEW_SLUGS: ColorSlug[] = [ 'base', 'contrast_midtone', 'accent_1', 'accent_6' ];
+const THEME_PALETTE_PREVIEW_SLUGS: ColorSlug[] = [ 'base', 'contrast', 'accent_1', 'accent_6' ];
 
 const previewFor = ( colors: Record<ColorSlug, string> ): [ string, string, string, string ] => [
   colors[ THEME_PALETTE_PREVIEW_SLUGS[ 0 ] ],
@@ -274,16 +274,16 @@ export const buildThemePalettes = (
   };
 
   const boldColors: Record<ColorSlug, string> = {
-    base: siteColors.base,
-    contrast: adjustHex( siteColors.contrast, -8, 10 ),
-    accent_1: adjustHex( siteColors.accent_1, -10, 15 ),
-    accent_2: adjustHex( siteColors.accent_2, -6, 12 ),
-    accent_3: adjustHex( siteColors.accent_3, -4, 10 ),
-    accent_4: adjustHex( siteColors.accent_4, 0, 10 ),
-    accent_5: adjustHex( siteColors.accent_5, 4, 10 ),
-    accent_6: adjustHex( siteColors.accent_6, 8, 10 ),
-    base_midtone: siteColors.base_midtone,
-    contrast_midtone: adjustHex( siteColors.contrast_midtone, -6, 5 ),
+    base: adjustHex( siteColors.base, -6, 8 ),
+    contrast: adjustHex( siteColors.contrast, -18, 25 ),
+    accent_1: adjustHex( siteColors.accent_1, -22, 30 ),
+    accent_2: adjustHex( siteColors.accent_2, -14, 25 ),
+    accent_3: adjustHex( siteColors.accent_3, -10, 20 ),
+    accent_4: adjustHex( siteColors.accent_4, -4, 20 ),
+    accent_5: adjustHex( siteColors.accent_5, 6, 20 ),
+    accent_6: adjustHex( siteColors.accent_6, 14, 20 ),
+    base_midtone: adjustHex( siteColors.base_midtone, -4, 6 ),
+    contrast_midtone: adjustHex( siteColors.contrast_midtone, -12, 15 ),
   };
   const bold: DesignPalette = {
     id: 'theme-bold',
@@ -293,16 +293,16 @@ export const buildThemePalettes = (
   };
 
   const softColors: Record<ColorSlug, string> = {
-    base: adjustHex( siteColors.base, 2, -5 ),
-    contrast: adjustHex( siteColors.contrast, 10, -15 ),
-    accent_1: adjustHex( siteColors.accent_1, 14, -18 ),
-    accent_2: adjustHex( siteColors.accent_2, 12, -15 ),
-    accent_3: adjustHex( siteColors.accent_3, 10, -12 ),
-    accent_4: adjustHex( siteColors.accent_4, 8, -10 ),
-    accent_5: adjustHex( siteColors.accent_5, 6, -8 ),
-    accent_6: adjustHex( siteColors.accent_6, 4, -6 ),
-    base_midtone: adjustHex( siteColors.base_midtone, 2, -5 ),
-    contrast_midtone: adjustHex( siteColors.contrast_midtone, 6, -10 ),
+    base: adjustHex( siteColors.base, 6, -10 ),
+    contrast: adjustHex( siteColors.contrast, 25, -35 ),
+    accent_1: adjustHex( siteColors.accent_1, 30, -40 ),
+    accent_2: adjustHex( siteColors.accent_2, 26, -35 ),
+    accent_3: adjustHex( siteColors.accent_3, 22, -30 ),
+    accent_4: adjustHex( siteColors.accent_4, 18, -25 ),
+    accent_5: adjustHex( siteColors.accent_5, 14, -20 ),
+    accent_6: adjustHex( siteColors.accent_6, 10, -15 ),
+    base_midtone: adjustHex( siteColors.base_midtone, 6, -10 ),
+    contrast_midtone: adjustHex( siteColors.contrast_midtone, 20, -30 ),
   };
   const soft: DesignPalette = {
     id: 'theme-soft',
