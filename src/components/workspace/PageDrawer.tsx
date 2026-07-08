@@ -13,6 +13,8 @@ type Props = {
 
 const SEARCH_RESULTS_LIMIT = 15;
 
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test( navigator.platform );
+
 const stripHtml = ( value: string ) => value.replace( /<[^>]*>/g, '' );
 
 const formatDate = ( dateString: string ) => {
@@ -52,6 +54,14 @@ const PageDrawer = ( {
   const visibleItems = isSearching ? searchResults : recentItems;
   const loading = ! isSearching && loadingRecent;
 
+  // Reuses the global Cmd/Ctrl+K listener in App.tsx rather than prop-drilling
+  // an open-palette callback through the drawer.
+  const openCommandPalette = () => {
+    window.dispatchEvent(
+      new KeyboardEvent( 'keydown', { key: 'k', metaKey: isMac, ctrlKey: ! isMac, bubbles: true } )
+    );
+  };
+
   return (
     <div className="ai-page-drawer">
       <div className="ai-page-drawer__search">
@@ -63,6 +73,14 @@ const PageDrawer = ( {
           placeholder="Search pages and posts"
           aria-label="Search pages and posts"
         />
+        <button
+          type="button"
+          className="ai-page-drawer__search-hint"
+          title="Search every page and post on this site"
+          onClick={ openCommandPalette }
+        >
+          <kbd>{ isMac ? '⌘K' : 'Ctrl K' }</kbd>
+        </button>
       </div>
 
       <div className="ai-page-drawer__section-label">{ isSearching ? 'Results' : 'Recent' }</div>

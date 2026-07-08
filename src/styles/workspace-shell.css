@@ -201,6 +201,7 @@ body.nfd-ai-workspace-active {
 
 .ai-page-drawer__search input {
   flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
   outline: none;
@@ -211,6 +212,33 @@ body.nfd-ai-workspace-active {
 .ai-page-drawer__search .icon-sm {
   color: var(--color-on-surface-variant);
   flex-shrink: 0;
+}
+
+.ai-page-drawer__search-hint {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.ai-page-drawer__search-hint kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-bright);
+  border: 1px solid var(--color-outline-variant);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-on-surface-variant);
+}
+
+.ai-page-drawer__search-hint:hover kbd {
+  border-color: var(--color-outline);
+  color: var(--color-on-surface);
 }
 
 .ai-page-drawer__section-label {
@@ -321,7 +349,7 @@ body.nfd-ai-workspace-active {
   cursor: default;
 }
 
-.ai-design-tab__section-title {
+.ai-design-tab .ai-design-tab__section-title {
   margin: 0 0 2px;
   font-family: 'Manrope', sans-serif;
   font-size: 13px;
@@ -329,9 +357,10 @@ body.nfd-ai-workspace-active {
   color: var(--color-on-surface);
 }
 
-.ai-design-tab__section-hint {
-  margin: 0 0 12px;
+.ai-design-tab .ai-design-tab__section-hint {
+  margin: 0 0 14px;
   font-size: 12px;
+  font-weight: 500;
   color: var(--color-on-surface-variant);
 }
 
@@ -535,6 +564,7 @@ body.nfd-ai-workspace-active {
   max-height: 60vh;
   display: flex;
   flex-direction: column;
+  padding: 25px 12px 12px;
   background: var(--color-surface-bright);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-editorial);
@@ -545,7 +575,8 @@ body.nfd-ai-workspace-active {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px;
+  padding: 0 0 14px;
+  margin-bottom: 8px;
   border-bottom: 1px solid var(--color-outline-variant);
   flex-shrink: 0;
 }
@@ -557,6 +588,7 @@ body.nfd-ai-workspace-active {
 
 .ai-command-palette__search input {
   flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
   background: transparent;
@@ -597,6 +629,10 @@ body.nfd-ai-workspace-active {
   font-size: 14px;
 }
 
+.ai-command-palette__item + .ai-command-palette__item {
+  margin-top: 2px;
+}
+
 .ai-command-palette__item:hover {
   background: var(--color-surface-container);
 }
@@ -607,6 +643,8 @@ body.nfd-ai-workspace-active {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 600;
+  color: var(--color-on-surface);
 }
 
 .ai-command-palette__item-type {
