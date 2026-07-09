@@ -38,9 +38,11 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  *  - `centered`: no image at all — a centered, width-constrained text stack
  *    (eyebrow/heading/subheading/CTAs) on the gradient backdrop. For a bold
  *    statement/mission opener where a photo would compete with the copy.
- *  - `stacked`: a rounded `core/image` above a centered, width-constrained
- *    text stack — a vertical "magazine cover" layout, distinct from both
- *    `split`'s side-by-side columns and `image-bg`'s full-bleed treatment.
+ *  - `stacked`: a short, centered image banner strip (120px tall, capped to
+ *    the same 720px width as the text below it) above a centered,
+ *    width-constrained text stack — a compact "eyebrow photo" layout,
+ *    distinct from both `split`'s side-by-side columns and `image-bg`'s
+ *    full-bleed treatment.
  *
  * The plan item's own `variant` wins when it names one of the four above;
  * otherwise render() picks one deterministically from a hash of the heading
@@ -281,10 +283,37 @@ class HeroCover implements Archetype {
 			$stack .= $this->render_ctas( $primary_cta, $secondary_cta, $bg_slug, $ctx, true );
 		}
 
-		$image = $this->render_image_block( $image_url, true );
+		$image = $this->render_stacked_image( $image_url );
 		$inner = $image . $this->wrap_constrained( $stack );
 
 		return $this->render_gradient_section( $inner, $ctx, $bg_slug );
+	}
+
+	/**
+	 * Render the `stacked` variant's image as a short, centered banner strip
+	 * — 120px tall, capped to the same 720px width as {@see wrap_constrained()}
+	 * uses for the text below it — rather than a full-bleed photo. Deliberately
+	 * a bespoke renderer (not {@see RendersMarkup::render_image_block()}, which
+	 * fills its parent at `width:100%;height:100%` with no cap): the fixed
+	 * height needs its own clipping wrapper, and reusing the shared helper
+	 * here would also change `GalleryGrid`/`AlternatingMediaText`'s sizing,
+	 * which isn't wanted.
+	 *
+	 * @param string $image_url Resolved image URL.
+	 * @return string
+	 */
+	private function render_stacked_image( string $image_url ): string {
+		if ( '' === $image_url ) {
+			return '';
+		}
+		$img = '<img src="' . $this->esc_url( $image_url ) . '" alt="" style="width:100%;height:100%;object-fit:cover"/>';
+		return $this->comment_wrap(
+			'image',
+			array( 'sizeSlug' => 'large' ),
+			'<figure class="wp-block-image size-large" '
+				. 'style="max-width:720px;height:120px;margin-left:auto;margin-right:auto;overflow:hidden;border-radius:16px">'
+				. $img . '</figure>'
+		);
 	}
 
 	/**
