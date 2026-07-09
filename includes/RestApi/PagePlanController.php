@@ -270,6 +270,8 @@ class PagePlanController {
 
 		if ( ! $is_homepage ) {
 			$plan = $this->cap_focused_sections( $plan );
+		} elseif ( count( $plan ) < $min_sections ) {
+			$plan = $this->pad_homepage_sections( $plan, $prompt, $min_sections - count( $plan ) );
 		}
 
 		$content = ( new PageAssembler() )->assemble( $plan );
@@ -422,6 +424,85 @@ class PagePlanController {
 			return $kept;
 		}
 		return array_slice( $plan, 0, self::MAX_FOCUSED_SECTIONS );
+	}
+
+	/**
+	 * Top up a real but under-target homepage plan with a few more sections,
+	 * via a small, SEPARATELY-scoped AI call — never appended to the main
+	 * plan's own conversation thread. Asking the model to "expand" the
+	 * existing plan in-thread was tried and, verified live, made it dilute
+	 * the new sections' content into blank fields (the exact "right-shaped-
+	 * but-empty" failure mode this file guards against elsewhere); a fresh,
+	 * narrowly-scoped request for a small number of brand-new sections
+	 * doesn't carry that instruction shape. Held to the same rule the rest
+	 * of this file follows: a supplemental step may only make the result
+	 * additively better — on any failure, or if the additions themselves
+	 * come back blank, the original (shorter but real) plan is kept as-is.
+	 *
+	 * @param array<int, array<string, mixed>> $plan   The already-accepted, real plan.
+	 * @param string                            $prompt The original page-plan prompt.
+	 * @param int                                $needed How many more sections to try for.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function pad_homepage_sections( array $plan, string $prompt, int $needed ): array {
+		$used_archetypes = array_unique( array_column( $plan, 'archetype' ) );
+		$archetype_lines = '';
+		foreach ( self::ARCHETYPE_SCHEMAS as $name => $schema ) {
+			$archetype_lines .= "- \"{$name}\": {$schema}\n";
+		}
+		$allowed_names = implode( '", "', array_keys( self::ARCHETYPE_SCHEMAS ) );
+
+		$system = 'You are a website page planner. A homepage is being built for this request: '
+			. "\"{$prompt}\". It already has these sections, in order: " . implode( ', ', $used_archetypes ) . '. '
+			. "Suggest exactly {$needed} more distinct section(s) that would strengthen this homepage, different in "
+			. 'purpose from the sections already listed. Return ONLY a JSON object (no prose, no markdown code '
+			. 'fences) of the shape {"sections": [ {"archetype": one of ["' . $allowed_names . '"], "content": {...}}, ... ]}, '
+			. "using ONLY these archetypes and their exact content fields:\n" . $archetype_lines
+			. 'Write real, specific copy for the described business — never placeholder text like "Lorem ipsum" or "Heading here".';
+
+		$result = $this->ai_client->analyze(
+			array(
+				array(
+					'role'    => 'system',
+					'content' => $system,
+				),
+				array(
+					'role'    => 'user',
+					'content' => $prompt,
+				),
+			)
+		);
+
+		if ( is_wp_error( $result ) || empty( $result['content'] ) ) {
+			return $plan;
+		}
+
+		$additions = $this->parse_response( (string) $result['content'] )['sections'];
+		if ( empty( $additions ) ) {
+			return $plan;
+		}
+
+		// Only keep additions with real, visible copy of their own — never let
+		// a blank supplemental section slip in just because the count matched.
+		$kept = array();
+		foreach ( $additions as $addition ) {
+			$rendered = ( new PageAssembler() )->assemble( array( $addition ) );
+			if ( strlen( trim( wp_strip_all_tags( $rendered ) ) ) >= 30 ) {
+				$kept[] = $addition;
+			}
+		}
+		if ( empty( $kept ) ) {
+			return $plan;
+		}
+
+		// Insert before a trailing "ctaBanner" so the page still ends on a CTA.
+		$last          = end( $plan );
+		$ends_with_cta = is_array( $last ) && isset( $last['archetype'] ) && 'ctaBanner' === $last['archetype'];
+		if ( $ends_with_cta ) {
+			$body = array_slice( $plan, 0, -1 );
+			return array_merge( $body, $kept, array( $last ) );
+		}
+		return array_merge( $plan, $kept );
 	}
 
 	/**
