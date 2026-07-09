@@ -197,10 +197,11 @@ class PagePlanController {
 		// reasons the page-plan flow falls through to the freeform generate
 		// path (which produces weaker, generic metadata), and a single retry
 		// recovers most of those due to run-to-run model variance.
-		$plan         = array();
-		$plan_title   = '';
-		$plan_excerpt = '';
-		$last_error   = null;
+		$plan                = array();
+		$plan_title          = '';
+		$plan_excerpt        = '';
+		$last_error          = null;
+		$best_visible_length = -1;
 		for ( $attempt = 0; $attempt < 2; $attempt++ ) {
 			$result = $this->ai_client->analyze( $ai_messages );
 			if ( is_wp_error( $result ) ) {
@@ -216,7 +217,6 @@ class PagePlanController {
 				$candidate_content = ( new PageAssembler() )->assemble( $candidate_plan );
 				$visible_length    = strlen( trim( wp_strip_all_tags( $candidate_content ) ) );
 
-				$plan = $candidate_plan;
 				// Never let a retry that omitted title/excerpt clobber values a
 				// previous attempt already provided.
 				if ( '' !== $parsed['title'] ) {
@@ -225,34 +225,43 @@ class PagePlanController {
 				if ( '' !== $parsed['excerpt'] ) {
 					$plan_excerpt = $parsed['excerpt'];
 				}
+				// Keep the most substantial candidate seen so far, not simply
+				// the latest one. A retry nudge asking for more sections can
+				// come back the right shape (passes the section-count check)
+				// but with the extra copy diluted into blank fields — a
+				// right-shaped-but-empty page is a worse outcome than a
+				// shorter one with real content, so visible text length (not
+				// attempt order) decides what actually gets kept.
+				if ( $visible_length > $best_visible_length ) {
+					$plan                = $candidate_plan;
+					$best_visible_length = $visible_length;
+				}
 				// Accept a substantial, non-blank plan right away; if it came
 				// back below the scope's minimum section count (see
 				// $min_sections above — a homepage needs more than a focused
 				// page does) or textually empty (right shape, no actual copy
-				// in the fields) try once more, then take whatever the second
-				// attempt gives.
-				$is_substantial = count( $plan ) >= $min_sections && $visible_length >= self::MIN_VISIBLE_TEXT_LENGTH;
+				// in the fields) try once more with the exact same messages —
+				// run-to-run model variance alone recovers most of these — and
+				// keep whichever attempt scored highest above. Deliberately
+				// NOT adding an extra "expand to N sections" nudge message
+				// here: that was tried and, verified live, it made the model
+				// pad out the requested section count by leaving the new
+				// sections' content fields blank far more often than a plain
+				// retry does — the exact "right-shaped-but-empty" failure mode
+				// this file already has to guard against elsewhere.
+				$is_substantial = count( $candidate_plan ) >= $min_sections && $visible_length >= self::MIN_VISIBLE_TEXT_LENGTH;
 				if ( $is_substantial || 1 === $attempt ) {
 					break;
-				}
-				// About to retry because the plan came back thinner than this
-				// scope's floor. Resending the identical messages tends to get
-				// the identical count back — especially when the prompt itself
-				// names only a couple of things ("a hero, features, and a CTA"),
-				// which the model then treats as a closed list. Nudge the retry
-				// only, so the common (non-thin) first attempt is unaffected.
-				if ( $is_homepage && count( $plan ) < $min_sections ) {
-					$ai_messages[] = array(
-						'role'    => 'user',
-						'content' => 'That was only ' . count( $plan ) . ' section(s). This is a homepage/landing '
-							. 'page — expand to at least ' . $min_sections . ' varied sections covering different '
-							. "aspects of the page, even if my request above only named a few explicitly.",
-					);
 				}
 			}
 		}
 
-		if ( empty( $plan ) ) {
+		// Empty plan, or every attempt came back right-shaped but with no real
+		// visible text (see the $best_visible_length tracking above) — neither
+		// is a page worth showing. Fail the same way an empty plan does, so
+		// the caller falls back to the freeform generate path instead of
+		// shipping a blank page.
+		if ( empty( $plan ) || $best_visible_length < self::MIN_VISIBLE_TEXT_LENGTH ) {
 			if ( null !== $last_error ) {
 				return $last_error;
 			}
