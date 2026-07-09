@@ -9,7 +9,7 @@ type Props = {
 // Canvas's no-page-selected state — the old Dashboard route's hero, minus
 // the pages/posts grid (the PageDrawer now owns browsing).
 const EmptyState = ( { onCreateWithPrompt }: Props ) => {
-  const promptSuggestions = useMemo( () => pickRandomPromptChips( DASHBOARD_PROMPT_CHIPS, 2 ), [] );
+  const promptSuggestions = useMemo( () => pickRandomPromptChips( DASHBOARD_PROMPT_CHIPS, 3 ), [] );
   const [ prompt, setPrompt ] = useState(
     'Create a modern homepage with a hero section, key features, and a call to action'
   );
