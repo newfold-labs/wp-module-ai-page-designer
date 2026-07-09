@@ -416,8 +416,8 @@ class PagePlanController {
 			return $plan;
 		}
 
-		$last            = end( $plan );
-		$ends_with_cta   = is_array( $last ) && isset( $last['archetype'] ) && 'ctaBanner' === $last['archetype'];
+		$last          = end( $plan );
+		$ends_with_cta = is_array( $last ) && isset( $last['archetype'] ) && 'ctaBanner' === $last['archetype'];
 		if ( $ends_with_cta ) {
 			$kept   = array_slice( $plan, 0, self::MAX_FOCUSED_SECTIONS - 1 );
 			$kept[] = $last;
@@ -440,8 +440,8 @@ class PagePlanController {
 	 * come back blank, the original (shorter but real) plan is kept as-is.
 	 *
 	 * @param array<int, array<string, mixed>> $plan   The already-accepted, real plan.
-	 * @param string                            $prompt The original page-plan prompt.
-	 * @param int                                $needed How many more sections to try for.
+	 * @param string                           $prompt The original page-plan prompt.
+	 * @param int                              $needed How many more sections to try for.
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function pad_homepage_sections( array $plan, string $prompt, int $needed ): array {

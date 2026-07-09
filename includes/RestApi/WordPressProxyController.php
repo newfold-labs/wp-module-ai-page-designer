@@ -133,32 +133,32 @@ class WordPressProxyController extends \WP_REST_Controller {
 					'methods'             => \WP_REST_Server::EDITABLE,
 					'callback'            => array( $this, 'update_content' ),
 					'args'                => array(
-						'type'    => array(
+						'type'          => array(
 							'required' => true,
 							'type'     => 'string',
 							'enum'     => array( 'pages', 'posts' ),
 						),
-						'id'      => array(
+						'id'            => array(
 							'required' => true,
 							'type'     => 'integer',
 						),
-						'content' => array(
+						'content'       => array(
 							'required' => false,
 							'type'     => 'string',
 						),
-						'title'   => array(
+						'title'         => array(
 							'required' => false,
 							'type'     => 'string',
 						),
-						'status'  => array(
+						'status'        => array(
 							'required' => false,
 							'type'     => 'string',
 						),
-						'slug'    => array(
+						'slug'          => array(
 							'required' => false,
 							'type'     => 'string',
 						),
-						'excerpt' => array(
+						'excerpt'       => array(
 							'required' => false,
 							'type'     => 'string',
 						),
