@@ -659,6 +659,12 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     const newMessages = [ ...messages.filter( ( m ) => ! m.isError ), userMsg ];
     setMessages( newMessages );
 
+    // Redesign requests generate a full new page — never treat them as targeted
+    // follow-up edits. Hoisted above the page-plan branch below (which also
+    // needs it) rather than computed twice.
+    const REDESIGN_KEYWORDS = [ 'redesign', 'regenerate', 'generate again', 'redo', 'remake', 'rebuild', 'start over', 'start fresh', 'from scratch', 'create new', 'make a new', 'build a new', 'try again', 'new version', 'new design' ];
+    const isRedesignRequest = REDESIGN_KEYWORDS.some( ( kw ) => text.toLowerCase().includes( kw ) );
+
     const applyMetadataOnlyResponse = ( responseData: any ) => {
       const title = responseData?.title || '';
       const excerpt = responseData?.excerpt || '';
@@ -1193,13 +1199,24 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     try {
       setIsLoading( true );
 
-      // Build a brand-new page from a PageAssembler page-plan (typed archetypes)
-      // instead of freeform AI markup. Only ever engages for "create a new page
-      // from a prompt" (no existing preview, no selected item to edit) so it can
-      // never interfere with the edit flow below. Falls through to the normal AI
-      // generate path on any failure (generatePagePlanPage never throws).
-      if ( isPagePlanEnabled() && ! previewHtml && ! selectedItem ) {
-        const planResult = await generatePagePlanPage( apiUrl, text );
+      // Build a page from a PageAssembler page-plan (typed archetypes) instead of
+      // freeform AI markup. Engages for a brand-new page ("create a new page
+      // from a prompt", no existing preview/selected item) OR an explicit
+      // redesign-from-scratch request on an existing WordPress Page — never a
+      // Post, whose "structure" is just its article body, not landing-page
+      // sections. On an existing-page redesign the user's message is sent
+      // unmodified; only the title/excerpt go along as separate params, which
+      // the server folds into the SYSTEM prompt rather than the old body
+      // markup/images — this is what actually fixes "redesign" only
+      // re-skinning colors/images instead of changing the layout. Falls
+      // through to the normal AI generate path on any failure or if disabled
+      // (generatePagePlanPage never throws).
+      const isBrandNewPage = ! previewHtml && ! selectedItem;
+      const isExistingPageRedesign = !! selectedItem && selectedItem.type === 'page' && isRedesignRequest;
+      if ( isPagePlanEnabled() && ( isBrandNewPage || isExistingPageRedesign ) ) {
+        const planResult = isExistingPageRedesign
+          ? await generatePagePlanPage( apiUrl, text, metaTitle, metaExcerpt )
+          : await generatePagePlanPage( apiUrl, text );
         if ( planResult?.content ) {
           const parsed = wpBlocksParse( planResult.content );
 
@@ -1344,6 +1361,29 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
             setParsedBlocks( parsed );
           }
           setHasAIGenerated( true );
+
+          if ( isExistingPageRedesign ) {
+            // The user asked to rebuild the layout, not rename the page — keep
+            // its saved title/excerpt/featured image untouched, and log a
+            // history entry so the pre-redesign version stays revertible (a
+            // brand-new page has nothing to revert to, so this only applies
+            // here).
+            const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+            setHistoryEntries( ( prev ) => [
+              ...prev,
+              {
+                id: `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`,
+                html: planResult.content,
+                label: `Redesigned from scratch: ${ text.substring( 0, 60 ) }`,
+                timestamp,
+                publishTitle: metaTitle || publishTitle,
+                metaExcerpt,
+              },
+            ] );
+            setMessages( [ ...newMessages, { role: 'assistant', content: 'Here is a fresh redesign.' } ] );
+            return;
+          }
+
           // The server guarantees a title/excerpt via its own fallback chain,
           // but if either ever arrives empty, derive one from the page itself
           // (first heading / first paragraph) — a fresh generation must never
@@ -1851,9 +1891,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       // but NOT "change the title color/font/…" — those are block-style edits, not metadata.
       const isMetadataRequest = /\b(?:add|create|generate|write|update|edit|rewrite|revise|improve|refresh|change|set)\s+(?:an?\s+|the\s+)?(?:excerpt|title|summary)\b(?!\s+(?:color|colour|font|text|size|style|background))|^(?:excerpt|title|summary)$/i.test(text);
 
-      // Redesign requests generate a full new page — never treat them as targeted follow-up edits.
-      const REDESIGN_KEYWORDS = [ 'redesign', 'regenerate', 'generate again', 'redo', 'remake', 'rebuild', 'start over', 'start fresh', 'from scratch', 'create new', 'make a new', 'build a new', 'try again', 'new version', 'new design' ];
-      const isRedesignRequest = REDESIGN_KEYWORDS.some( ( kw ) => text.toLowerCase().includes( kw ) );
+      // isRedesignRequest is computed once, above, near the top of handleSend.
 
       // Detect if this is a follow-up request to a previously generated block.
       const isFollowUpEdit = !isMetadataRequest && !isRedesignRequest && selectedBlockIndex === null && lastGeneratedHtml !== null && !!previewHtml?.includes(lastGeneratedHtml);

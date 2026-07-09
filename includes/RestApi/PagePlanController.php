@@ -77,6 +77,20 @@ class PagePlanController {
 	);
 
 	/**
+	 * Minimum stripped-text length an assembled plan must clear to be
+	 * accepted without a retry. Catches a model response that's
+	 * structurally valid (right archetypes, right JSON shape, so it passes
+	 * the section-count check below) but returned empty content fields
+	 * (heading/body strings of "") — PageAssembler renders that as real,
+	 * non-empty HTML (divs, classes, block comments) with zero visible
+	 * text, which the old "is the assembled string empty" check never
+	 * caught.
+	 *
+	 * @var int
+	 */
+	private const MIN_VISIBLE_TEXT_LENGTH = 80;
+
+	/**
 	 * Constructor.
 	 */
 	public function __construct() {
@@ -95,10 +109,22 @@ class PagePlanController {
 					'methods'             => \WP_REST_Server::CREATABLE,
 					'callback'            => array( $this, 'generate' ),
 					'args'                => array(
-						'prompt' => array(
+						'prompt'           => array(
 							'required'          => true,
 							'type'              => 'string',
 							'description'       => __( 'A description of the page to build.', 'wp-module-ai-page-designer' ),
+							'sanitize_callback' => 'sanitize_textarea_field',
+						),
+						'existing_title'   => array(
+							'required'          => false,
+							'type'              => 'string',
+							'description'       => __( 'Title of an existing page being redesigned, for context only.', 'wp-module-ai-page-designer' ),
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+						'existing_excerpt' => array(
+							'required'          => false,
+							'type'              => 'string',
+							'description'       => __( 'Excerpt of an existing page being redesigned, for context only.', 'wp-module-ai-page-designer' ),
 							'sanitize_callback' => 'sanitize_textarea_field',
 						),
 					),
@@ -129,10 +155,13 @@ class PagePlanController {
 			return new \WP_Error( 'invalid_prompt', __( 'No page description provided.', 'wp-module-ai-page-designer' ), array( 'status' => 400 ) );
 		}
 
+		$existing_title   = (string) $request->get_param( 'existing_title' );
+		$existing_excerpt = (string) $request->get_param( 'existing_excerpt' );
+
 		$ai_messages = array(
 			array(
 				'role'    => 'system',
-				'content' => $this->build_system_prompt(),
+				'content' => $this->build_system_prompt( $existing_title, $existing_excerpt ),
 			),
 			array(
 				'role'    => 'user',
@@ -140,13 +169,16 @@ class PagePlanController {
 			),
 		);
 
-		// Retry once when the model returns unparseable JSON. Plan parsing is the
-		// main reason the page-plan flow falls through to the freeform generate
-		// path (which produces weaker, generic metadata), and a single retry
-		// recovers most of those due to run-to-run model variance.
+		// Retry once when the model returns unparseable JSON, too few sections,
+		// or (right shape, but textually empty) sections — plan parsing and
+		// blank-content responses are the main reasons the page-plan flow falls
+		// through to the freeform generate path (which produces weaker, generic
+		// metadata), and a single retry recovers most of those due to
+		// run-to-run model variance.
 		$plan         = array();
 		$plan_title   = '';
 		$plan_excerpt = '';
+		$plan_content = '';
 		$last_error   = null;
 		for ( $attempt = 0; $attempt < 2; $attempt++ ) {
 			$result = $this->ai_client->analyze( $ai_messages );
@@ -159,7 +191,12 @@ class PagePlanController {
 			}
 			$parsed = $this->parse_response( (string) $result['content'] );
 			if ( ! empty( $parsed['sections'] ) ) {
-				$plan = $parsed['sections'];
+				$candidate_plan    = $parsed['sections'];
+				$candidate_content = ( new PageAssembler() )->assemble( $candidate_plan );
+				$visible_length    = strlen( trim( wp_strip_all_tags( $candidate_content ) ) );
+
+				$plan         = $candidate_plan;
+				$plan_content = $candidate_content;
 				// Never let a retry that omitted title/excerpt clobber values a
 				// previous attempt already provided.
 				if ( '' !== $parsed['title'] ) {
@@ -168,10 +205,12 @@ class PagePlanController {
 				if ( '' !== $parsed['excerpt'] ) {
 					$plan_excerpt = $parsed['excerpt'];
 				}
-				// Accept a substantial plan right away; if it came back thin
-				// (fewer than 4 sections) try once more for a fuller page, then
-				// take whatever the second attempt gives.
-				if ( count( $plan ) >= 4 || 1 === $attempt ) {
+				// Accept a substantial, non-blank plan right away; if it came
+				// back thin (fewer than 4 sections) or textually empty (right
+				// shape, no actual copy in the fields) try once more for a
+				// fuller page, then take whatever the second attempt gives.
+				$is_substantial = count( $plan ) >= 4 && $visible_length >= self::MIN_VISIBLE_TEXT_LENGTH;
+				if ( $is_substantial || 1 === $attempt ) {
 					break;
 				}
 			}
@@ -184,7 +223,7 @@ class PagePlanController {
 			return new \WP_Error( 'generation_failed', __( 'The AI response could not be turned into a page. Please try again.', 'wp-module-ai-page-designer' ), array( 'status' => 502 ) );
 		}
 
-		$content = ( new PageAssembler() )->assemble( $plan );
+		$content = $plan_content;
 		if ( '' === trim( $content ) ) {
 			return new \WP_Error( 'generation_failed', __( 'The AI response could not be turned into a page. Please try again.', 'wp-module-ai-page-designer' ), array( 'status' => 502 ) );
 		}
@@ -282,9 +321,11 @@ class PagePlanController {
 	/**
 	 * Build the page-plan system prompt from the registered archetype schemas.
 	 *
+	 * @param string $existing_title   Title of the existing page being redesigned, if any.
+	 * @param string $existing_excerpt Excerpt of the existing page being redesigned, if any.
 	 * @return string
 	 */
-	private function build_system_prompt(): string {
+	private function build_system_prompt( string $existing_title = '', string $existing_excerpt = '' ): string {
 		$archetype_lines = '';
 		foreach ( self::ARCHETYPE_SCHEMAS as $name => $schema ) {
 			$archetype_lines .= "- \"{$name}\": {$schema}\n";
@@ -304,6 +345,21 @@ class PagePlanController {
 				. ( $site_tagline ? " — {$site_tagline}" : '' ) . '. ';
 		}
 
+		// Redesign of an existing page: the caller sends only its title/excerpt
+		// (never the old body markup or images — see PagePlanController's REST
+		// args), so the model has nothing of the old structure to anchor a
+		// re-skin to. Kept unquoted and in the SYSTEM prompt (background fact),
+		// not appended to the user's own task message — testing showed folding
+		// this into the free-form prompt text measurably increased the odds of
+		// the model returning right-shaped-but-textually-empty sections.
+		$redesign_context = '';
+		if ( $existing_title || $existing_excerpt ) {
+			$redesign_context = "\nThis is a redesign of an existing page. Existing page title: {$existing_title}."
+				. ( $existing_excerpt ? " Existing page excerpt: {$existing_excerpt}." : '' )
+				. ' Use that only to understand the page\'s purpose — write entirely new copy for every section, '
+				. "don't reuse the existing page's specific wording. ";
+		}
+
 		return 'You are a website page planner. Given a description of a page, return ONLY a JSON object '
 			. '(no prose, no markdown code fences) of the shape '
 			. '{"title": string, "excerpt": string, "sections": [ {"archetype": one of ["' . $allowed_names . '"], "content": {...}}, ... ]}. '
@@ -318,6 +374,7 @@ class PagePlanController {
 			. 'processSteps when the service has a clear how-it-works flow. Even if the request only mentions one or '
 			. 'two sections, still produce a full homepage with at least 4 sections. '
 			. $site_context
+			. $redesign_context
 			. 'Write real, specific copy for the described business/topic — never placeholder text like "Lorem ipsum" or "Heading here".';
 	}
 

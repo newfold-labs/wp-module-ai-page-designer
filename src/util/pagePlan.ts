@@ -20,19 +20,32 @@ export const isPagePlanEnabled = (): boolean =>
   ( window as any )?.nfdAIPageDesigner?.enablePagePlan !== false;
 
 /**
- * Generate a page from a text prompt via the page-plan pipeline.
+ * Generate a page from a text prompt via the page-plan pipeline. When
+ * redesigning an EXISTING page, pass its title/excerpt as `existingTitle`/
+ * `existingExcerpt` — the server folds these into the SYSTEM prompt (never
+ * the old body markup or images), not into the user's own prompt text.
+ * Testing showed appending title/excerpt into the free-form prompt measurably
+ * increased the odds of the model returning right-shaped-but-textually-empty
+ * sections; keeping it in the system prompt (like the existing site-name/
+ * tagline context) is reliable.
  * Never throws — returns null on any failure so callers can fall back to the
  * existing freeform AI generate path.
  */
 export const generatePagePlanPage = async (
   apiUrl: string,
-  prompt: string
+  prompt: string,
+  existingTitle = '',
+  existingExcerpt = ''
 ): Promise<PagePlanResult | null> => {
   try {
     const result = await apiFetch<{ content?: string; title?: string; excerpt?: string }>( {
       path: `${ apiUrl }/page-plan`,
       method: 'POST',
-      data: { prompt },
+      data: {
+        prompt,
+        existing_title: existingTitle,
+        existing_excerpt: existingExcerpt,
+      },
     } );
 
     if ( ! result?.content ) {
