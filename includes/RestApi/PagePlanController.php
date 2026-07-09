@@ -53,7 +53,8 @@ class PagePlanController {
 	private const ARCHETYPE_SCHEMAS = array(
 		'heroCover'            => 'eyebrow?: string, heading: string, subheading?: string, '
 			. 'primaryCta: { label: string, url: string }, secondaryCta?: { label: string, url: string }, '
-			. 'imageQuery: string (a short Unsplash search phrase for the hero background)',
+			. 'imageQuery: string (a short Unsplash search phrase for the hero image; not used by the "centered" variant), '
+			. 'variant?: one of "split" | "image-bg" | "centered" | "stacked" — omit to let the renderer pick',
 		'featureGrid'          => 'heading?: string, intro?: string, items: exactly 3 of { title: string, body: string }',
 		'alternatingMediaText' => 'heading?: string, intro?: string, rows: array of { heading: string, body: string, '
 			. 'imageQuery: string (short Unsplash search phrase), cta?: { label: string, url: string } }',

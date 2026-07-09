@@ -164,4 +164,101 @@ class HeroCoverTest extends PageAssemblyTestCase {
 		$this->assertStringContainsString( 'Just a heading', $out );
 		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
 	}
+
+	public function test_centered_variant_renders_expected_slots_without_an_image(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$out  = $hero->render( $this->content(), 'centered', $ctx, $hero->default_background( $ctx ) );
+
+		$this->assertStringNotContainsString( '<!-- wp:columns', $out );
+		$this->assertStringNotContainsString( '<!-- wp:cover', $out );
+		$this->assertStringNotContainsString( 'https://images.unsplash.com/photo-1', $out );
+		$this->assertStringContainsString( 'Fresh coffee, faster mornings', $out );
+		$this->assertStringContainsString( 'New for 2026', $out );
+		$this->assertStringContainsString( 'Order now', $out );
+		$this->assertStringContainsString( 'View menu', $out );
+	}
+
+	public function test_centered_variant_is_correct_by_construction(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$out  = $hero->render( $this->content(), 'centered', $ctx, $hero->default_background( $ctx ) );
+
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
+
+	public function test_centered_variant_is_deterministic(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$bg   = $hero->default_background( $ctx );
+		$once = $hero->render( $this->content(), 'centered', $ctx, $bg );
+		$this->assertSame( $once, $hero->render( $this->content(), 'centered', $ctx, $bg ) );
+	}
+
+	public function test_stacked_variant_renders_expected_slots(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$out  = $hero->render( $this->content(), 'stacked', $ctx, $hero->default_background( $ctx ) );
+
+		$this->assertStringContainsString( '<!-- wp:image', $out );
+		$this->assertStringNotContainsString( '<!-- wp:columns', $out );
+		$this->assertStringNotContainsString( '<!-- wp:cover', $out );
+		$this->assertStringContainsString( 'Fresh coffee, faster mornings', $out );
+		$this->assertStringContainsString( 'https://images.unsplash.com/photo-1', $out );
+		$this->assertStringContainsString( 'Order now', $out );
+	}
+
+	public function test_stacked_variant_is_correct_by_construction(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$out  = $hero->render( $this->content(), 'stacked', $ctx, $hero->default_background( $ctx ) );
+
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
+
+	public function test_stacked_variant_is_deterministic(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$bg   = $hero->default_background( $ctx );
+		$once = $hero->render( $this->content(), 'stacked', $ctx, $bg );
+		$this->assertSame( $once, $hero->render( $this->content(), 'stacked', $ctx, $bg ) );
+	}
+
+	public function test_unspecified_variant_is_deterministic_per_heading(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$bg   = $hero->default_background( $ctx );
+		$once = $hero->render( $this->content(), null, $ctx, $bg );
+		$this->assertSame( $once, $hero->render( $this->content(), null, $ctx, $bg ) );
+	}
+
+	public function test_unspecified_variant_varies_by_heading(): void {
+		$hero    = new HeroCover();
+		$ctx     = $this->context();
+		$bg      = $hero->default_background( $ctx );
+		$content = $this->content();
+
+		$shapes = array();
+		foreach ( array( 'Fresh coffee, faster mornings', 'A totally different headline', 'Something else entirely new' ) as $heading ) {
+			$content['heading'] = $heading;
+			$out                = $hero->render( $content, null, $ctx, $bg );
+			$shapes[]           = strpos( $out, '<!-- wp:columns' ) !== false
+				? 'split'
+				: ( strpos( $out, '<!-- wp:cover' ) !== false
+					? 'image-bg'
+					: ( strpos( $out, '<!-- wp:image' ) !== false ? 'stacked' : 'centered' ) );
+		}
+
+		// Not every heading needs to land on a different variant, but they
+		// shouldn't all be identical — that's the exact bug being fixed.
+		$this->assertGreaterThan( 1, count( array_unique( $shapes ) ) );
+	}
+
+	public function test_an_unrecognized_variant_falls_back_to_the_heading_hash(): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$bg   = $hero->default_background( $ctx );
+		$out  = $hero->render( $this->content(), 'not-a-real-variant', $ctx, $bg );
+		$this->assertSame( $out, $hero->render( $this->content(), null, $ctx, $bg ) );
+	}
 }

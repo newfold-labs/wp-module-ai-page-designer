@@ -28,15 +28,28 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * Two variants:
- *  - `split` (default): a two-column `core/columns` row — left is the text
- *    stack, right is the image wrapped in a rounded, drop-shadowed
- *    "floating card" (see {@see RendersMarkup::render_floating_card()}), the
- *    whole section backed by a gradient-over-solid-slug backdrop (see
+ * Four variants:
+ *  - `split`: a two-column `core/columns` row — left is the text stack,
+ *    right is the image wrapped in a rounded, drop-shadowed "floating card"
+ *    (see {@see RendersMarkup::render_floating_card()}), the whole section
+ *    backed by a gradient-over-solid-slug backdrop (see
  *    {@see RendersMarkup::render_gradient_section()}).
- *  - `image-bg`: the original full-bleed `core/cover` treatment, kept as an
- *    explicit fallback, reachable only via an explicit `variant: "image-bg"`
- *    plan item.
+ *  - `image-bg`: the original full-bleed `core/cover` treatment.
+ *  - `centered`: no image at all — a centered, width-constrained text stack
+ *    (eyebrow/heading/subheading/CTAs) on the gradient backdrop. For a bold
+ *    statement/mission opener where a photo would compete with the copy.
+ *  - `stacked`: a rounded `core/image` above a centered, width-constrained
+ *    text stack — a vertical "magazine cover" layout, distinct from both
+ *    `split`'s side-by-side columns and `image-bg`'s full-bleed treatment.
+ *
+ * The plan item's own `variant` wins when it names one of the four above;
+ * otherwise render() picks one deterministically from a hash of the heading
+ * (never randomly — archetypes are pure functions, see PageAssembler's own
+ * design note) so that omitting `variant` (the common case — the model
+ * doesn't reliably self-vary it, see
+ * {@see \NewfoldLabs\WP\Module\AIPageDesigner\RestApi\PagePlanController::ARCHETYPE_SCHEMAS})
+ * still produces visual variety across pages — no two pages share a heading
+ * — instead of every hero defaulting to the same layout.
  */
 class HeroCover implements Archetype {
 
@@ -44,6 +57,13 @@ class HeroCover implements Archetype {
 
 	const MIN_HEIGHT = 520;
 	const DIM_RATIO  = 60;
+
+	/**
+	 * Recognized variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'split', 'image-bg', 'centered', 'stacked' );
 
 	/**
 	 * {@inheritDoc}
@@ -72,10 +92,27 @@ class HeroCover implements Archetype {
 	 * @return string Gutenberg block markup for one section.
 	 */
 	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
-		if ( 'image-bg' === $variant ) {
-			return $this->render_image_bg( $content, $ctx, $background_slug );
+		if ( null === $variant || ! in_array( $variant, self::VARIANTS, true ) ) {
+			// Deterministic, not random: archetypes are pure functions (see the
+			// class docblock and PageAssembler's own "archetypes stay pure
+			// functions" design note) — assemble() is tested to return identical
+			// output for identical input. Hashing the heading (always present,
+			// required) into a variant index keeps that invariant (same content
+			// -> same variant every time) while still varying across real pages,
+			// since no two pages share a heading.
+			$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+			$variant = self::VARIANTS[ crc32( $heading ) % count( self::VARIANTS ) ];
 		}
-		return $this->render_split( $content, $ctx, $background_slug );
+		switch ( $variant ) {
+			case 'image-bg':
+				return $this->render_image_bg( $content, $ctx, $background_slug );
+			case 'centered':
+				return $this->render_centered( $content, $ctx, $background_slug );
+			case 'stacked':
+				return $this->render_stacked( $content, $ctx, $background_slug );
+			default:
+				return $this->render_split( $content, $ctx, $background_slug );
+		}
 	}
 
 	/**
@@ -175,6 +212,96 @@ class HeroCover implements Archetype {
 			'cover',
 			$attrs,
 			'<div class="' . implode( ' ', $cover_classes ) . '" style="' . $cover_style . '">' . $inner . '</div>'
+		);
+	}
+
+	/**
+	 * Render the `centered` variant: no image — a centered, width-constrained
+	 * text stack on the gradient backdrop.
+	 *
+	 * @param array<string, mixed> $content         Slot content.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Section background slug.
+	 * @return string
+	 */
+	private function render_centered( array $content, Context $ctx, ?string $background_slug ): string {
+		$bg_slug   = $background_slug ?? $this->default_background( $ctx );
+		$text_slug = $this->text_slug_for_background( $ctx, $bg_slug );
+
+		$eyebrow       = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
+		$heading       = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$subheading    = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
+		$primary_cta   = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
+		$secondary_cta = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
+
+		$stack = '';
+		if ( '' !== $eyebrow ) {
+			$stack .= $this->render_paragraph( $eyebrow, $text_slug, true );
+		}
+		$stack .= $this->render_heading( $heading, 1, $text_slug, true );
+		if ( '' !== $subheading ) {
+			$stack .= $this->render_paragraph( $subheading, $text_slug, true );
+		}
+		if ( null !== $primary_cta || null !== $secondary_cta ) {
+			$stack .= $this->render_ctas( $primary_cta, $secondary_cta, $bg_slug, $ctx, true );
+		}
+
+		return $this->render_gradient_section( $this->wrap_constrained( $stack ), $ctx, $bg_slug );
+	}
+
+	/**
+	 * Render the `stacked` variant: a rounded image above a centered,
+	 * width-constrained text stack — a vertical "magazine cover" layout.
+	 *
+	 * @param array<string, mixed> $content         Slot content.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Section background slug.
+	 * @return string
+	 */
+	private function render_stacked( array $content, Context $ctx, ?string $background_slug ): string {
+		$bg_slug   = $background_slug ?? $this->default_background( $ctx );
+		$text_slug = $this->text_slug_for_background( $ctx, $bg_slug );
+
+		$eyebrow       = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
+		$heading       = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$subheading    = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
+		$image_url     = isset( $content['imageUrl'] ) ? (string) $content['imageUrl'] : '';
+		$primary_cta   = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
+		$secondary_cta = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
+
+		$stack = '';
+		if ( '' !== $eyebrow ) {
+			$stack .= $this->render_paragraph( $eyebrow, $text_slug, true );
+		}
+		$stack .= $this->render_heading( $heading, 1, $text_slug, true );
+		if ( '' !== $subheading ) {
+			$stack .= $this->render_paragraph( $subheading, $text_slug, true );
+		}
+		if ( null !== $primary_cta || null !== $secondary_cta ) {
+			$stack .= $this->render_ctas( $primary_cta, $secondary_cta, $bg_slug, $ctx, true );
+		}
+
+		$image = $this->render_image_block( $image_url, true );
+		$inner = $image . $this->wrap_constrained( $stack );
+
+		return $this->render_gradient_section( $inner, $ctx, $bg_slug );
+	}
+
+	/**
+	 * Wrap already-rendered block markup in a plain, width-constrained,
+	 * horizontally-centered `core/group` — the shared shell behind the
+	 * `centered`/`stacked` variants' text stack. Deliberately a bare inline
+	 * `max-width`/`margin:auto` (no `layout: constrained` attribute), matching
+	 * every other size/spacing declaration in this trait.
+	 *
+	 * @param string $inner Rendered inner block markup.
+	 * @return string
+	 */
+	private function wrap_constrained( string $inner ): string {
+		return $this->comment_wrap(
+			'group',
+			array(),
+			'<div class="wp-block-group" style="max-width:720px;margin-left:auto;margin-right:auto">' . $inner . '</div>'
 		);
 	}
 
