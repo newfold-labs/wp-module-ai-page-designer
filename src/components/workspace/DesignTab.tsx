@@ -50,7 +50,17 @@ const DesignTab = ( {
             <span className="ai-design-tab__palette-swatches ai-design-tab__palette-swatches--default" />
             <span className="ai-design-tab__palette-name">Theme default</span>
           </button>
-          { themePalettes.map( ( palette ) => (
+          {
+            /* 'theme-classic' ("Site colors") is the theme's own unmodified
+               colors — the same thing "Theme default" above already selects
+               (paletteId=null). Skip it here to avoid showing two entries
+               that produce an identical look; 'Site bold'/'Site soft' are
+               genuine variations and stay. Still returned by
+               buildThemePalettes() (App.tsx) so any page saved with this id
+               before this change still resolves correctly. */
+            themePalettes
+              .filter( ( palette ) => palette.id !== 'theme-classic' )
+              .map( ( palette ) => (
             <button
               key={ palette.id }
               type="button"

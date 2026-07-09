@@ -374,8 +374,12 @@ body.nfd-ai-workspace-active {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px;
-  border: 1.5px solid var(--color-outline-variant);
+  /* padding/border-width need !important: WP admin's own button reset zeroes
+     both on native <button> elements with equal-or-higher specificity, which
+     otherwise lets this row's inner content sit flush against the edges and
+     visually mask the button's own rounded corners. */
+  padding: 10px !important;
+  border: 1.5px solid var(--color-outline-variant) !important;
   border-radius: var(--radius-md);
   background: var(--color-surface-bright);
   cursor: pointer;
@@ -383,11 +387,11 @@ body.nfd-ai-workspace-active {
 }
 
 .ai-design-tab__palette:hover {
-  border-color: var(--color-outline);
+  border-color: var(--color-outline) !important;
 }
 
 .ai-design-tab__palette.is-selected {
-  border-color: var(--color-primary);
+  border-color: var(--color-primary) !important;
   box-shadow: 0 0 0 1px var(--color-primary);
 }
 
@@ -428,8 +432,12 @@ body.nfd-ai-workspace-active {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px;
-  border: 1.5px solid var(--color-outline-variant);
+  /* padding/border-width need !important: WP admin's own button reset zeroes
+     both on native <button> elements with equal-or-higher specificity, which
+     otherwise lets the "Aa" preview box sit flush against the row's edges
+     and visually mask its rounded corners on the left side. */
+  padding: 10px !important;
+  border: 1.5px solid var(--color-outline-variant) !important;
   border-radius: var(--radius-md);
   background: var(--color-surface-bright);
   cursor: pointer;
@@ -437,11 +445,11 @@ body.nfd-ai-workspace-active {
 }
 
 .ai-design-tab__font:hover {
-  border-color: var(--color-outline);
+  border-color: var(--color-outline) !important;
 }
 
 .ai-design-tab__font.is-selected {
-  border-color: var(--color-primary);
+  border-color: var(--color-primary) !important;
   box-shadow: 0 0 0 1px var(--color-primary);
 }
 
