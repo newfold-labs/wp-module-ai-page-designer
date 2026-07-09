@@ -91,6 +91,18 @@ class PagePlanController {
 	private const MIN_VISIBLE_TEXT_LENGTH = 80;
 
 	/**
+	 * Maximum sections a focused, single-purpose page (About, Contact, FAQ,
+	 * a single topic) is allowed to keep — see cap_focused_sections(). A
+	 * deterministic guardrail: prompt guidance alone ("match section count
+	 * to scope") doesn't reliably hold, and testing showed pushing it harder
+	 * in the prompt measurably increased empty-content failures, so this is
+	 * enforced in code instead of relying on the model to self-regulate.
+	 *
+	 * @var int
+	 */
+	private const MAX_FOCUSED_SECTIONS = 4;
+
+	/**
 	 * Constructor.
 	 */
 	public function __construct() {
@@ -178,7 +190,6 @@ class PagePlanController {
 		$plan         = array();
 		$plan_title   = '';
 		$plan_excerpt = '';
-		$plan_content = '';
 		$last_error   = null;
 		for ( $attempt = 0; $attempt < 2; $attempt++ ) {
 			$result = $this->ai_client->analyze( $ai_messages );
@@ -195,8 +206,7 @@ class PagePlanController {
 				$candidate_content = ( new PageAssembler() )->assemble( $candidate_plan );
 				$visible_length    = strlen( trim( wp_strip_all_tags( $candidate_content ) ) );
 
-				$plan         = $candidate_plan;
-				$plan_content = $candidate_content;
+				$plan = $candidate_plan;
 				// Never let a retry that omitted title/excerpt clobber values a
 				// previous attempt already provided.
 				if ( '' !== $parsed['title'] ) {
@@ -206,10 +216,12 @@ class PagePlanController {
 					$plan_excerpt = $parsed['excerpt'];
 				}
 				// Accept a substantial, non-blank plan right away; if it came
-				// back thin (fewer than 4 sections) or textually empty (right
-				// shape, no actual copy in the fields) try once more for a
-				// fuller page, then take whatever the second attempt gives.
-				$is_substantial = count( $plan ) >= 4 && $visible_length >= self::MIN_VISIBLE_TEXT_LENGTH;
+				// back degenerate (fewer than 2 sections — a focused page can
+				// legitimately be 2-4, only a lone/empty section is a real
+				// failure) or textually empty (right shape, no actual copy in
+				// the fields) try once more, then take whatever the second
+				// attempt gives.
+				$is_substantial = count( $plan ) >= 2 && $visible_length >= self::MIN_VISIBLE_TEXT_LENGTH;
 				if ( $is_substantial || 1 === $attempt ) {
 					break;
 				}
@@ -223,7 +235,11 @@ class PagePlanController {
 			return new \WP_Error( 'generation_failed', __( 'The AI response could not be turned into a page. Please try again.', 'wp-module-ai-page-designer' ), array( 'status' => 502 ) );
 		}
 
-		$content = $plan_content;
+		if ( ! $this->is_homepage_scope( $prompt, $existing_title, $existing_excerpt ) ) {
+			$plan = $this->cap_focused_sections( $plan );
+		}
+
+		$content = ( new PageAssembler() )->assemble( $plan );
 		if ( '' === trim( $content ) ) {
 			return new \WP_Error( 'generation_failed', __( 'The AI response could not be turned into a page. Please try again.', 'wp-module-ai-page-designer' ), array( 'status' => 502 ) );
 		}
@@ -319,6 +335,63 @@ class PagePlanController {
 	}
 
 	/**
+	 * Guess whether a page-plan request is for a broad homepage/landing page
+	 * (allowed the full section range) versus a focused, single-purpose page
+	 * (About, Contact, FAQ, a single topic — capped by cap_focused_sections()
+	 * below). Same simple keyword-match style as PatternLayoutProvider's
+	 * existing intent scoring — good enough since this only gates a section
+	 * count cap, not full generation. Defaults to "focused" (the safer,
+	 * less-bloated default) when no homepage signal is present.
+	 *
+	 * @param string $prompt           The user's page-plan prompt.
+	 * @param string $existing_title   Title of an existing page being redesigned, if any.
+	 * @param string $existing_excerpt Excerpt of an existing page being redesigned, if any.
+	 * @return bool True if this looks like a broad homepage/landing-page request.
+	 */
+	private function is_homepage_scope( string $prompt, string $existing_title, string $existing_excerpt ): bool {
+		$haystack = strtolower( $prompt . ' ' . $existing_title . ' ' . $existing_excerpt );
+
+		if ( 'home' === trim( strtolower( $existing_title ) ) ) {
+			return true;
+		}
+
+		$homepage_keywords = array( 'homepage', 'home page', 'landing page', 'main page', 'front page' );
+		foreach ( $homepage_keywords as $keyword ) {
+			if ( false !== strpos( $haystack, $keyword ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Deterministically cap a focused page's sections to MAX_FOCUSED_SECTIONS
+	 * — a guardrail because the "match section count to scope" prompt
+	 * guidance alone doesn't reliably hold (see build_system_prompt()), and
+	 * pushing it harder in the prompt measurably hurt content reliability
+	 * during testing. Keeps the opening section, up to MAX_FOCUSED_SECTIONS-1
+	 * of the sections that follow, and the closing "ctaBanner" if the plan
+	 * already ends with one — rather than cutting it off arbitrarily.
+	 *
+	 * @param array<int, array<string, mixed>> $plan Parsed section items.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function cap_focused_sections( array $plan ): array {
+		if ( count( $plan ) <= self::MAX_FOCUSED_SECTIONS ) {
+			return $plan;
+		}
+
+		$last            = end( $plan );
+		$ends_with_cta   = is_array( $last ) && isset( $last['archetype'] ) && 'ctaBanner' === $last['archetype'];
+		if ( $ends_with_cta ) {
+			$kept   = array_slice( $plan, 0, self::MAX_FOCUSED_SECTIONS - 1 );
+			$kept[] = $last;
+			return $kept;
+		}
+		return array_slice( $plan, 0, self::MAX_FOCUSED_SECTIONS );
+	}
+
+	/**
 	 * Build the page-plan system prompt from the registered archetype schemas.
 	 *
 	 * @param string $existing_title   Title of the existing page being redesigned, if any.
@@ -367,12 +440,13 @@ class PagePlanController {
 			. 'The "excerpt" is a single-sentence summary of the page (max ~30 words). '
 			. "The \"sections\" array lists the page sections top-to-bottom, using ONLY these archetypes and their exact content fields:\n"
 			. $archetype_lines
-			. "\nBuild a COMPLETE, substantial page: include AT LEAST 4 sections (ideally 5-6). Always open with \"heroCover\" "
-			. 'and end with a "ctaBanner", and fill the middle with a varied mix (for example featureGrid, alternatingMediaText, '
-			. 'testimonials, statsBar, pricingTiers, processSteps, galleryGrid, teamGrid, or faqAccordion) that fits the topic — '
-			. 'prefer galleryGrid for visual businesses (food, interiors, portfolios), teamGrid for about/people pages, and '
-			. 'processSteps when the service has a clear how-it-works flow. Even if the request only mentions one or '
-			. 'two sections, still produce a full homepage with at least 4 sections. '
+			. "\nAlways open with \"heroCover\". Match the section count to the page's scope. A focused, "
+			. 'single-purpose page (About/story, Contact, FAQ, a single topic) needs about 2-4 sections total: '
+			. 'heroCover, one or two sections covering that purpose, and done. A homepage or broad landing-page '
+			. 'request benefits from 4-6 varied sections (for example featureGrid, alternatingMediaText, testimonials, '
+			. 'statsBar, pricingTiers, processSteps, galleryGrid, teamGrid, or faqAccordion), ending with a "ctaBanner". '
+			. 'Prefer galleryGrid for visual businesses (food, interiors, portfolios), teamGrid for about/people pages, and '
+			. 'processSteps when the service has a clear how-it-works flow. '
 			. $site_context
 			. $redesign_context
 			. 'Write real, specific copy for the described business/topic — never placeholder text like "Lorem ipsum" or "Heading here".';
