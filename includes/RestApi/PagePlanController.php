@@ -182,12 +182,21 @@ class PagePlanController {
 			),
 		);
 
-		// Retry once when the model returns unparseable JSON, too few sections,
-		// or (right shape, but textually empty) sections — plan parsing and
-		// blank-content responses are the main reasons the page-plan flow falls
-		// through to the freeform generate path (which produces weaker, generic
-		// metadata), and a single retry recovers most of those due to
-		// run-to-run model variance.
+		// Computed once, up front, and reused both for the retry's minimum
+		// section threshold below and for cap_focused_sections() after the
+		// loop — the same "match section count to scope" prompt guidance in
+		// build_system_prompt() doesn't reliably hold in EITHER direction: a
+		// focused page comes back bloated as often as a homepage comes back
+		// too thin, so both ends need a deterministic guardrail, not just one.
+		$is_homepage  = $this->is_homepage_scope( $prompt, $existing_title, $existing_excerpt );
+		$min_sections = $is_homepage ? 4 : 2;
+
+		// Retry once when the model returns unparseable JSON, too few sections
+		// for the request's scope, or (right shape, but textually empty)
+		// sections — plan parsing and blank-content responses are the main
+		// reasons the page-plan flow falls through to the freeform generate
+		// path (which produces weaker, generic metadata), and a single retry
+		// recovers most of those due to run-to-run model variance.
 		$plan         = array();
 		$plan_title   = '';
 		$plan_excerpt = '';
@@ -217,14 +226,28 @@ class PagePlanController {
 					$plan_excerpt = $parsed['excerpt'];
 				}
 				// Accept a substantial, non-blank plan right away; if it came
-				// back degenerate (fewer than 2 sections — a focused page can
-				// legitimately be 2-4, only a lone/empty section is a real
-				// failure) or textually empty (right shape, no actual copy in
-				// the fields) try once more, then take whatever the second
+				// back below the scope's minimum section count (see
+				// $min_sections above — a homepage needs more than a focused
+				// page does) or textually empty (right shape, no actual copy
+				// in the fields) try once more, then take whatever the second
 				// attempt gives.
-				$is_substantial = count( $plan ) >= 2 && $visible_length >= self::MIN_VISIBLE_TEXT_LENGTH;
+				$is_substantial = count( $plan ) >= $min_sections && $visible_length >= self::MIN_VISIBLE_TEXT_LENGTH;
 				if ( $is_substantial || 1 === $attempt ) {
 					break;
+				}
+				// About to retry because the plan came back thinner than this
+				// scope's floor. Resending the identical messages tends to get
+				// the identical count back — especially when the prompt itself
+				// names only a couple of things ("a hero, features, and a CTA"),
+				// which the model then treats as a closed list. Nudge the retry
+				// only, so the common (non-thin) first attempt is unaffected.
+				if ( $is_homepage && count( $plan ) < $min_sections ) {
+					$ai_messages[] = array(
+						'role'    => 'user',
+						'content' => 'That was only ' . count( $plan ) . ' section(s). This is a homepage/landing '
+							. 'page — expand to at least ' . $min_sections . ' varied sections covering different '
+							. "aspects of the page, even if my request above only named a few explicitly.",
+					);
 				}
 			}
 		}
@@ -236,7 +259,7 @@ class PagePlanController {
 			return new \WP_Error( 'generation_failed', __( 'The AI response could not be turned into a page. Please try again.', 'wp-module-ai-page-designer' ), array( 'status' => 502 ) );
 		}
 
-		if ( ! $this->is_homepage_scope( $prompt, $existing_title, $existing_excerpt ) ) {
+		if ( ! $is_homepage ) {
 			$plan = $this->cap_focused_sections( $plan );
 		}
 
