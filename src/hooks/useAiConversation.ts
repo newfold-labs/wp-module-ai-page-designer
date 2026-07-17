@@ -1419,7 +1419,14 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           if ( planExcerpt ) {
             setMetaExcerpt( planExcerpt );
           }
-          setMessages( [ ...newMessages, { role: 'assistant', content: 'Here is a first draft.' } ] );
+          // Match the reply to what actually happened — a regenerate answered
+          // with "Here is a first draft." reads like the request was ignored.
+          const planReply = isInSessionRegenerate
+            ? 'Here is a new version of the page.'
+            : isExistingPageRedesign
+              ? 'Here is the redesigned page.'
+              : 'Here is a first draft.';
+          setMessages( [ ...newMessages, { role: 'assistant', content: planReply } ] );
           return;
         }
       }
