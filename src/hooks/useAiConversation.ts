@@ -662,7 +662,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     // Redesign requests generate a full new page — never treat them as targeted
     // follow-up edits. Hoisted above the page-plan branch below (which also
     // needs it) rather than computed twice.
-    const REDESIGN_KEYWORDS = [ 'redesign', 'regenerate', 'generate again', 'redo', 'remake', 'rebuild', 'start over', 'start fresh', 'from scratch', 'create new', 'make a new', 'build a new', 'try again', 'new version', 'new design' ];
+    const REDESIGN_KEYWORDS = [ 'redesign', 'regenerate', 'generate again', 'redo', 'remake', 'rebuild', 'start over', 'start fresh', 'from scratch', 'create new', 'make a new', 'build a new', 'try again', 'new version', 'new design', 'another version', 'different version', 'another design', 'different design', 'another look', 'different look' ];
     const isRedesignRequest = REDESIGN_KEYWORDS.some( ( kw ) => text.toLowerCase().includes( kw ) );
 
     const applyMetadataOnlyResponse = ( responseData: any ) => {
@@ -1213,8 +1213,17 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       // (generatePagePlanPage never throws).
       const isBrandNewPage = ! previewHtml && ! selectedItem;
       const isExistingPageRedesign = !! selectedItem && selectedItem.type === 'page' && isRedesignRequest;
-      if ( isPagePlanEnabled() && ( isBrandNewPage || isExistingPageRedesign ) ) {
-        const planResult = isExistingPageRedesign
+      // "Create another version" of a page generated THIS session (previewHtml
+      // exists but nothing is saved/selected yet). Without this, the request
+      // fell through to the edit pipeline, which reliably returned near-empty
+      // markup for a whole-page regenerate instruction — tripping the
+      // blank-page guard's "kept the current version" refusal every time. The
+      // current title/excerpt ride along as redesign context, same as the
+      // saved-page path, so a bare "create another version" (no topic in the
+      // message itself) still tells the planner what the page is about.
+      const isInSessionRegenerate = !! previewHtml && ! selectedItem && isRedesignRequest;
+      if ( isPagePlanEnabled() && ( isBrandNewPage || isExistingPageRedesign || isInSessionRegenerate ) ) {
+        const planResult = isExistingPageRedesign || isInSessionRegenerate
           ? await generatePagePlanPage( apiUrl, text, metaTitle, metaExcerpt )
           : await generatePagePlanPage( apiUrl, text );
         if ( planResult?.content ) {
