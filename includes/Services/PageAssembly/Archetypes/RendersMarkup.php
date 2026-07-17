@@ -158,19 +158,24 @@ trait RendersMarkup {
 	 * @return string
 	 */
 	private function render_heading( string $text, int $level, ?string $text_slug, bool $center = false ): string {
-		$classes = array( 'wp-block-heading' );
-		$attrs   = array( 'level' => $level );
-		$style   = '';
+		$classes      = array( 'wp-block-heading' );
+		$attrs        = array( 'level' => $level );
+		$declarations = array();
 		if ( $center ) {
 			$classes[]          = 'has-text-align-center';
 			$attrs['textAlign'] = 'center';
+			// Inline fallback: the has-text-align-center RULE ships with the
+			// heading block's own CSS, which block themes load per page — the
+			// preview's copied front-page styles may not include it.
+			$declarations[] = 'text-align:center';
 		}
 		if ( null !== $text_slug ) {
 			$classes[]          = 'has-' . $text_slug . '-color';
 			$classes[]          = 'has-text-color';
 			$attrs['textColor'] = $text_slug;
-			$style              = ' style="color:var(--wp--preset--color--' . $text_slug . ')"';
+			$declarations[]     = 'color:var(--wp--preset--color--' . $text_slug . ')';
 		}
+		$style = empty( $declarations ) ? '' : ' style="' . implode( ';', $declarations ) . '"';
 		$tag = 'h' . $level;
 		return $this->comment_wrap(
 			'heading',
@@ -188,19 +193,22 @@ trait RendersMarkup {
 	 * @return string
 	 */
 	private function render_paragraph( string $text, ?string $text_slug, bool $center = false ): string {
-		$classes = array();
-		$attrs   = array();
-		$style   = '';
+		$classes      = array();
+		$attrs        = array();
+		$declarations = array();
 		if ( $center ) {
 			$classes[]      = 'has-text-align-center';
 			$attrs['align'] = 'center';
+			// Same inline fallback rationale as render_heading().
+			$declarations[] = 'text-align:center';
 		}
 		if ( null !== $text_slug ) {
 			$classes[]          = 'has-' . $text_slug . '-color';
 			$classes[]          = 'has-text-color';
 			$attrs['textColor'] = $text_slug;
-			$style              = ' style="color:var(--wp--preset--color--' . $text_slug . ')"';
+			$declarations[]     = 'color:var(--wp--preset--color--' . $text_slug . ')';
 		}
+		$style = empty( $declarations ) ? '' : ' style="' . implode( ';', $declarations ) . '"';
 		$class_attr = empty( $classes ) ? '' : ' class="' . implode( ' ', $classes ) . '"';
 		return $this->comment_wrap(
 			'paragraph',
@@ -256,21 +264,22 @@ trait RendersMarkup {
 	 * @return string
 	 */
 	private function render_buttons_wrap( string $buttons_html, bool $center = true ): string {
-		$attrs = $center
-			? array(
-				'layout' => array(
-					'type'           => 'flex',
-					'justifyContent' => 'center',
-				),
-			)
-			: array();
-		// The layout attr alone only centers when WordPress generates layout CSS
-		// for it — which the raw-markup preview never does and the front-end does
-		// inconsistently for static markup. Emit the flex centering as classes +
-		// inline styles too, so a "centered" button row is centered everywhere
-		// by construction (text centered but buttons left-hugging reads broken).
-		$classes = 'wp-block-buttons' . ( $center ? ' is-content-justification-center is-layout-flex wp-block-buttons-is-layout-flex' : '' );
-		$style   = $center ? ' style="display:flex;flex-wrap:wrap;gap:0.5em;align-items:center;justify-content:center"' : '';
+		$attrs = array(
+			'layout' => array( 'type' => 'flex' ),
+		);
+		if ( $center ) {
+			$attrs['layout']['justifyContent'] = 'center';
+		}
+		// The layout attr alone only lays the row out when WordPress generates
+		// layout CSS for it — which the raw-markup preview never does (block
+		// themes load core block CSS per page, so the preview's copied front-page
+		// styles may not include the buttons rules at all) and the front-end does
+		// inconsistently for static markup. Emit the flex layout as classes +
+		// inline styles too — for EVERY row, not just centered ones: a
+		// non-centered row without them renders as unpositioned blocks that
+		// overlap under the entrance transform.
+		$classes = 'wp-block-buttons is-layout-flex wp-block-buttons-is-layout-flex' . ( $center ? ' is-content-justification-center' : '' );
+		$style   = ' style="display:flex;flex-wrap:wrap;gap:0.5em;align-items:center;justify-content:' . ( $center ? 'center' : 'flex-start' ) . '"';
 		return $this->comment_wrap( 'buttons', $attrs, '<div class="' . $classes . '"' . $style . '>' . $buttons_html . '</div>' );
 	}
 
@@ -299,7 +308,10 @@ trait RendersMarkup {
 			),
 		);
 		$classes = array( 'wp-block-columns' );
-		$style   = 'gap:' . $ctx->spacing_css( $gap_size );
+		// display:flex inline for the same reason as the gap below — the
+		// columns block's own flex rule ships in per-page block CSS that the
+		// preview's copied front-page styles may not include (block themes).
+		$style   = 'display:flex;gap:' . $ctx->spacing_css( $gap_size );
 		if ( $vertically_center ) {
 			$attrs['verticalAlignment'] = 'center';
 			$classes[]                  = 'are-vertically-aligned-center';

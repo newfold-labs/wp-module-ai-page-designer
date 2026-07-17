@@ -160,6 +160,17 @@ export const usePreviewIframe = (
           #nfd-preview-root .wp-block-buttons-is-layout-flex {
             display: flex; flex-wrap: wrap; gap: 0.5em; align-items: center;
           }
+          /* Block themes load core block CSS per page, so the front-page styles
+             copied into this iframe may lack the buttons/text-align rules
+             entirely. New markup carries inline fallbacks; these low-specificity
+             rules cover pages generated before that (class rules in the copied
+             styles still win where present). */
+          #nfd-preview-root .wp-block-buttons {
+            display: flex; flex-wrap: wrap; gap: 0.5em; align-items: center;
+          }
+          #nfd-preview-root .has-text-align-center { text-align: center; }
+          #nfd-preview-root .has-text-align-left { text-align: left; }
+          #nfd-preview-root .has-text-align-right { text-align: right; }
 
           /* Override ALL transitions and animations during streaming.
              The AIPageDesigner.php enqueues animation rules via

@@ -180,7 +180,7 @@ class Testimonials implements Archetype {
 		return $this->comment_wrap(
 			'quote',
 			array( 'textAlign' => 'center' ),
-			'<blockquote class="wp-block-quote has-text-align-center">' . $html . '</blockquote>'
+			'<blockquote class="wp-block-quote has-text-align-center" style="text-align:center">' . $html . '</blockquote>'
 		);
 	}
 
@@ -242,7 +242,7 @@ class Testimonials implements Archetype {
 		return $this->comment_wrap(
 			'quote',
 			array( 'textAlign' => 'center' ),
-			'<blockquote class="wp-block-quote has-text-align-center">' . $html . '</blockquote>'
+			'<blockquote class="wp-block-quote has-text-align-center" style="text-align:center">' . $html . '</blockquote>'
 		);
 	}
 }
