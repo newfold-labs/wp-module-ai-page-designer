@@ -26,7 +26,10 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * Single variant, `grid-3`.
+ * Auto-pickable variants:
+ *  - `grid-3` (default): rows of 3 images.
+ *  - `grid-2`: rows of 2 — larger, more editorial images from the same
+ *    markup shape.
  */
 class GalleryGrid implements Archetype {
 
@@ -37,7 +40,7 @@ class GalleryGrid implements Archetype {
 	 *
 	 * @var string[]
 	 */
-	const VARIANTS = array( 'grid-3' );
+	const VARIANTS = array( 'grid-3', 'grid-2' );
 
 	/**
 	 * {@inheritDoc}
@@ -94,8 +97,11 @@ class GalleryGrid implements Archetype {
 			}
 		}
 
+		$variant = $this->resolve_variant( $variant, $heading );
+		$per_row = 'grid-2' === $variant ? 2 : 3;
+
 		$rows = '';
-		foreach ( array_chunk( $urls, 3 ) as $row_urls ) {
+		foreach ( array_chunk( $urls, $per_row ) as $row_urls ) {
 			$columns = '';
 			foreach ( $row_urls as $url ) {
 				$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $this->render_image_block( $url, true ) . '</div>' );

@@ -32,11 +32,17 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * Two variants:
+ * Auto-pickable variants:
  *  - `cards` (default): every tier in a {@see RendersMarkup::render_floating_card()}
  *    card — the highlighted tier keeps the loud {@see RendersMarkup::contrasting_slug()}
  *    accent card so it still stands out, plain tiers get the quiet
  *    {@see RendersMarkup::card_slug_for_section()} swatch.
+ *  - `accent-bar`: plain tiers rendered flat with a centered accent
+ *    {@see RendersMarkup::render_accent_bar()} above the plan name; the
+ *    highlighted tier keeps the same loud accent card as `cards` so it still
+ *    dominates the row.
+ *
+ * Legacy (explicit-only):
  *  - `3-tier`: the original flat columns (highlighted tier only gets a card),
  *    reachable only via an explicit `variant: "3-tier"` plan item.
  */
@@ -49,7 +55,7 @@ class PricingTiers implements Archetype {
 	 *
 	 * @var string[]
 	 */
-	const VARIANTS = array( 'cards' );
+	const VARIANTS = array( 'cards', 'accent-bar' );
 
 	/**
 	 * Explicit-only legacy variants, never auto-picked.
@@ -104,9 +110,8 @@ class PricingTiers implements Archetype {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
 		$tiers   = isset( $content['tiers'] ) && is_array( $content['tiers'] ) ? $content['tiers'] : array();
 
-		$variant  = $this->resolve_variant( $variant, $heading );
-		$as_cards = '3-tier' !== $variant;
-		$columns  = empty( $tiers ) ? '' : $this->render_columns( $tiers, $ctx, $background_slug, $as_cards );
+		$variant = $this->resolve_variant( $variant, $heading );
+		$columns = empty( $tiers ) ? '' : $this->render_columns( $tiers, $ctx, $background_slug, $variant );
 
 		return $this->render_section( $heading, null, $columns, $ctx, $background_slug );
 	}
@@ -117,15 +122,23 @@ class PricingTiers implements Archetype {
 	 * @param array<int, array<string, mixed>> $tiers           Tier definitions.
 	 * @param Context                          $ctx             Theme/conformance context.
 	 * @param string|null                      $background_slug The section's own background slug.
-	 * @param bool                             $as_cards        Whether every tier gets a floating card (the `cards` variant).
+	 * @param string                           $variant         Resolved variant name.
 	 * @return string
 	 */
-	private function render_columns( array $tiers, Context $ctx, ?string $background_slug, bool $as_cards ): string {
+	private function render_columns( array $tiers, Context $ctx, ?string $background_slug, string $variant ): string {
 		$columns = '';
 		foreach ( $tiers as $tier ) {
 			$is_highlighted = ! empty( $tier['highlighted'] );
 
-			if ( $as_cards ) {
+			if ( '3-tier' === $variant ) {
+				$tier_inner = $this->render_tier( $tier, $ctx, $is_highlighted ? $this->contrasting_slug( $ctx, $background_slug ) : null );
+			} elseif ( 'accent-bar' === $variant && ! $is_highlighted ) {
+				// Plain tiers go flat with a centered accent bar; the
+				// highlighted tier falls through to the loud card below so it
+				// still dominates the row.
+				$tier_inner  = $this->render_accent_bar( $ctx, $this->contrasting_slug( $ctx, $background_slug ), true );
+				$tier_inner .= $this->render_tier_content( $tier, $ctx, null );
+			} else {
 				// The highlighted tier keeps the LOUD accent card so it stands
 				// out from its (quiet, muted-light) siblings.
 				$card_slug  = $is_highlighted
@@ -133,8 +146,6 @@ class PricingTiers implements Archetype {
 					: $this->card_slug_for_section( $ctx, $background_slug );
 				$text_slug  = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
 				$tier_inner = $this->render_floating_card( $this->render_tier_content( $tier, $ctx, $card_slug ), $ctx, $card_slug, $text_slug );
-			} else {
-				$tier_inner = $this->render_tier( $tier, $ctx, $is_highlighted ? $this->contrasting_slug( $ctx, $background_slug ) : null );
 			}
 
 			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $tier_inner . '</div>' );

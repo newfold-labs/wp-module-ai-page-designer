@@ -26,7 +26,11 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * Single variant, `cards`.
+ * Auto-pickable variants:
+ *  - `cards` (default): each member in a light
+ *    {@see RendersMarkup::render_floating_card()} card.
+ *  - `minimal`: the same centered avatar/name/role/bio stacks without the
+ *    card wrapper — a quieter, airier people row.
  */
 class TeamGrid implements Archetype {
 
@@ -49,7 +53,7 @@ class TeamGrid implements Archetype {
 	 *
 	 * @var string[]
 	 */
-	const VARIANTS = array( 'cards' );
+	const VARIANTS = array( 'cards', 'minimal' );
 
 	/**
 	 * {@inheritDoc}
@@ -86,21 +90,23 @@ class TeamGrid implements Archetype {
 		$intro   = isset( $content['intro'] ) ? (string) $content['intro'] : '';
 		$members = isset( $content['members'] ) && is_array( $content['members'] ) ? array_slice( $content['members'], 0, 4 ) : array();
 
-		$columns = empty( $members ) ? '' : $this->render_columns( $members, $ctx, $background_slug );
+		$variant = $this->resolve_variant( $variant, $heading );
+		$columns = empty( $members ) ? '' : $this->render_columns( $members, $ctx, $background_slug, 'minimal' !== $variant );
 
 		return $this->render_section( $heading, $intro, $columns, $ctx, $background_slug );
 	}
 
 	/**
-	 * Render one card column per member.
+	 * Render one column per member — carded or (the `minimal` variant) flat.
 	 *
 	 * @param array<int, array<string, mixed>> $members         Member definitions.
 	 * @param Context                          $ctx             Theme/conformance context.
 	 * @param string|null                      $background_slug The section's own background slug.
+	 * @param bool                             $as_cards        Whether to wrap each member in a floating card.
 	 * @return string
 	 */
-	private function render_columns( array $members, Context $ctx, ?string $background_slug ): string {
-		$card_slug = $this->card_slug_for_section( $ctx, $background_slug );
+	private function render_columns( array $members, Context $ctx, ?string $background_slug, bool $as_cards = true ): string {
+		$card_slug = $as_cards ? $this->card_slug_for_section( $ctx, $background_slug ) : null;
 		$card_text = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
 
 		$columns = '';
@@ -122,8 +128,10 @@ class TeamGrid implements Archetype {
 				$card_inner .= $this->render_paragraph( $bio, $card_text, true );
 			}
 
-			$card     = $this->render_floating_card( $card_inner, $ctx, $card_slug, $card_text );
-			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $card . '</div>' );
+			if ( $as_cards ) {
+				$card_inner = $this->render_floating_card( $card_inner, $ctx, $card_slug, $card_text );
+			}
+			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $card_inner . '</div>' );
 		}
 
 		return $this->render_columns_wrap( $columns, $ctx, false, 'md', true );

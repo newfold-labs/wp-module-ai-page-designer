@@ -95,7 +95,7 @@ class PricingTiersTest extends PageAssemblyTestCase {
 
 	public function test_cards_is_the_default_variant_and_every_tier_gets_a_card(): void {
 		$pricing = new PricingTiers();
-		$out     = $pricing->render( $this->content(), null, $this->context(), null );
+		$out     = $pricing->render( $this->content(), 'cards', $this->context(), null );
 
 		$this->assertSame( 2, substr_count( $out, 'border-radius:16px' ) );
 	}
@@ -103,7 +103,7 @@ class PricingTiersTest extends PageAssemblyTestCase {
 	public function test_cards_variant_highlighted_tier_keeps_the_loud_accent_card(): void {
 		$pricing = new PricingTiers();
 		$ctx     = $this->context();
-		$out     = $pricing->render( $this->content(), null, $ctx, null );
+		$out     = $pricing->render( $this->content(), 'cards', $ctx, null );
 
 		$this->assertStringContainsString( '"backgroundColor":"' . $ctx->accent_slug() . '"', $out );
 	}
@@ -113,8 +113,8 @@ class PricingTiersTest extends PageAssemblyTestCase {
 		$ctx     = $this->context();
 		$v       = new Validator();
 
-		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), null, $ctx, null ), $ctx ) );
-		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), null, $ctx, $ctx->muted_light_slug() ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), 'cards', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), 'cards', $ctx, $ctx->muted_light_slug() ), $ctx ) );
 	}
 
 	public function test_3_tier_variant_stays_flat_for_plain_tiers(): void {
@@ -122,5 +122,39 @@ class PricingTiersTest extends PageAssemblyTestCase {
 		$out     = $pricing->render( $this->content(), '3-tier', $this->context(), null );
 
 		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+	}
+
+	public function test_accent_bar_variant_bars_plain_tiers_and_cards_the_highlighted_one(): void {
+		$pricing = new PricingTiers();
+		$ctx     = $this->context();
+		$out     = $pricing->render( $this->content(), 'accent-bar', $ctx, null );
+
+		// One plain tier gets the bar; the highlighted tier keeps the loud card.
+		$this->assertSame( 1, substr_count( $out, '<!-- wp:separator ' ) );
+		$this->assertSame( 1, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertStringContainsString( '"backgroundColor":"' . $ctx->accent_slug() . '"', $out );
+	}
+
+	public function test_accent_bar_variant_is_correct_by_construction_with_and_without_background(): void {
+		$pricing = new PricingTiers();
+		$ctx     = $this->context();
+		$v       = new Validator();
+
+		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), 'accent-bar', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), 'accent-bar', $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_unspecified_variant_resolves_into_the_pickable_pool(): void {
+		$pricing = new PricingTiers();
+		$ctx     = $this->context();
+		$out     = $pricing->render( $this->content(), null, $ctx, null );
+
+		$this->assertSame( $out, $pricing->render( $this->content(), null, $ctx, null ) );
+
+		$explicit = array();
+		foreach ( PricingTiers::VARIANTS as $variant ) {
+			$explicit[] = $pricing->render( $this->content(), $variant, $ctx, null );
+		}
+		$this->assertContains( $out, $explicit );
 	}
 }

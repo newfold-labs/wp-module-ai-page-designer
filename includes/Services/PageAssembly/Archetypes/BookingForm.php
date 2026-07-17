@@ -35,13 +35,19 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * Two variants:
+ * Auto-pickable variants:
  *  - `card` (default): the form centered inside a
  *    {@see RendersMarkup::render_floating_card()} card (max-width 640, quiet
  *    {@see RendersMarkup::card_slug_for_section()} swatch) — field borders,
  *    text, and the submit button all derive from the CARD's background, so
  *    legibility holds by construction one level down, same chaining as
  *    {@see PricingTiers}'s highlighted tier.
+ *  - `split`: heading + intro in the left column, the form card in the
+ *    right — the classic contact-page layout. Same card/legibility chaining
+ *    as `card`; the column constrains the card's width instead of a
+ *    max-width.
+ *
+ * Legacy (explicit-only):
  *  - `stacked`: the original full-width flat form, reachable only via an
  *    explicit `variant: "stacked"` plan item.
  */
@@ -62,7 +68,7 @@ class BookingForm implements Archetype {
 	 *
 	 * @var string[]
 	 */
-	const VARIANTS = array( 'card' );
+	const VARIANTS = array( 'card', 'split' );
 
 	/**
 	 * Explicit-only legacy variants, never auto-picked.
@@ -121,7 +127,8 @@ class BookingForm implements Archetype {
 			? (string) $content['submitLabel']
 			: 'Submit';
 
-		$variant   = $this->resolve_variant( $variant, $heading );
+		$variant = $this->resolve_variant( $variant, $heading );
+
 		$as_card   = 'stacked' !== $variant;
 		$card_slug = $as_card ? $this->card_slug_for_section( $ctx, $background_slug ) : null;
 		$card_text = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
@@ -129,6 +136,46 @@ class BookingForm implements Archetype {
 		// sits on: the card when present, the section otherwise.
 		$form_surface = $as_card && null !== $card_slug ? $card_slug : $background_slug;
 
+		$inner = $this->render_form_block( $fields, $submit_label, $ctx, $form_surface );
+
+		if ( 'split' === $variant ) {
+			$text_slug = $this->text_slug_for_background( $ctx, $background_slug );
+
+			$left_inner = '';
+			if ( '' !== $heading ) {
+				$left_inner .= $this->render_heading( $heading, 2, $text_slug );
+			}
+			if ( '' !== $intro ) {
+				$left_inner .= $this->render_paragraph( $intro, $text_slug );
+			}
+
+			$right_inner = $this->render_floating_card( $inner, $ctx, $card_slug, $card_text );
+
+			$columns  = $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $left_inner . '</div>' );
+			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $right_inner . '</div>' );
+
+			return $this->render_section( null, null, $this->render_columns_wrap( $columns, $ctx ), $ctx, $background_slug );
+		}
+
+		if ( $as_card ) {
+			$inner = $this->render_floating_card( $inner, $ctx, $card_slug, $card_text, 640 );
+		}
+
+		return $this->render_section( $heading, $intro, $inner, $ctx, $background_slug );
+	}
+
+	/**
+	 * Render the `core/html` form block: every field and the submit button
+	 * carry explicit theme-derived inline styles computed against the surface
+	 * the form actually sits on.
+	 *
+	 * @param array<int, mixed> $fields       Field definitions.
+	 * @param string            $submit_label Submit button label.
+	 * @param Context           $ctx          Theme/conformance context.
+	 * @param string|null       $form_surface Slug of the surface behind the form (card or section).
+	 * @return string
+	 */
+	private function render_form_block( array $fields, string $submit_label, Context $ctx, ?string $form_surface ): string {
 		$field_html = '';
 		foreach ( $fields as $field ) {
 			if ( is_array( $field ) ) {
@@ -146,12 +193,7 @@ class BookingForm implements Archetype {
 			. '<button type="submit" style="' . $button_style . '">' . $this->esc_html( $submit_label ) . '</button>'
 			. '</form>';
 
-		$inner = $this->comment_wrap( 'html', array(), $form );
-		if ( $as_card ) {
-			$inner = $this->render_floating_card( $inner, $ctx, $card_slug, $card_text, 640 );
-		}
-
-		return $this->render_section( $heading, $intro, $inner, $ctx, $background_slug );
+		return $this->comment_wrap( 'html', array(), $form );
 	}
 
 	/**

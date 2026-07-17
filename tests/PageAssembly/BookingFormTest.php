@@ -113,7 +113,7 @@ class BookingFormTest extends PageAssemblyTestCase {
 
 	public function test_card_is_the_default_variant(): void {
 		$form = new BookingForm();
-		$out  = $form->render( $this->content(), null, $this->context(), null );
+		$out  = $form->render( $this->content(), 'card', $this->context(), null );
 
 		$this->assertStringContainsString( 'border-radius:16px', $out );
 		$this->assertStringContainsString( 'max-width:640px', $out );
@@ -132,13 +132,47 @@ class BookingFormTest extends PageAssemblyTestCase {
 		$ctx  = $this->context();
 		$v    = new Validator();
 
-		$this->assertSame( array(), $v->validate( $form->render( $this->content(), null, $ctx, null ), $ctx ) );
-		$this->assertSame( array(), $v->validate( $form->render( $this->content(), null, $ctx, $ctx->muted_light_slug() ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $form->render( $this->content(), 'card', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $form->render( $this->content(), 'card', $ctx, $ctx->muted_light_slug() ), $ctx ) );
 	}
 
 	public function test_card_variant_submit_button_is_never_unstyled(): void {
 		$form = new BookingForm();
-		$out  = $form->render( $this->content(), null, $this->context(), null );
+		$out  = $form->render( $this->content(), 'card', $this->context(), null );
 		$this->assertMatchesRegularExpression( '/<button type="submit" style="[^"]*background(-color)?\s*:/', $out );
+	}
+
+	public function test_split_variant_renders_heading_column_beside_form_card(): void {
+		$form = new BookingForm();
+		$out  = $form->render( $this->content(), 'split', $this->context(), null );
+
+		$this->assertSame( 2, substr_count( $out, '<!-- wp:column ' ) );
+		$this->assertStringContainsString( 'border-radius:16px', $out );
+		$this->assertStringContainsString( 'Book a table', $out );
+		$this->assertStringContainsString( '<form>', $out );
+		$this->assertStringNotContainsString( '"width"', $out );
+	}
+
+	public function test_split_variant_is_correct_by_construction_with_and_without_background(): void {
+		$form = new BookingForm();
+		$ctx  = $this->context();
+		$v    = new Validator();
+
+		$this->assertSame( array(), $v->validate( $form->render( $this->content(), 'split', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $form->render( $this->content(), 'split', $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_unspecified_variant_resolves_into_the_pickable_pool(): void {
+		$form = new BookingForm();
+		$ctx  = $this->context();
+		$out  = $form->render( $this->content(), null, $ctx, null );
+
+		$this->assertSame( $out, $form->render( $this->content(), null, $ctx, null ) );
+
+		$explicit = array();
+		foreach ( BookingForm::VARIANTS as $variant ) {
+			$explicit[] = $form->render( $this->content(), $variant, $ctx, null );
+		}
+		$this->assertContains( $out, $explicit );
 	}
 }

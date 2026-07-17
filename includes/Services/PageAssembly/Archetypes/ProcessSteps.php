@@ -26,7 +26,10 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * Single variant, `numbered`.
+ * Auto-pickable variants:
+ *  - `numbered` (default): one step per column in a horizontal row.
+ *  - `vertical`: the same numbered steps stacked top-to-bottom as centered,
+ *    width-constrained rows — a walk-down-the-page "journey" treatment.
  */
 class ProcessSteps implements Archetype {
 
@@ -37,7 +40,7 @@ class ProcessSteps implements Archetype {
 	 *
 	 * @var string[]
 	 */
-	const VARIANTS = array( 'numbered' );
+	const VARIANTS = array( 'numbered', 'vertical' );
 
 	/**
 	 * {@inheritDoc}
@@ -86,9 +89,63 @@ class ProcessSteps implements Archetype {
 		$intro   = isset( $content['intro'] ) ? (string) $content['intro'] : '';
 		$steps   = isset( $content['steps'] ) && is_array( $content['steps'] ) ? array_slice( $content['steps'], 0, 4 ) : array();
 
-		$columns = empty( $steps ) ? '' : $this->render_columns( $steps, $ctx, $background_slug );
+		$variant = $this->resolve_variant( $variant, $heading );
 
-		return $this->render_section( $heading, $intro, $columns, $ctx, $background_slug );
+		$inner = '';
+		if ( ! empty( $steps ) ) {
+			$inner = 'vertical' === $variant
+				? $this->render_vertical( $steps, $ctx, $background_slug )
+				: $this->render_columns( $steps, $ctx, $background_slug );
+		}
+
+		return $this->render_section( $heading, $intro, $inner, $ctx, $background_slug );
+	}
+
+	/**
+	 * Render the `vertical` variant: each numbered step as its own centered,
+	 * width-constrained row stacked down the page. Row groups carry symmetric
+	 * four-side padding — never top/bottom-only (`asymmetric_padding:group`).
+	 *
+	 * @param array<int, array<string, string>> $steps           Step definitions.
+	 * @param Context                           $ctx             Theme/conformance context.
+	 * @param string|null                       $background_slug The section's own background slug.
+	 * @return string
+	 */
+	private function render_vertical( array $steps, Context $ctx, ?string $background_slug ): string {
+		$badge_bg   = $this->contrasting_slug( $ctx, $background_slug );
+		$badge_text = $this->text_slug_for_background( $ctx, $badge_bg );
+
+		$row_attrs = array(
+			'style' => array(
+				'spacing' => array(
+					'padding' => array(
+						'top'    => $ctx->spacing_attr( 'sm' ),
+						'bottom' => $ctx->spacing_attr( 'sm' ),
+						'left'   => $ctx->spacing_attr( 'sm' ),
+						'right'  => $ctx->spacing_attr( 'sm' ),
+					),
+				),
+			),
+		);
+		$row_style = 'max-width:720px;margin-left:auto;margin-right:auto'
+			. ';padding-top:' . $ctx->spacing_css( 'sm' ) . ';padding-bottom:' . $ctx->spacing_css( 'sm' )
+			. ';padding-left:' . $ctx->spacing_css( 'sm' ) . ';padding-right:' . $ctx->spacing_css( 'sm' );
+
+		$rows   = '';
+		$number = 0;
+		foreach ( $steps as $step ) {
+			++$number;
+			$title = isset( $step['title'] ) ? (string) $step['title'] : '';
+			$body  = isset( $step['body'] ) ? (string) $step['body'] : '';
+
+			$row_inner  = $this->render_number_badge( $number, $badge_bg, $badge_text );
+			$row_inner .= $this->render_heading( $title, 3, null, true );
+			$row_inner .= $this->render_paragraph( $body, null, true );
+
+			$rows .= $this->comment_wrap( 'group', $row_attrs, '<div class="wp-block-group" style="' . $row_style . '">' . $row_inner . '</div>' );
+		}
+
+		return $rows;
 	}
 
 	/**

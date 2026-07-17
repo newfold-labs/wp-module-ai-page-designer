@@ -573,14 +573,16 @@ trait RendersMarkup {
 	 *
 	 * @param Context     $ctx      Theme/conformance context.
 	 * @param string|null $bar_slug Bar color slug, or null to render nothing.
+	 * @param bool        $center   Whether to center the bar (for centered column content).
 	 * @return string
 	 */
-	private function render_accent_bar( Context $ctx, ?string $bar_slug ): string {
+	private function render_accent_bar( Context $ctx, ?string $bar_slug, bool $center = false ): string {
 		if ( null === $bar_slug ) {
 			return '';
 		}
-		$classes = 'wp-block-separator has-alpha-channel-opacity has-' . $bar_slug . '-background-color has-background';
-		$style   = 'width:48px;height:4px;border:none;margin:0 0 ' . $ctx->spacing_css( 'sm' ) . ' 0'
+		$h_margin = $center ? 'auto' : '0';
+		$classes  = 'wp-block-separator has-alpha-channel-opacity has-' . $bar_slug . '-background-color has-background';
+		$style    = 'width:48px;height:4px;border:none;margin:0 ' . $h_margin . ' ' . $ctx->spacing_css( 'sm' ) . ' ' . $h_margin
 			. ';background-color:var(--wp--preset--color--' . $bar_slug . ')';
 		return $this->comment_wrap(
 			'separator',
