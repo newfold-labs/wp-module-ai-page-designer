@@ -12,6 +12,8 @@ export interface PagePlanResult {
   content: string;
   title: string;
   excerpt: string;
+  /** Optional model-written one-liner for the chat, '' when absent/rejected. */
+  reply: string;
 }
 
 // On by default; only an explicit `false` (set via the
@@ -38,7 +40,7 @@ export const generatePagePlanPage = async (
   existingExcerpt = ''
 ): Promise<PagePlanResult | null> => {
   try {
-    const result = await apiFetch<{ content?: string; title?: string; excerpt?: string }>( {
+    const result = await apiFetch<{ content?: string; title?: string; excerpt?: string; reply?: string }>( {
       path: `${ apiUrl }/page-plan`,
       method: 'POST',
       data: {
@@ -53,7 +55,7 @@ export const generatePagePlanPage = async (
       console.warn( '[AI Page Designer] /page-plan returned no content; falling back to freeform generate.', result );
       return null;
     }
-    return { content: result.content, title: result.title || '', excerpt: result.excerpt || '' };
+    return { content: result.content, title: result.title || '', excerpt: result.excerpt || '', reply: result.reply || '' };
   } catch ( error ) {
     // eslint-disable-next-line no-console
     console.warn( '[AI Page Designer] /page-plan request failed; falling back to freeform generate.', error );

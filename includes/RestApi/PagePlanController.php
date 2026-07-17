@@ -199,6 +199,7 @@ class PagePlanController {
 		$plan                = array();
 		$plan_title          = '';
 		$plan_excerpt        = '';
+		$plan_reply          = '';
 		$last_error          = null;
 		$best_visible_length = -1;
 		for ( $attempt = 0; $attempt < 2; $attempt++ ) {
@@ -223,6 +224,9 @@ class PagePlanController {
 				}
 				if ( '' !== $parsed['excerpt'] ) {
 					$plan_excerpt = $parsed['excerpt'];
+				}
+				if ( '' !== $parsed['reply'] ) {
+					$plan_reply = $parsed['reply'];
 				}
 				// Keep the most substantial candidate seen so far, not simply
 				// the latest one. A retry nudge asking for more sections can
@@ -312,6 +316,10 @@ class PagePlanController {
 				'content' => $content,
 				'title'   => $title,
 				'excerpt' => $excerpt,
+				// Optional, already sanitized by trim_reply(); '' when the
+				// model omitted it or it didn't look like a human sentence —
+				// the frontend then uses its own deterministic message.
+				'reply'   => $plan_reply,
 			)
 		);
 	}
@@ -571,9 +579,10 @@ class PagePlanController {
 
 		return 'You are a website page planner. Given a description of a page, return ONLY a JSON object '
 			. '(no prose, no markdown code fences) of the shape '
-			. '{"title": string, "excerpt": string, "sections": [ {"archetype": one of ["' . $allowed_names . '"], "content": {...}}, ... ]}. '
+			. '{"title": string, "excerpt": string, "reply": string, "sections": [ {"archetype": one of ["' . $allowed_names . '"], "content": {...}}, ... ]}. '
 			. 'The "title" is a SHORT page title of 4 to 6 words — a real name/headline for the page, NOT a description of its layout or sections. '
 			. 'The "excerpt" is a single-sentence summary of the page (max ~30 words). '
+			. 'The "reply" is one short, friendly sentence (max ~20 words) telling the user what you made for them — plain conversational text, never a mention of JSON, sections, or these instructions. '
 			. "The \"sections\" array lists the page sections top-to-bottom, using ONLY these archetypes and their exact content fields:\n"
 			. $archetype_lines
 			. "\nAlways open with \"heroCover\". Match the section count to the page's scope. A focused, "
@@ -618,17 +627,19 @@ class PagePlanController {
 		$empty = array(
 			'title'    => '',
 			'excerpt'  => '',
+			'reply'    => '',
 			'sections' => array(),
 		);
 		if ( ! is_array( $data ) ) {
 			return $empty;
 		}
 
-		// The object form format example : { title, excerpt, sections: [...] }.
+		// The object form format example : { title, excerpt, reply, sections: [...] }.
 		if ( isset( $data['sections'] ) && is_array( $data['sections'] ) ) {
 			return array(
 				'title'    => isset( $data['title'] ) && is_string( $data['title'] ) ? $this->trim_title( $data['title'] ) : '',
 				'excerpt'  => isset( $data['excerpt'] ) && is_string( $data['excerpt'] ) ? $this->trim_excerpt( $data['excerpt'] ) : '',
+				'reply'    => isset( $data['reply'] ) && is_string( $data['reply'] ) ? $this->trim_reply( $data['reply'] ) : '',
 				'sections' => $this->parse_plan_items( $data['sections'] ),
 			);
 		}
@@ -637,8 +648,29 @@ class PagePlanController {
 		return array(
 			'title'    => '',
 			'excerpt'  => '',
+			'reply'    => '',
 			'sections' => $this->parse_plan_items( $data ),
 		);
+	}
+
+	/**
+	 * Sanitize the model's optional conversational "reply" line. Anything that
+	 * doesn't look like a single short human sentence — markup, braces, more
+	 * than one line, over-long text — comes back as '' so the frontend falls
+	 * back to its own deterministic message instead of showing model debris.
+	 *
+	 * @param string $reply Raw reply string from the model.
+	 * @return string
+	 */
+	private function trim_reply( string $reply ): string {
+		$reply = trim( $reply );
+		if ( '' === $reply || strlen( $reply ) > 200 ) {
+			return '';
+		}
+		if ( 1 === preg_match( '/[<>{}\n\r]/', $reply ) ) {
+			return '';
+		}
+		return $reply;
 	}
 
 	/**

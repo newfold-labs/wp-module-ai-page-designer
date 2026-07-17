@@ -1419,13 +1419,19 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           if ( planExcerpt ) {
             setMetaExcerpt( planExcerpt );
           }
-          // Match the reply to what actually happened — a regenerate answered
-          // with "Here is a first draft." reads like the request was ignored.
-          const planReply = isInSessionRegenerate
+          // Prefer the model's own one-liner (already sanitized server-side by
+          // trim_reply; the length/character re-check here is belt-and-braces).
+          // Fall back to a deterministic line matched to what actually
+          // happened — a regenerate answered with "Here is a first draft."
+          // reads like the request was ignored.
+          const aiReply = ( planResult.reply || '' ).trim();
+          const fallbackReply = isInSessionRegenerate
             ? 'Here is a new version of the page.'
             : isExistingPageRedesign
               ? 'Here is the redesigned page.'
               : 'Here is a first draft.';
+          const planReply =
+            aiReply && aiReply.length <= 200 && ! /[<>{}\n\r]/.test( aiReply ) ? aiReply : fallbackReply;
           setMessages( [ ...newMessages, { role: 'assistant', content: planReply } ] );
           return;
         }
