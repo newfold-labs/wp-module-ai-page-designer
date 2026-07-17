@@ -30,10 +30,31 @@ class RichText implements Archetype {
 	use RendersMarkup;
 
 	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'default' );
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function name(): string {
 		return 'richText';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return array();
 	}
 
 	/**

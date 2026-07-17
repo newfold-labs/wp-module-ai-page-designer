@@ -10,7 +10,7 @@ namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
 
 /**
- * Two variants:
+ * Auto-pickable variants:
  *  - `floating-card` (default): a {@see RendersMarkup::render_gradient_section()}
  *    gradient-over-solid-slug backdrop with a centered {@see RendersMarkup::render_floating_card()}
  *    card (rounded corners, drop shadow) holding the heading/subheading/button.
@@ -18,6 +18,10 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  *    ({@see RendersMarkup::contrasting_slug()} chained one level deeper than the
  *    section, mirroring the proven pattern in {@see PricingTiers}'s highlighted
  *    tier), so it can never collide with either the card or the section.
+ *  - `split`: a two-column accent band — heading/subheading left, the CTA
+ *    button vertically centered right — for a horizontal, banner-like close.
+ *
+ * Legacy (explicit-only):
  *  - `accent-band`: the original flat {@see RendersMarkup::render_section()}
  *    accent-background band with a single centered CTA button, kept as an
  *    explicit fallback, reachable only via an explicit `variant: "accent-band"`
@@ -37,10 +41,38 @@ class CtaBanner implements Archetype {
 	use RendersMarkup;
 
 	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'floating-card', 'split' );
+
+	/**
+	 * Explicit-only legacy variants, never auto-picked.
+	 *
+	 * @var string[]
+	 */
+	const LEGACY_VARIANTS = array( 'accent-band' );
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function name(): string {
 		return 'ctaBanner';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return self::LEGACY_VARIANTS;
 	}
 
 	/**
@@ -64,10 +96,54 @@ class CtaBanner implements Archetype {
 	 * @return string Gutenberg block markup for one section.
 	 */
 	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
+		$variant = $this->resolve_variant( $variant, isset( $content['heading'] ) ? (string) $content['heading'] : '' );
 		if ( 'accent-band' === $variant ) {
 			return $this->render_accent_band( $content, $ctx, $background_slug );
 		}
+		if ( 'split' === $variant ) {
+			return $this->render_split( $content, $ctx, $background_slug );
+		}
 		return $this->render_floating_card_variant( $content, $ctx, $background_slug );
+	}
+
+	/**
+	 * Render the `split` variant: heading/subheading in the left column, the
+	 * CTA button vertically centered in the right — the button contrasts
+	 * against the band background, same construction as `accent-band`.
+	 *
+	 * @param array<string, mixed> $content         Slot content.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Section background slug.
+	 * @return string
+	 */
+	private function render_split( array $content, Context $ctx, ?string $background_slug ): string {
+		$bg_slug    = $background_slug ?? $this->default_background( $ctx );
+		$heading    = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$subheading = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
+		$cta        = isset( $content['cta'] ) && is_array( $content['cta'] ) ? $content['cta'] : null;
+
+		$text_slug = $this->text_slug_for_background( $ctx, $bg_slug );
+
+		$left_inner = '';
+		if ( '' !== $heading ) {
+			$left_inner .= $this->render_heading( $heading, 2, $text_slug );
+		}
+		if ( '' !== $subheading ) {
+			$left_inner .= $this->render_paragraph( $subheading, $text_slug );
+		}
+
+		$right_inner = '';
+		if ( null !== $cta && ! empty( $cta['label'] ) ) {
+			$button_bg   = $this->contrasting_slug( $ctx, $bg_slug );
+			$button_text = $this->text_slug_for_background( $ctx, $button_bg );
+			$button      = $this->render_button( (string) $cta['label'], isset( $cta['url'] ) ? (string) $cta['url'] : '#', $button_bg, $button_text );
+			$right_inner = $this->render_buttons_wrap( $button );
+		}
+
+		$columns  = $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $left_inner . '</div>' );
+		$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $right_inner . '</div>' );
+
+		return $this->render_section( null, null, $this->render_columns_wrap( $columns, $ctx ), $ctx, $bg_slug );
 	}
 
 	/**

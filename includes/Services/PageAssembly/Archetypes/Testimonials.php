@@ -23,10 +23,15 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ```
  * `avatarUrl` is resolved by PageAssembler from an `avatarQuery` slot.
  *
- * Two variants:
+ * Auto-pickable variants:
  *  - `cards` (default): each quote wrapped in a light
  *    {@see RendersMarkup::render_floating_card()} card — the modern "lifted
  *    cards" treatment matching {@see FeatureGrid}'s default.
+ *  - `spotlight`: quotes stacked full-width, one centered width-constrained
+ *    row each, with larger quote type — an editorial single-voice treatment
+ *    instead of the side-by-side grid.
+ *
+ * Legacy (explicit-only):
  *  - `grid-3`: the original flat quote columns, reachable only via an explicit
  *    `variant: "grid-3"` plan item.
  */
@@ -35,10 +40,38 @@ class Testimonials implements Archetype {
 	use RendersMarkup;
 
 	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'cards', 'spotlight' );
+
+	/**
+	 * Explicit-only legacy variants, never auto-picked.
+	 *
+	 * @var string[]
+	 */
+	const LEGACY_VARIANTS = array( 'grid-3' );
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function name(): string {
 		return 'testimonials';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return self::LEGACY_VARIANTS;
 	}
 
 	/**
@@ -66,10 +99,89 @@ class Testimonials implements Archetype {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
 		$quotes  = isset( $content['quotes'] ) && is_array( $content['quotes'] ) ? array_slice( $content['quotes'], 0, 3 ) : array();
 
-		$as_cards = 'grid-3' !== $variant;
-		$columns  = empty( $quotes ) ? '' : $this->render_columns( $quotes, $ctx, $background_slug, $as_cards );
+		$variant = $this->resolve_variant( $variant, $heading );
 
-		return $this->render_section( $heading, null, $columns, $ctx, $background_slug );
+		$inner = '';
+		if ( ! empty( $quotes ) ) {
+			$inner = 'spotlight' === $variant
+				? $this->render_spotlight( $quotes, $ctx )
+				: $this->render_columns( $quotes, $ctx, $background_slug, 'grid-3' !== $variant );
+		}
+
+		return $this->render_section( $heading, null, $inner, $ctx, $background_slug );
+	}
+
+	/**
+	 * Render the `spotlight` variant: each quote as its own centered,
+	 * width-constrained full-width row with larger quote type.
+	 *
+	 * @param array<int, array<string, mixed>> $quotes Up to 3 testimonials.
+	 * @param Context                          $ctx    Theme/conformance context.
+	 * @return string
+	 */
+	private function render_spotlight( array $quotes, Context $ctx ): string {
+		$rows = '';
+		foreach ( $quotes as $entry ) {
+			$quote      = isset( $entry['quote'] ) ? (string) $entry['quote'] : '';
+			$author     = isset( $entry['author'] ) ? (string) $entry['author'] : '';
+			$role       = isset( $entry['role'] ) ? (string) $entry['role'] : '';
+			$avatar_url = isset( $entry['avatarUrl'] ) ? (string) $entry['avatarUrl'] : '';
+
+			$row_inner = '';
+			if ( '' !== $avatar_url ) {
+				$row_inner .= '<div style="text-align:center"><img src="' . $this->esc_url( $avatar_url ) . '" alt="" width="56" height="56" style="border-radius:9999px;object-fit:cover"/></div>';
+			}
+			$row_inner .= $this->render_spotlight_quote( $quote, $author, $role );
+
+			// Symmetric on all four sides — top/bottom-only padding is the
+			// exact `asymmetric_padding:group` defect the Validator rejects.
+			$row_attrs = array(
+				'style' => array(
+					'spacing' => array(
+						'padding' => array(
+							'top'    => $ctx->spacing_attr( 'sm' ),
+							'bottom' => $ctx->spacing_attr( 'sm' ),
+							'left'   => $ctx->spacing_attr( 'sm' ),
+							'right'  => $ctx->spacing_attr( 'sm' ),
+						),
+					),
+				),
+			);
+			$row_style = 'max-width:720px;margin-left:auto;margin-right:auto'
+				. ';padding-top:' . $ctx->spacing_css( 'sm' ) . ';padding-bottom:' . $ctx->spacing_css( 'sm' )
+				. ';padding-left:' . $ctx->spacing_css( 'sm' ) . ';padding-right:' . $ctx->spacing_css( 'sm' );
+
+			$rows .= $this->comment_wrap( 'group', $row_attrs, '<div class="wp-block-group" style="' . $row_style . '">' . $row_inner . '</div>' );
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * Render a spotlight `core/quote`: the same centered quote/citation shape
+	 * as {@see render_quote()}, at larger, statement-piece type.
+	 *
+	 * @param string $quote  Quote text.
+	 * @param string $author Author name.
+	 * @param string $role   Author role/company, or empty string to omit.
+	 * @return string
+	 */
+	private function render_spotlight_quote( string $quote, string $author, string $role ): string {
+		$citation = $author;
+		if ( '' !== $role ) {
+			$citation .= ', ' . $role;
+		}
+
+		$html = '<p style="font-size:1.375rem;line-height:1.6">' . $this->esc_html( $quote ) . '</p>';
+		if ( '' !== $citation ) {
+			$html .= '<cite>' . $this->esc_html( $citation ) . '</cite>';
+		}
+
+		return $this->comment_wrap(
+			'quote',
+			array( 'textAlign' => 'center' ),
+			'<blockquote class="wp-block-quote has-text-align-center">' . $html . '</blockquote>'
+		);
 	}
 
 	/**

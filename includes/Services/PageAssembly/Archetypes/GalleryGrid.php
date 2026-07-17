@@ -33,10 +33,31 @@ class GalleryGrid implements Archetype {
 	use RendersMarkup;
 
 	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'grid-3' );
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function name(): string {
 		return 'galleryGrid';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return array();
 	}
 
 	/**

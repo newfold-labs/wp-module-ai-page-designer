@@ -43,10 +43,38 @@ class AlternatingMediaText implements Archetype {
 	use RendersMarkup;
 
 	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'floating-media' );
+
+	/**
+	 * Explicit-only legacy variants, never auto-picked.
+	 *
+	 * @var string[]
+	 */
+	const LEGACY_VARIANTS = array( 'flat' );
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function name(): string {
 		return 'alternatingMediaText';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return self::LEGACY_VARIANTS;
 	}
 
 	/**
@@ -75,6 +103,7 @@ class AlternatingMediaText implements Archetype {
 		$intro   = isset( $content['intro'] ) ? (string) $content['intro'] : '';
 		$rows    = isset( $content['rows'] ) && is_array( $content['rows'] ) ? $content['rows'] : array();
 
+		$variant = $this->resolve_variant( $variant, $heading );
 		$rounded = 'flat' !== $variant;
 
 		$inner = '';

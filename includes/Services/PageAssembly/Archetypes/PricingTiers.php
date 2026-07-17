@@ -45,10 +45,38 @@ class PricingTiers implements Archetype {
 	use RendersMarkup;
 
 	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'cards' );
+
+	/**
+	 * Explicit-only legacy variants, never auto-picked.
+	 *
+	 * @var string[]
+	 */
+	const LEGACY_VARIANTS = array( '3-tier' );
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function name(): string {
 		return 'pricingTiers';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return self::LEGACY_VARIANTS;
 	}
 
 	/**
@@ -76,6 +104,7 @@ class PricingTiers implements Archetype {
 		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
 		$tiers   = isset( $content['tiers'] ) && is_array( $content['tiers'] ) ? $content['tiers'] : array();
 
+		$variant  = $this->resolve_variant( $variant, $heading );
 		$as_cards = '3-tier' !== $variant;
 		$columns  = empty( $tiers ) ? '' : $this->render_columns( $tiers, $ctx, $background_slug, $as_cards );
 

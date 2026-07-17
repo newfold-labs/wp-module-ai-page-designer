@@ -39,6 +39,24 @@ interface Archetype {
 	public function name(): string;
 
 	/**
+	 * Auto-pickable variant names, default first. When a plan item omits
+	 * `variant` (or names an unknown one), {@see RendersMarkup::resolve_variant()}
+	 * deterministically picks from this list — so only default-quality layouts
+	 * belong here.
+	 *
+	 * @return string[] Non-empty list of variant names.
+	 */
+	public function variants(): array;
+
+	/**
+	 * Explicit-only variant names: honored when a plan item asks for one by
+	 * name, but never auto-picked (the legacy/flat renderings live here).
+	 *
+	 * @return string[]
+	 */
+	public function legacy_variants(): array;
+
+	/**
 	 * This archetype's default background slug when the plan item doesn't
 	 * request a specific one (drives the assembler's background rhythm).
 	 *

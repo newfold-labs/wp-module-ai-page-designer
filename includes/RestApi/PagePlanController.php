@@ -53,8 +53,7 @@ class PagePlanController {
 	private const ARCHETYPE_SCHEMAS = array(
 		'heroCover'            => 'eyebrow?: string, heading: string, subheading?: string, '
 			. 'primaryCta: { label: string, url: string }, secondaryCta?: { label: string, url: string }, '
-			. 'imageQuery: string (a short Unsplash search phrase for the hero image; not used by the "centered" variant), '
-			. 'variant?: one of "split" | "image-bg" | "centered" | "stacked" — omit to let the renderer pick',
+			. 'imageQuery: string (a short Unsplash search phrase for the hero image; not used by the "centered" variant)',
 		'featureGrid'          => 'heading?: string, intro?: string, items: exactly 3 of { title: string, body: string }',
 		'alternatingMediaText' => 'heading?: string, intro?: string, rows: array of { heading: string, body: string, '
 			. 'imageQuery: string (short Unsplash search phrase), cta?: { label: string, url: string } }',
@@ -446,11 +445,8 @@ class PagePlanController {
 	 */
 	private function pad_homepage_sections( array $plan, string $prompt, int $needed ): array {
 		$used_archetypes = array_unique( array_column( $plan, 'archetype' ) );
-		$archetype_lines = '';
-		foreach ( self::ARCHETYPE_SCHEMAS as $name => $schema ) {
-			$archetype_lines .= "- \"{$name}\": {$schema}\n";
-		}
-		$allowed_names = implode( '", "', array_keys( self::ARCHETYPE_SCHEMAS ) );
+		$archetype_lines = $this->archetype_schema_lines();
+		$allowed_names   = implode( '", "', array_keys( self::ARCHETYPE_SCHEMAS ) );
 
 		$system = 'You are a website page planner. A homepage is being built for this request: '
 			. "\"{$prompt}\". It already has these sections, in order: " . implode( ', ', $used_archetypes ) . '. '
@@ -506,6 +502,35 @@ class PagePlanController {
 	}
 
 	/**
+	 * Build the prompt's per-archetype schema lines from ARCHETYPE_SCHEMAS,
+	 * appending each multi-variant archetype's variant hint straight from its
+	 * registry ({@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\Archetype::variants()})
+	 * — adding a variant to an archetype is enough to advertise it here.
+	 * legacy_variants() are deliberately never advertised, and single-variant
+	 * archetypes get no hint (nothing to pick).
+	 *
+	 * @return string One "- \"name\": schema" line per archetype.
+	 */
+	private function archetype_schema_lines(): string {
+		$variant_hints = array();
+		foreach ( ( new PageAssembler() )->archetypes() as $name => $archetype ) {
+			$variants = $archetype->variants();
+			if ( count( $variants ) > 1 ) {
+				$variant_hints[ $name ] = 'variant?: one of "' . implode( '" | "', $variants ) . '" — omit to let the renderer pick';
+			}
+		}
+
+		$lines = '';
+		foreach ( self::ARCHETYPE_SCHEMAS as $name => $schema ) {
+			if ( isset( $variant_hints[ $name ] ) ) {
+				$schema .= ', ' . $variant_hints[ $name ];
+			}
+			$lines .= "- \"{$name}\": {$schema}\n";
+		}
+		return $lines;
+	}
+
+	/**
 	 * Build the page-plan system prompt from the registered archetype schemas.
 	 *
 	 * @param string $existing_title   Title of the existing page being redesigned, if any.
@@ -513,11 +538,8 @@ class PagePlanController {
 	 * @return string
 	 */
 	private function build_system_prompt( string $existing_title = '', string $existing_excerpt = '' ): string {
-		$archetype_lines = '';
-		foreach ( self::ARCHETYPE_SCHEMAS as $name => $schema ) {
-			$archetype_lines .= "- \"{$name}\": {$schema}\n";
-		}
-		$allowed_names = implode( '", "', array_keys( self::ARCHETYPE_SCHEMAS ) );
+		$archetype_lines = $this->archetype_schema_lines();
+		$allowed_names   = implode( '", "', array_keys( self::ARCHETYPE_SCHEMAS ) );
 
 		// This plan's own content is a first-pass structural draft — a second,
 		// content-focused pass (the existing streaming edit pipeline, which already

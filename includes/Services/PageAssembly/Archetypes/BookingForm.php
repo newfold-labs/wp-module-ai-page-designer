@@ -58,10 +58,38 @@ class BookingForm implements Archetype {
 	private const INPUT_TYPES = array( 'text', 'email', 'tel', 'date', 'time', 'number' );
 
 	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'card' );
+
+	/**
+	 * Explicit-only legacy variants, never auto-picked.
+	 *
+	 * @var string[]
+	 */
+	const LEGACY_VARIANTS = array( 'stacked' );
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function name(): string {
 		return 'bookingForm';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return self::LEGACY_VARIANTS;
 	}
 
 	/**
@@ -93,6 +121,7 @@ class BookingForm implements Archetype {
 			? (string) $content['submitLabel']
 			: 'Submit';
 
+		$variant   = $this->resolve_variant( $variant, $heading );
 		$as_card   = 'stacked' !== $variant;
 		$card_slug = $as_card ? $this->card_slug_for_section( $ctx, $background_slug ) : null;
 		$card_text = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;

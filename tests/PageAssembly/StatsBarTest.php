@@ -74,10 +74,10 @@ class StatsBarTest extends PageAssemblyTestCase {
 		$this->assertSame( $once, $stats->render( $this->content(), 'accent-band', $ctx, $bg ) );
 	}
 
-	public function test_stat_cards_is_the_default_variant(): void {
+	public function test_stat_cards_variant_renders_lifted_cards(): void {
 		$stats = new StatsBar();
 		$ctx   = $this->context();
-		$out   = $stats->render( $this->content(), null, $ctx, $stats->default_background( $ctx ) );
+		$out   = $stats->render( $this->content(), 'stat-cards', $ctx, $stats->default_background( $ctx ) );
 
 		$this->assertSame( 3, substr_count( $out, 'border-radius:16px' ) );
 		$this->assertStringContainsString( '10k', $out );
@@ -94,7 +94,7 @@ class StatsBarTest extends PageAssemblyTestCase {
 	public function test_stat_cards_variant_is_correct_by_construction(): void {
 		$stats = new StatsBar();
 		$ctx   = $this->context();
-		$out   = $stats->render( $this->content(), null, $ctx, $stats->default_background( $ctx ) );
+		$out   = $stats->render( $this->content(), 'stat-cards', $ctx, $stats->default_background( $ctx ) );
 
 		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
 	}
@@ -103,9 +103,42 @@ class StatsBarTest extends PageAssemblyTestCase {
 		$stats = new StatsBar();
 		$ctx   = $this->context();
 		$bg    = $stats->default_background( $ctx );
-		$out   = $stats->render( $this->content(), null, $ctx, $bg );
+		$out   = $stats->render( $this->content(), 'stat-cards', $ctx, $bg );
 
 		$this->assertNotNull( $bg );
 		$this->assertStringNotContainsString( 'wp-block-group has-' . $bg . '-background-color', $out );
+	}
+
+	public function test_panel_variant_renders_one_shared_card(): void {
+		$stats = new StatsBar();
+		$ctx   = $this->context();
+		$out   = $stats->render( $this->content(), 'panel', $ctx, $stats->default_background( $ctx ) );
+
+		$this->assertSame( 1, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertSame( 3, substr_count( $out, '<!-- wp:column ' ) );
+		$this->assertStringContainsString( '10k', $out );
+	}
+
+	public function test_panel_variant_is_correct_by_construction(): void {
+		$stats = new StatsBar();
+		$ctx   = $this->context();
+		$out   = $stats->render( $this->content(), 'panel', $ctx, $stats->default_background( $ctx ) );
+
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
+
+	public function test_unspecified_variant_resolves_into_the_pickable_pool(): void {
+		$stats = new StatsBar();
+		$ctx   = $this->context();
+		$bg    = $stats->default_background( $ctx );
+		$out   = $stats->render( $this->content(), null, $ctx, $bg );
+
+		$this->assertSame( $out, $stats->render( $this->content(), null, $ctx, $bg ) );
+
+		$explicit = array();
+		foreach ( StatsBar::VARIANTS as $variant ) {
+			$explicit[] = $stats->render( $this->content(), $variant, $ctx, $bg );
+		}
+		$this->assertContains( $out, $explicit );
 	}
 }

@@ -91,6 +91,17 @@ class PageAssembler {
 	}
 
 	/**
+	 * The registered archetypes, keyed by name — the catalogue's single source
+	 * of truth, used by PagePlanController to generate the planner prompt's
+	 * per-archetype variant hints from {@see Archetype::variants()}.
+	 *
+	 * @return array<string, Archetype>
+	 */
+	public function archetypes(): array {
+		return $this->archetypes;
+	}
+
+	/**
 	 * Assemble a page plan into Gutenberg block markup.
 	 *
 	 * Unknown archetype names are skipped rather than failing the whole page —

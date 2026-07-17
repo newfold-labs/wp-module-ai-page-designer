@@ -78,9 +78,9 @@ class TestimonialsTest extends PageAssemblyTestCase {
 		$this->assertSame( $once, $testimonials->render( $this->content(), 'grid-3', $ctx, null ) );
 	}
 
-	public function test_cards_is_the_default_variant(): void {
+	public function test_cards_variant_renders_lifted_cards(): void {
 		$testimonials = new Testimonials();
-		$out          = $testimonials->render( $this->content(), null, $this->context(), null );
+		$out          = $testimonials->render( $this->content(), 'cards', $this->context(), null );
 
 		$this->assertSame( 2, substr_count( $out, 'border-radius:16px' ) );
 		$this->assertStringContainsString( 'This changed everything for us.', $out );
@@ -98,7 +98,41 @@ class TestimonialsTest extends PageAssemblyTestCase {
 		$ctx          = $this->context();
 		$v            = new Validator();
 
-		$this->assertSame( array(), $v->validate( $testimonials->render( $this->content(), null, $ctx, null ), $ctx ) );
-		$this->assertSame( array(), $v->validate( $testimonials->render( $this->content(), null, $ctx, $ctx->muted_light_slug() ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $testimonials->render( $this->content(), 'cards', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $testimonials->render( $this->content(), 'cards', $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_spotlight_variant_renders_stacked_constrained_rows(): void {
+		$testimonials = new Testimonials();
+		$out          = $testimonials->render( $this->content(), 'spotlight', $this->context(), null );
+
+		$this->assertStringNotContainsString( '<!-- wp:columns', $out );
+		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertSame( 2, substr_count( $out, 'max-width:720px' ) );
+		$this->assertSame( 2, substr_count( $out, 'font-size:1.375rem' ) );
+		$this->assertStringContainsString( 'This changed everything for us.', $out );
+	}
+
+	public function test_spotlight_variant_is_correct_by_construction(): void {
+		$testimonials = new Testimonials();
+		$ctx          = $this->context();
+		$v            = new Validator();
+
+		$this->assertSame( array(), $v->validate( $testimonials->render( $this->content(), 'spotlight', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $testimonials->render( $this->content(), 'spotlight', $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_unspecified_variant_resolves_into_the_pickable_pool(): void {
+		$testimonials = new Testimonials();
+		$ctx          = $this->context();
+		$out          = $testimonials->render( $this->content(), null, $ctx, null );
+
+		$this->assertSame( $out, $testimonials->render( $this->content(), null, $ctx, null ) );
+
+		$explicit = array();
+		foreach ( Testimonials::VARIANTS as $variant ) {
+			$explicit[] = $testimonials->render( $this->content(), $variant, $ctx, null );
+		}
+		$this->assertContains( $out, $explicit );
 	}
 }

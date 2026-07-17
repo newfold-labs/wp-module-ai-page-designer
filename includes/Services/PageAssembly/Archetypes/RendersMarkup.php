@@ -24,6 +24,29 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
 trait RendersMarkup {
 
 	/**
+	 * Resolve a plan item's requested variant against this archetype's
+	 * registry ({@see Archetype::variants()} / {@see Archetype::legacy_variants()}).
+	 * A recognized name wins; anything else (null, a typo, an unknown name)
+	 * hashes the seed into the auto-pickable pool — deterministically, never
+	 * randomly, because archetypes are pure functions (see PageAssembler's
+	 * "archetypes stay pure functions" design note): identical content always
+	 * yields the identical variant, while real pages still vary since no two
+	 * pages share a heading. Legacy variants are reachable only by explicit
+	 * request, never by the hash.
+	 *
+	 * @param string|null $variant Requested variant from the plan item, or null.
+	 * @param string      $seed    Deterministic seed (typically the section heading).
+	 * @return string A member of variants(), or an explicitly requested legacy variant.
+	 */
+	private function resolve_variant( ?string $variant, string $seed ): string {
+		$pickable = $this->variants();
+		if ( null !== $variant && ( in_array( $variant, $pickable, true ) || in_array( $variant, $this->legacy_variants(), true ) ) ) {
+			return $variant;
+		}
+		return $pickable[ crc32( $seed ) % count( $pickable ) ];
+	}
+
+	/**
 	 * Wrap rendered HTML in a Gutenberg block comment delimiter pair.
 	 *
 	 * @param string               $block_name Block name without the `core/` prefix.
@@ -537,6 +560,32 @@ trait RendersMarkup {
 			'group',
 			$group_attrs,
 			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '">' . $inner . '</div>'
+		);
+	}
+
+	/**
+	 * Render a short accent bar — a small colored `core/separator` used as a
+	 * visual anchor above a column's title (the `accent-bar` grid treatment).
+	 * Deliberately carries ONLY a background color, never a text color: a
+	 * separator has no text, and pairing `textColor` with an identical
+	 * `backgroundColor` (as WordPress itself does for colored separators)
+	 * reads as a zero-contrast text/bg pair to legibility checks.
+	 *
+	 * @param Context     $ctx      Theme/conformance context.
+	 * @param string|null $bar_slug Bar color slug, or null to render nothing.
+	 * @return string
+	 */
+	private function render_accent_bar( Context $ctx, ?string $bar_slug ): string {
+		if ( null === $bar_slug ) {
+			return '';
+		}
+		$classes = 'wp-block-separator has-alpha-channel-opacity has-' . $bar_slug . '-background-color has-background';
+		$style   = 'width:48px;height:4px;border:none;margin:0 0 ' . $ctx->spacing_css( 'sm' ) . ' 0'
+			. ';background-color:var(--wp--preset--color--' . $bar_slug . ')';
+		return $this->comment_wrap(
+			'separator',
+			array( 'backgroundColor' => $bar_slug ),
+			'<hr class="' . $classes . '" style="' . $style . '"/>'
 		);
 	}
 

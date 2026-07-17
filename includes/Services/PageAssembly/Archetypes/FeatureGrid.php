@@ -26,11 +26,19 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * ]
  * ```
  *
- * Two variants:
+ * Auto-pickable variants:
  *  - `floating-cards` (default): each item wrapped in a light
  *    {@see RendersMarkup::render_floating_card()} card ({@see RendersMarkup::card_slug_for_section()}
  *    picks the quiet muted-light/light swatch, never the loud accent) — the
  *    modern "lifted cards" grid.
+ *  - `accent-bar`: left-aligned flat columns, each anchored by a short accent
+ *    {@see RendersMarkup::render_accent_bar()} separator above the title — an
+ *    editorial, no-card treatment.
+ *  - `panel`: the flat centered columns gathered inside ONE wide
+ *    {@see RendersMarkup::render_floating_card()} panel — a single lifted
+ *    surface instead of three.
+ *
+ * Legacy (explicit-only):
  *  - `cards-3`: the original flat text columns, reachable only via an explicit
  *    `variant: "cards-3"` plan item.
  */
@@ -39,10 +47,38 @@ class FeatureGrid implements Archetype {
 	use RendersMarkup;
 
 	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'floating-cards', 'accent-bar', 'panel' );
+
+	/**
+	 * Explicit-only legacy variants, never auto-picked.
+	 *
+	 * @var string[]
+	 */
+	const LEGACY_VARIANTS = array( 'cards-3' );
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function name(): string {
 		return 'featureGrid';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return self::LEGACY_VARIANTS;
 	}
 
 	/**
@@ -74,10 +110,79 @@ class FeatureGrid implements Archetype {
 		$intro   = isset( $content['intro'] ) ? (string) $content['intro'] : '';
 		$items   = isset( $content['items'] ) && is_array( $content['items'] ) ? array_slice( $content['items'], 0, 3 ) : array();
 
-		$as_cards = 'cards-3' !== $variant;
-		$columns  = empty( $items ) ? '' : $this->render_columns( $items, $ctx, $background_slug, $as_cards );
+		$variant = $this->resolve_variant( $variant, $heading );
 
-		return $this->render_section( $heading, $intro, $columns, $ctx, $background_slug );
+		$inner = '';
+		if ( ! empty( $items ) ) {
+			switch ( $variant ) {
+				case 'accent-bar':
+					$inner = $this->render_accent_bar_columns( $items, $ctx, $background_slug );
+					break;
+				case 'panel':
+					$inner = $this->render_panel( $items, $ctx, $background_slug );
+					break;
+				default:
+					$inner = $this->render_columns( $items, $ctx, $background_slug, 'cards-3' !== $variant );
+			}
+		}
+
+		return $this->render_section( $heading, $intro, $inner, $ctx, $background_slug );
+	}
+
+	/**
+	 * Render the `accent-bar` variant's columns: flat, left-aligned items, each
+	 * anchored by a short accent separator bar above its title.
+	 *
+	 * @param array<int, array<string, string>> $items           Up to 3 [ 'title', 'body' ] items.
+	 * @param Context                           $ctx             Theme/conformance context.
+	 * @param string|null                       $background_slug The section's own background slug.
+	 * @return string
+	 */
+	private function render_accent_bar_columns( array $items, Context $ctx, ?string $background_slug ): string {
+		$bar_slug = $this->contrasting_slug( $ctx, $background_slug );
+
+		$columns = '';
+		foreach ( $items as $item ) {
+			$title = isset( $item['title'] ) ? (string) $item['title'] : '';
+			$body  = isset( $item['body'] ) ? (string) $item['body'] : '';
+
+			$column_inner  = $this->render_accent_bar( $ctx, $bar_slug );
+			$column_inner .= $this->render_heading( $title, 3, null );
+			$column_inner .= $this->render_paragraph( $body, null );
+
+			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $column_inner . '</div>' );
+		}
+
+		return $this->render_columns_wrap( $columns, $ctx, false, 'md', true );
+	}
+
+	/**
+	 * Render the `panel` variant: the flat centered columns gathered inside a
+	 * single wide floating card, text colored against the CARD's background.
+	 *
+	 * @param array<int, array<string, string>> $items           Up to 3 [ 'title', 'body' ] items.
+	 * @param Context                           $ctx             Theme/conformance context.
+	 * @param string|null                       $background_slug The section's own background slug.
+	 * @return string
+	 */
+	private function render_panel( array $items, Context $ctx, ?string $background_slug ): string {
+		$card_slug = $this->card_slug_for_section( $ctx, $background_slug );
+		$card_text = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
+
+		$columns = '';
+		foreach ( $items as $item ) {
+			$title = isset( $item['title'] ) ? (string) $item['title'] : '';
+			$body  = isset( $item['body'] ) ? (string) $item['body'] : '';
+
+			$column_inner  = $this->render_heading( $title, 3, $card_text, true );
+			$column_inner .= $this->render_paragraph( $body, $card_text, true );
+
+			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $column_inner . '</div>' );
+		}
+
+		$columns = $this->render_columns_wrap( $columns, $ctx, false, 'md', true );
+
+		return $this->render_floating_card( $columns, $ctx, $card_slug, $card_text );
 	}
 
 	/**

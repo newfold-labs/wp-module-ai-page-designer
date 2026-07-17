@@ -103,9 +103,9 @@ class FeatureGridTest extends PageAssemblyTestCase {
 		$this->assertSame( $once, $grid->render( $this->content(), 'cards-3', $ctx, null ) );
 	}
 
-	public function test_floating_cards_is_the_default_variant(): void {
+	public function test_floating_cards_variant_renders_lifted_cards(): void {
 		$grid = new FeatureGrid();
-		$out  = $grid->render( $this->content(), null, $this->context(), null );
+		$out  = $grid->render( $this->content(), 'floating-cards', $this->context(), null );
 
 		$this->assertSame( 3, substr_count( $out, 'border-radius:16px' ) );
 		$this->assertStringContainsString( 'Ethically sourced', $out );
@@ -123,17 +123,66 @@ class FeatureGridTest extends PageAssemblyTestCase {
 		$ctx  = $this->context();
 		$v    = new Validator();
 
-		$this->assertSame( array(), $v->validate( $grid->render( $this->content(), null, $ctx, null ), $ctx ) );
-		$this->assertSame( array(), $v->validate( $grid->render( $this->content(), null, $ctx, $ctx->muted_light_slug() ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $grid->render( $this->content(), 'floating-cards', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $grid->render( $this->content(), 'floating-cards', $ctx, $ctx->muted_light_slug() ), $ctx ) );
 	}
 
 	public function test_floating_cards_never_share_the_section_background(): void {
 		$grid = new FeatureGrid();
 		$ctx  = $this->context();
 		$bg   = $ctx->muted_light_slug();
-		$out  = $grid->render( $this->content(), null, $ctx, $bg );
+		$out  = $grid->render( $this->content(), 'floating-cards', $ctx, $bg );
 
 		// On a muted-light section the cards fall back to the light slug.
 		$this->assertStringNotContainsString( 'wp-block-group has-' . $bg . '-background-color', $out );
+	}
+
+	public function test_accent_bar_variant_renders_a_bar_per_item(): void {
+		$grid = new FeatureGrid();
+		$out  = $grid->render( $this->content(), 'accent-bar', $this->context(), null );
+
+		$this->assertSame( 3, substr_count( $out, '<!-- wp:separator ' ) );
+		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringContainsString( 'Ethically sourced', $out );
+	}
+
+	public function test_accent_bar_variant_is_correct_by_construction_with_and_without_background(): void {
+		$grid = new FeatureGrid();
+		$ctx  = $this->context();
+		$v    = new Validator();
+
+		$this->assertSame( array(), $v->validate( $grid->render( $this->content(), 'accent-bar', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $grid->render( $this->content(), 'accent-bar', $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_panel_variant_renders_one_shared_card(): void {
+		$grid = new FeatureGrid();
+		$out  = $grid->render( $this->content(), 'panel', $this->context(), null );
+
+		$this->assertSame( 1, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertSame( 3, substr_count( $out, '<!-- wp:column ' ) );
+	}
+
+	public function test_panel_variant_is_correct_by_construction_with_and_without_background(): void {
+		$grid = new FeatureGrid();
+		$ctx  = $this->context();
+		$v    = new Validator();
+
+		$this->assertSame( array(), $v->validate( $grid->render( $this->content(), 'panel', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $grid->render( $this->content(), 'panel', $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_unspecified_variant_resolves_into_the_pickable_pool(): void {
+		$grid = new FeatureGrid();
+		$ctx  = $this->context();
+		$out  = $grid->render( $this->content(), null, $ctx, null );
+
+		$this->assertSame( $out, $grid->render( $this->content(), null, $ctx, null ) );
+
+		$explicit = array();
+		foreach ( FeatureGrid::VARIANTS as $variant ) {
+			$explicit[] = $grid->render( $this->content(), $variant, $ctx, null );
+		}
+		$this->assertContains( $out, $explicit );
 	}
 }

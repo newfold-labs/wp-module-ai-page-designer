@@ -76,6 +76,20 @@ class HeroCover implements Archetype {
 
 	/**
 	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return array();
+	}
+
+	/**
+	 * {@inheritDoc}
 	 *
 	 * @param Context $ctx Theme/conformance context.
 	 * @return string|null
@@ -94,17 +108,8 @@ class HeroCover implements Archetype {
 	 * @return string Gutenberg block markup for one section.
 	 */
 	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
-		if ( null === $variant || ! in_array( $variant, self::VARIANTS, true ) ) {
-			// Deterministic, not random: archetypes are pure functions (see the
-			// class docblock and PageAssembler's own "archetypes stay pure
-			// functions" design note) — assemble() is tested to return identical
-			// output for identical input. Hashing the heading (always present,
-			// required) into a variant index keeps that invariant (same content
-			// -> same variant every time) while still varying across real pages,
-			// since no two pages share a heading.
-			$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
-			$variant = self::VARIANTS[ crc32( $heading ) % count( self::VARIANTS ) ];
-		}
+		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$variant = $this->resolve_variant( $variant, $heading );
 		switch ( $variant ) {
 			case 'image-bg':
 				return $this->render_image_bg( $content, $ctx, $background_slug );

@@ -45,10 +45,31 @@ class TeamGrid implements Archetype {
 	}
 
 	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'cards' );
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function name(): string {
 		return 'teamGrid';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return array();
 	}
 
 	/**

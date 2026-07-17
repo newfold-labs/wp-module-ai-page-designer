@@ -70,15 +70,60 @@ class CtaBannerTest extends PageAssemblyTestCase {
 		$this->assertSame( $once, $cta->render( $this->content(), 'accent-band', $ctx, $bg ) );
 	}
 
-	public function test_floating_card_is_the_default_variant(): void {
+	public function test_floating_card_variant_renders_a_lifted_card(): void {
 		$cta = new CtaBanner();
 		$ctx = $this->context();
-		$out = $cta->render( $this->content(), null, $ctx, $cta->default_background( $ctx ) );
+		$out = $cta->render( $this->content(), 'floating-card', $ctx, $cta->default_background( $ctx ) );
 
 		$this->assertStringContainsString( 'border-radius:16px', $out );
 		$this->assertStringContainsString( 'Ready to start?', $out );
 		$this->assertStringContainsString( 'Join today.', $out );
 		$this->assertStringContainsString( 'Sign up', $out );
+	}
+
+	public function test_split_variant_renders_text_and_button_columns(): void {
+		$cta = new CtaBanner();
+		$ctx = $this->context();
+		$out = $cta->render( $this->content(), 'split', $ctx, $cta->default_background( $ctx ) );
+
+		$this->assertSame( 2, substr_count( $out, '<!-- wp:column ' ) );
+		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( '"width"', $out );
+		$this->assertStringContainsString( 'Ready to start?', $out );
+		$this->assertStringContainsString( 'Sign up', $out );
+	}
+
+	public function test_split_variant_is_correct_by_construction(): void {
+		$cta = new CtaBanner();
+		$ctx = $this->context();
+		$out = $cta->render( $this->content(), 'split', $ctx, $cta->default_background( $ctx ) );
+
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
+
+	public function test_split_variant_button_never_collides_with_band_background(): void {
+		$cta = new CtaBanner();
+		$ctx = $this->context();
+		$bg  = $cta->default_background( $ctx );
+		$out = $cta->render( $this->content(), 'split', $ctx, $bg );
+
+		$this->assertNotNull( $bg );
+		$this->assertStringNotContainsString( 'wp-block-button__link wp-element-button has-' . $bg . '-background-color', $out );
+	}
+
+	public function test_unspecified_variant_resolves_into_the_pickable_pool(): void {
+		$cta = new CtaBanner();
+		$ctx = $this->context();
+		$bg  = $cta->default_background( $ctx );
+		$out = $cta->render( $this->content(), null, $ctx, $bg );
+
+		$this->assertSame( $out, $cta->render( $this->content(), null, $ctx, $bg ) );
+
+		$explicit = array();
+		foreach ( CtaBanner::VARIANTS as $variant ) {
+			$explicit[] = $cta->render( $this->content(), $variant, $ctx, $bg );
+		}
+		$this->assertContains( $out, $explicit );
 	}
 
 	public function test_floating_card_variant_is_correct_by_construction(): void {
