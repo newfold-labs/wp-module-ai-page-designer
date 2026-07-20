@@ -549,19 +549,6 @@ class PagePlanController {
 		$archetype_lines = $this->archetype_schema_lines();
 		$allowed_names   = implode( '", "', array_keys( self::ARCHETYPE_SCHEMAS ) );
 
-		// This plan's own content is a first-pass structural draft — a second,
-		// content-focused pass (the existing streaming edit pipeline, which already
-		// has full site context) rewrites the copy afterward. Site context is still
-		// attached here as defense-in-depth so the first pass isn't generic even
-		// before that second pass runs.
-		$site_context = '';
-		$site_name    = get_bloginfo( 'name' );
-		$site_tagline = get_bloginfo( 'description' );
-		if ( $site_name || $site_tagline ) {
-			$site_context = "\nThis page is for the website \"{$site_name}\""
-				. ( $site_tagline ? " — {$site_tagline}" : '' ) . '. ';
-		}
-
 		// Redesign of an existing page: the caller sends only its title/excerpt
 		// (never the old body markup or images — see PagePlanController's REST
 		// args), so the model has nothing of the old structure to anchor a
@@ -573,8 +560,31 @@ class PagePlanController {
 		if ( $existing_title || $existing_excerpt ) {
 			$redesign_context = "\nThis is a redesign of an existing page. Existing page title: {$existing_title}."
 				. ( $existing_excerpt ? " Existing page excerpt: {$existing_excerpt}." : '' )
-				. ' Use that only to understand the page\'s purpose — write entirely new copy for every section, '
-				. "don't reuse the existing page's specific wording. ";
+				. ' It must stay about the SAME business/topic — you are only giving it a new layout and new '
+				. "wording, never a different business. Write entirely new copy for every section (don't reuse "
+				. "the existing page's specific wording), but every section must still be recognizably about "
+				. "the same business/topic named above, even if the user's own request just says things like "
+				. '"start over" or "fresh design" without repeating what the business is. ';
+		}
+
+		// This plan's own content is a first-pass structural draft — a second,
+		// content-focused pass (the existing streaming edit pipeline, which already
+		// has full site context) rewrites the copy afterward. Site context is still
+		// attached here as defense-in-depth so the first pass isn't generic even
+		// before that second pass runs. BUT only when there's no redesign_context:
+		// once we already know the specific page's own topic, the site's own
+		// name/tagline (e.g. a WordPress install whose blogname is itself a business
+		// name like "Bean there Café") must never compete with or override it —
+		// a page for a completely different business than the site's own default
+		// is exactly what this designer is for.
+		$site_context = '';
+		if ( '' === $redesign_context ) {
+			$site_name    = get_bloginfo( 'name' );
+			$site_tagline = get_bloginfo( 'description' );
+			if ( $site_name || $site_tagline ) {
+				$site_context = "\nThis page is for the website \"{$site_name}\""
+					. ( $site_tagline ? " — {$site_tagline}" : '' ) . '. ';
+			}
 		}
 
 		return 'You are a website page planner. Given a description of a page, return ONLY a JSON object '

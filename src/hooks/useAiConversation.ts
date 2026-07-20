@@ -2167,6 +2167,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     input,
     isLoading,
     messages,
+    metaExcerpt,
+    metaTitle,
     originalPreviewHtml,
     parsedBlocks,
     previewHtml,
