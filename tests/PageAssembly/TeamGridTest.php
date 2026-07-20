@@ -57,7 +57,7 @@ class TeamGridTest extends PageAssemblyTestCase {
 		$team = new TeamGrid();
 		$out  = $team->render( $this->content(), 'cards', $this->context(), null );
 
-		$this->assertStringContainsString( 'border-radius:9999px', $out );
+		$this->assertStringContainsString( 'class="nfd-avatar-112', $out );
 	}
 
 	public function test_members_render_as_floating_cards(): void {
@@ -89,7 +89,7 @@ class TeamGridTest extends PageAssemblyTestCase {
 
 		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
 		$this->assertStringContainsString( 'Ana Silva', $out );
-		$this->assertStringContainsString( 'border-radius:9999px', $out );
+		$this->assertStringContainsString( 'class="nfd-avatar-112', $out );
 	}
 
 	public function test_minimal_variant_is_correct_by_construction_with_and_without_background(): void {

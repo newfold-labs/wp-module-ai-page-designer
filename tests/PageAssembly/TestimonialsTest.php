@@ -108,7 +108,7 @@ class TestimonialsTest extends PageAssemblyTestCase {
 
 		$this->assertStringNotContainsString( '<!-- wp:columns', $out );
 		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
-		$this->assertSame( 2, substr_count( $out, 'max-width:720px' ) );
+		$this->assertSame( 2, substr_count( $out, 'class="nfd-max-w-720' ) );
 		$this->assertSame( 2, substr_count( $out, 'font-size:1.375rem' ) );
 		$this->assertStringContainsString( 'This changed everything for us.', $out );
 	}

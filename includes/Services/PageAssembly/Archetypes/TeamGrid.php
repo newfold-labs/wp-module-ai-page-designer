@@ -118,7 +118,21 @@ class TeamGrid implements Archetype {
 
 			$card_inner = '';
 			if ( '' !== $avatar_url ) {
-				$card_inner .= '<div style="text-align:center"><img src="' . $this->esc_url( $avatar_url ) . '" alt="" width="112" height="112" style="border-radius:9999px;object-fit:cover"/></div>';
+				// A real `wp:image` child block, not a raw wrapper div/img — a
+				// `core/group`'s actual save() output only ever expects direct,
+				// comment-delimited child blocks; ANY plain HTML wrapper (styled
+				// or not) between the group and its children fails Gutenberg's
+				// own re-validation (confirmed live via wp.blocks.parse().isValid).
+				// Sizing/circle-crop/centering move to the "nfd-avatar-112" class
+				// in get_motion_css() instead of inline width/height/style.
+				$card_inner .= $this->comment_wrap(
+					'image',
+					array(
+						'sizeSlug'  => 'large',
+						'className' => 'nfd-avatar-112',
+					),
+					'<figure class="nfd-avatar-112 wp-block-image size-large"><img src="' . $this->esc_url( $avatar_url ) . '" alt=""/></figure>'
+				);
 			}
 			$card_inner .= $this->render_heading( $name, 3, $card_text, true );
 			if ( '' !== $role ) {

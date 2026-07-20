@@ -193,15 +193,21 @@ class HeroCover implements Archetype {
 			$attrs['backgroundColor'] = $bg_slug;
 		}
 
-		$cover_classes = array( 'wp-block-cover', 'has-background-dim-' . self::DIM_RATIO, 'has-background-dim' );
+		// core/cover's actual save() output puts the dim classes on the
+		// `.wp-block-cover__background` span, NOT the outer wrapper — and never
+		// inlines background-color for a named/preset slug there either. See
+		// RendersMarkup::render_heading()'s note; confirmed live against this
+		// WP version's block validator.
+		$cover_classes = array( 'wp-block-cover' );
 		$cover_style   = 'min-height:' . self::MIN_HEIGHT . 'px';
 		if ( null !== $bg_slug ) {
 			$cover_classes[] = 'has-' . $bg_slug . '-background-color';
 			$cover_classes[] = 'has-background';
-			$cover_style    .= ';background-color:var(--wp--preset--color--' . $bg_slug . ')';
 		}
+		$dim_classes = 'wp-block-cover__background has-background-dim-' . self::DIM_RATIO . ' has-background-dim';
 
 		$inner  = $this->render_image( $image_url );
+		$inner .= '<span aria-hidden="true" class="' . $dim_classes . '"></span>';
 		$inner .= '<div class="wp-block-cover__inner-container">';
 		if ( '' !== $eyebrow ) {
 			$inner .= $this->render_paragraph( $eyebrow, $text_slug, true );

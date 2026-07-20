@@ -306,11 +306,19 @@ class ImageService {
 	 * @return string The updated string.
 	 */
 	private function replace_urls_in_block_html( $html_string, $new_url ) {
+		// esc_url() HTML-attribute-escapes (raw & becomes &#038;) — required so
+		// the replaced value matches what the block's own save() output would
+		// contain, the same "no unescaped value in the stored markup" rule as
+		// every archetype's inline-style fixes (see RendersMarkup::render_heading()'s
+		// note): a raw, unescaped URL here mismatches Gutenberg's re-escaped
+		// re-serialization and fails its own block validation.
+		$escaped_url = esc_url( $new_url );
+
 		// Replace src= attribute values.
 		$html_string = preg_replace_callback(
 			'/(src=["\'])([^"\']+)(["\'])/i',
-			function ( $matches ) use ( $new_url ) {
-				return $matches[1] . $new_url . $matches[3];
+			function ( $matches ) use ( $escaped_url ) {
+				return $matches[1] . $escaped_url . $matches[3];
 			},
 			$html_string
 		);
@@ -318,17 +326,22 @@ class ImageService {
 		// Replace CSS url() values (used by core/cover).
 		$html_string = preg_replace_callback(
 			'/url\([\'"]?([^\'"]+)[\'"]?\)/i',
-			function ( $matches ) use ( $new_url ) {
-				return 'url(' . $new_url . ')';
+			function ( $matches ) use ( $escaped_url ) {
+				return 'url(' . $escaped_url . ')';
 			},
 			$html_string
 		);
 
-		// Replace JSON "url":"..." values.
+		// Replace JSON "url":"..." values — JSON-string-escaped via
+		// wp_json_encode(), the same encoder every block comment's attrs go
+		// through (it unicode-escapes ampersands), NOT the HTML-escaped
+		// value above: inserting the HTML-escaped "&#038;" form into a JSON
+		// string instead is what previously left literal, corrupted "u0026"
+		// text in the stored comment after a later re-encode pass.
 		$html_string = preg_replace_callback(
 			'/"url":"([^"]+)"/i',
 			function ( $matches ) use ( $new_url ) {
-				return '"url":"' . $new_url . '"';
+				return '"url":' . wp_json_encode( $new_url );
 			},
 			$html_string
 		);

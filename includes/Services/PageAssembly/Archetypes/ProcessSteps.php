@@ -115,21 +115,25 @@ class ProcessSteps implements Archetype {
 		$badge_bg   = $this->contrasting_slug( $ctx, $background_slug );
 		$badge_text = $this->text_slug_for_background( $ctx, $badge_bg );
 
+		// className "nfd-max-w-720" for the width/centering (real CSS in
+		// get_motion_css()), not an unbacked inline style — see
+		// RendersMarkup::render_heading()'s note. Padding remains legitimately
+		// inlined, in top/right/bottom/left order.
 		$row_attrs = array(
-			'style' => array(
+			'className' => 'nfd-max-w-720',
+			'style'     => array(
 				'spacing' => array(
 					'padding' => array(
 						'top'    => $ctx->spacing_attr( 'sm' ),
+						'right'  => $ctx->spacing_attr( 'sm' ),
 						'bottom' => $ctx->spacing_attr( 'sm' ),
 						'left'   => $ctx->spacing_attr( 'sm' ),
-						'right'  => $ctx->spacing_attr( 'sm' ),
 					),
 				),
 			),
 		);
-		$row_style = 'max-width:720px;margin-left:auto;margin-right:auto'
-			. ';padding-top:' . $ctx->spacing_css( 'sm' ) . ';padding-bottom:' . $ctx->spacing_css( 'sm' )
-			. ';padding-left:' . $ctx->spacing_css( 'sm' ) . ';padding-right:' . $ctx->spacing_css( 'sm' );
+		$row_style = 'padding-top:' . $ctx->spacing_css( 'sm' ) . ';padding-right:' . $ctx->spacing_css( 'sm' )
+			. ';padding-bottom:' . $ctx->spacing_css( 'sm' ) . ';padding-left:' . $ctx->spacing_css( 'sm' );
 
 		$rows   = '';
 		$number = 0;
@@ -142,7 +146,7 @@ class ProcessSteps implements Archetype {
 			$row_inner .= $this->render_heading( $title, 3, null, true );
 			$row_inner .= $this->render_paragraph( $body, null, true );
 
-			$rows .= $this->comment_wrap( 'group', $row_attrs, '<div class="wp-block-group" style="' . $row_style . '">' . $row_inner . '</div>' );
+			$rows .= $this->comment_wrap( 'group', $row_attrs, '<div class="nfd-max-w-720 wp-block-group" style="' . $row_style . '">' . $row_inner . '</div>' );
 		}
 
 		return $rows;
@@ -187,27 +191,35 @@ class ProcessSteps implements Archetype {
 	 * @return string
 	 */
 	private function render_number_badge( int $number, ?string $bg_slug, ?string $text_slug ): string {
-		$classes = array( 'has-text-align-center' );
-		$attrs   = array( 'align' => 'center' );
-		$style   = 'width:56px;height:56px;line-height:56px;border-radius:9999px;margin-left:auto;margin-right:auto;text-align:center;font-weight:700;font-size:1.25rem';
+		// className "nfd-step-badge" (fixed circle sizing/typography, real CSS
+		// in get_motion_css()), not an unbacked inline style — core/paragraph's
+		// actual save() output is class-only for align/textColor/backgroundColor
+		// and has no shape/size attrs at all. See render_heading()'s note.
+		$classes = array( 'nfd-step-badge', 'has-text-align-center' );
+		$attrs   = array(
+			'className' => 'nfd-step-badge',
+			'align'     => 'center',
+		);
 
 		if ( null !== $bg_slug ) {
 			$classes[]                = 'has-' . $bg_slug . '-background-color';
-			$classes[]                = 'has-background';
 			$attrs['backgroundColor'] = $bg_slug;
-			$style                   .= ';background-color:var(--wp--preset--color--' . $bg_slug . ')';
 		}
 		if ( null !== $text_slug ) {
 			$classes[]          = 'has-' . $text_slug . '-color';
-			$classes[]          = 'has-text-color';
 			$attrs['textColor'] = $text_slug;
-			$style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
+		}
+		if ( null !== $bg_slug ) {
+			$classes[] = 'has-background';
+		}
+		if ( null !== $text_slug ) {
+			$classes[] = 'has-text-color';
 		}
 
 		return $this->comment_wrap(
 			'paragraph',
 			$attrs,
-			'<p class="' . implode( ' ', $classes ) . '" style="' . $style . '">' . $number . '</p>'
+			'<p class="' . implode( ' ', $classes ) . '">' . $number . '</p>'
 		);
 	}
 }

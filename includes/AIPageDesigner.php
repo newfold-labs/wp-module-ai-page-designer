@@ -361,6 +361,10 @@ class AIPageDesigner {
 			' . $sel( '.nfd-banner-strip img' ) . ' { width: 100%; height: 100%; object-fit: cover; }
 			' . $sel( '.nfd-faq-card' ) . ' { border-radius: 12px; padding: 16px 24px; margin-bottom: 16px; }
 			' . $sel( '.nfd-faq-card summary' ) . ' { cursor: pointer; font-weight: 600; }
+			' . $sel( '.nfd-step-badge' ) . ' { width: 56px; height: 56px; line-height: 56px; border-radius: 9999px; margin-left: auto; margin-right: auto; font-weight: 700; font-size: 1.25rem; }
+			' . $sel( '.nfd-avatar-112' ) . ' { display: block; width: 112px; height: 112px; border-radius: 9999px; overflow: hidden; margin-left: auto; margin-right: auto; }
+			' . $sel( '.nfd-avatar-56' ) . ' { display: block; width: 56px; height: 56px; border-radius: 9999px; overflow: hidden; margin-left: auto; margin-right: auto; }
+			' . $sel( '.nfd-avatar-112 img' ) . ', ' . $sel( '.nfd-avatar-56 img' ) . ' { width: 100%; height: 100%; object-fit: cover; }
 		';
 	}
 

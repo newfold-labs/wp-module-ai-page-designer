@@ -129,29 +129,43 @@ class Testimonials implements Archetype {
 
 			$row_inner = '';
 			if ( '' !== $avatar_url ) {
-				$row_inner .= '<div style="text-align:center"><img src="' . $this->esc_url( $avatar_url ) . '" alt="" width="56" height="56" style="border-radius:9999px;object-fit:cover"/></div>';
+				// A real `wp:image` child, not a raw wrapper div/img — see
+				// TeamGrid::render_columns()'s note: a `core/group`'s actual
+				// save() output only ever expects direct, comment-delimited
+				// child blocks. "nfd-avatar-56" (circle-crop/size/centering) is
+				// real CSS in get_motion_css().
+				$row_inner .= $this->comment_wrap(
+					'image',
+					array(
+						'sizeSlug'  => 'large',
+						'className' => 'nfd-avatar-56',
+					),
+					'<figure class="nfd-avatar-56 wp-block-image size-large"><img src="' . $this->esc_url( $avatar_url ) . '" alt=""/></figure>'
+				);
 			}
 			$row_inner .= $this->render_spotlight_quote( $quote, $author, $role );
 
 			// Symmetric on all four sides — top/bottom-only padding is the
 			// exact `asymmetric_padding:group` defect the Validator rejects.
+			// className "nfd-max-w-720" for width/centering, not an unbacked
+			// inline style — see RendersMarkup::render_heading()'s note.
 			$row_attrs = array(
-				'style' => array(
+				'className' => 'nfd-max-w-720',
+				'style'     => array(
 					'spacing' => array(
 						'padding' => array(
 							'top'    => $ctx->spacing_attr( 'sm' ),
+							'right'  => $ctx->spacing_attr( 'sm' ),
 							'bottom' => $ctx->spacing_attr( 'sm' ),
 							'left'   => $ctx->spacing_attr( 'sm' ),
-							'right'  => $ctx->spacing_attr( 'sm' ),
 						),
 					),
 				),
 			);
-			$row_style = 'max-width:720px;margin-left:auto;margin-right:auto'
-				. ';padding-top:' . $ctx->spacing_css( 'sm' ) . ';padding-bottom:' . $ctx->spacing_css( 'sm' )
-				. ';padding-left:' . $ctx->spacing_css( 'sm' ) . ';padding-right:' . $ctx->spacing_css( 'sm' );
+			$row_style = 'padding-top:' . $ctx->spacing_css( 'sm' ) . ';padding-right:' . $ctx->spacing_css( 'sm' )
+				. ';padding-bottom:' . $ctx->spacing_css( 'sm' ) . ';padding-left:' . $ctx->spacing_css( 'sm' );
 
-			$rows .= $this->comment_wrap( 'group', $row_attrs, '<div class="wp-block-group" style="' . $row_style . '">' . $row_inner . '</div>' );
+			$rows .= $this->comment_wrap( 'group', $row_attrs, '<div class="nfd-max-w-720 wp-block-group" style="' . $row_style . '">' . $row_inner . '</div>' );
 		}
 
 		return $rows;
@@ -172,7 +186,28 @@ class Testimonials implements Archetype {
 			$citation .= ', ' . $role;
 		}
 
-		$html = '<p style="font-size:1.375rem;line-height:1.6">' . $this->esc_html( $quote ) . '</p>';
+		// core/quote's actual save() output has no inline style at all — its
+		// text-align is class-only, same as every other block covered by
+		// RendersMarkup::render_heading()'s note — and, in this WP version, its
+		// quoted text is a NESTED wp:paragraph child block, not raw HTML: a
+		// blockquote's own save() only ever expects direct, comment-delimited
+		// children (confirmed live via wp.blocks.parse().isValid, same
+		// structural rule as core/group). The larger statement-piece type IS
+		// legitimately inlined though — style.typography.fontSize/lineHeight
+		// is a real block attribute that core/paragraph's save() does inline
+		// verbatim for a custom (non-preset) value.
+		$html = $this->comment_wrap(
+			'paragraph',
+			array(
+				'style' => array(
+					'typography' => array(
+						'fontSize'   => '1.375rem',
+						'lineHeight' => '1.6',
+					),
+				),
+			),
+			'<p class="" style="font-size:1.375rem;line-height:1.6">' . $this->esc_html( $quote ) . '</p>'
+		);
 		if ( '' !== $citation ) {
 			$html .= '<cite>' . $this->esc_html( $citation ) . '</cite>';
 		}
@@ -180,7 +215,7 @@ class Testimonials implements Archetype {
 		return $this->comment_wrap(
 			'quote',
 			array( 'textAlign' => 'center' ),
-			'<blockquote class="wp-block-quote has-text-align-center" style="text-align:center">' . $html . '</blockquote>'
+			'<blockquote class="wp-block-quote has-text-align-center">' . $html . '</blockquote>'
 		);
 	}
 
@@ -206,7 +241,14 @@ class Testimonials implements Archetype {
 
 			$column_inner = '';
 			if ( '' !== $avatar_url ) {
-				$column_inner .= '<div style="text-align:center"><img src="' . $this->esc_url( $avatar_url ) . '" alt="" width="56" height="56" style="border-radius:9999px;object-fit:cover"/></div>';
+				$column_inner .= $this->comment_wrap(
+				'image',
+				array(
+					'sizeSlug'  => 'large',
+					'className' => 'nfd-avatar-56',
+				),
+				'<figure class="nfd-avatar-56 wp-block-image size-large"><img src="' . $this->esc_url( $avatar_url ) . '" alt=""/></figure>'
+			);
 			}
 			$column_inner .= $this->render_quote( $quote, $author, $role );
 
@@ -234,7 +276,9 @@ class Testimonials implements Archetype {
 			$citation .= ', ' . $role;
 		}
 
-		$html = '<p>' . $this->esc_html( $quote ) . '</p>';
+		// Nested wp:paragraph child, no inline style — see
+		// render_spotlight_quote()'s note.
+		$html = $this->comment_wrap( 'paragraph', array(), '<p>' . $this->esc_html( $quote ) . '</p>' );
 		if ( '' !== $citation ) {
 			$html .= '<cite>' . $this->esc_html( $citation ) . '</cite>';
 		}
@@ -242,7 +286,7 @@ class Testimonials implements Archetype {
 		return $this->comment_wrap(
 			'quote',
 			array( 'textAlign' => 'center' ),
-			'<blockquote class="wp-block-quote has-text-align-center" style="text-align:center">' . $html . '</blockquote>'
+			'<blockquote class="wp-block-quote has-text-align-center">' . $html . '</blockquote>'
 		);
 	}
 }

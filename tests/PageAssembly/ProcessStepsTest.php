@@ -55,7 +55,7 @@ class ProcessStepsTest extends PageAssemblyTestCase {
 		$out   = $steps->render( $this->content(), 'numbered', $this->context(), null );
 
 		// Circular badges numbered 1..3.
-		$this->assertSame( 3, substr_count( $out, 'border-radius:9999px' ) );
+		$this->assertSame( 3, substr_count( $out, 'class="nfd-step-badge' ) );
 		$this->assertStringContainsString( '>1</p>', $out );
 		$this->assertStringContainsString( '>2</p>', $out );
 		$this->assertStringContainsString( '>3</p>', $out );
@@ -92,7 +92,7 @@ class ProcessStepsTest extends PageAssemblyTestCase {
 		$out   = $steps->render( $this->content(), 'vertical', $this->context(), null );
 
 		$this->assertStringNotContainsString( '<!-- wp:columns', $out );
-		$this->assertSame( 3, substr_count( $out, 'max-width:720px' ) );
+		$this->assertSame( 3, substr_count( $out, 'class="nfd-max-w-720' ) );
 		// Badges stay sequential real paragraph blocks.
 		$this->assertStringContainsString( '>1</p>', $out );
 		$this->assertStringContainsString( '>3</p>', $out );

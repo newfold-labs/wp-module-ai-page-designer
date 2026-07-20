@@ -248,29 +248,35 @@ class PricingTiers implements Archetype {
 	 * @return string
 	 */
 	private function render_card( string $content, string $card_slug, ?string $text_slug, Context $ctx ): string {
-		$classes = array( 'wp-block-group', 'has-' . $card_slug . '-background-color', 'has-background' );
-		$style   = 'padding-top:' . $ctx->spacing_css( 'md' ) . ';padding-bottom:' . $ctx->spacing_css( 'md' )
-			. ';padding-left:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' )
-			. ';background-color:var(--wp--preset--color--' . $card_slug . ')';
-		$attrs   = array(
-			'backgroundColor' => $card_slug,
-			'style'           => array(
+		// No inline background-color/color, padding in top/right/bottom/left
+		// order, text-color class before background-color class — see
+		// RendersMarkup::render_heading()'s note.
+		$attrs = array(
+			'style' => array(
 				'spacing' => array(
 					'padding' => array(
 						'top'    => $ctx->spacing_attr( 'md' ),
+						'right'  => $ctx->spacing_attr( 'md' ),
 						'bottom' => $ctx->spacing_attr( 'md' ),
 						'left'   => $ctx->spacing_attr( 'md' ),
-						'right'  => $ctx->spacing_attr( 'md' ),
 					),
 				),
 			),
 		);
+		$classes = array( 'wp-block-group' );
 		if ( null !== $text_slug ) {
 			$classes[]          = 'has-' . $text_slug . '-color';
-			$classes[]          = 'has-text-color';
 			$attrs['textColor'] = $text_slug;
-			$style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
 		}
+		$classes[]                = 'has-' . $card_slug . '-background-color';
+		$attrs['backgroundColor'] = $card_slug;
+		if ( null !== $text_slug ) {
+			$classes[] = 'has-text-color';
+		}
+		$classes[] = 'has-background';
+
+		$style = 'padding-top:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' )
+			. ';padding-bottom:' . $ctx->spacing_css( 'md' ) . ';padding-left:' . $ctx->spacing_css( 'md' );
 
 		return $this->comment_wrap( 'group', $attrs, '<div class="' . implode( ' ', $classes ) . '" style="' . $style . '">' . $content . '</div>' );
 	}
