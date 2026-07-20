@@ -107,7 +107,7 @@ class FeatureGridTest extends PageAssemblyTestCase {
 		$grid = new FeatureGrid();
 		$out  = $grid->render( $this->content(), 'floating-cards', $this->context(), null );
 
-		$this->assertSame( 3, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertSame( 3, substr_count( $out, 'class="card-hover-lift' ) );
 		$this->assertStringContainsString( 'Ethically sourced', $out );
 	}
 
@@ -115,7 +115,7 @@ class FeatureGridTest extends PageAssemblyTestCase {
 		$grid = new FeatureGrid();
 		$out  = $grid->render( $this->content(), 'cards-3', $this->context(), null );
 
-		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
 	}
 
 	public function test_floating_cards_variant_is_correct_by_construction_with_and_without_background(): void {
@@ -142,7 +142,7 @@ class FeatureGridTest extends PageAssemblyTestCase {
 		$out  = $grid->render( $this->content(), 'accent-bar', $this->context(), null );
 
 		$this->assertSame( 3, substr_count( $out, '<!-- wp:separator ' ) );
-		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
 		$this->assertStringContainsString( 'Ethically sourced', $out );
 	}
 
@@ -159,7 +159,7 @@ class FeatureGridTest extends PageAssemblyTestCase {
 		$grid = new FeatureGrid();
 		$out  = $grid->render( $this->content(), 'panel', $this->context(), null );
 
-		$this->assertSame( 1, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertSame( 1, substr_count( $out, 'class="card-hover-lift' ) );
 		$this->assertSame( 3, substr_count( $out, '<!-- wp:column ' ) );
 	}
 

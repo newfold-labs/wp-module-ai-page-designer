@@ -241,11 +241,6 @@ class AIPageDesigner {
 			if ( ! isset( $attributes['class'] ) ) {
 				$allowed_html[ $tag ]['class'] = true;
 			}
-			// Allow data-aos and data-aos-* attributes for scroll animations
-			$allowed_html[ $tag ]['data-aos']          = true;
-			$allowed_html[ $tag ]['data-aos-duration'] = true;
-			$allowed_html[ $tag ]['data-aos-delay']    = true;
-			$allowed_html[ $tag ]['data-aos-offset']   = true;
 		}
 
 		return $allowed_html;
@@ -293,8 +288,15 @@ class AIPageDesigner {
 	 *
 	 * This is the single source of truth for every motion class the AI/archetypes
 	 * may emit (`fade-in`, `slide-up`, `bounce-in`, `scale-in`, `fade-in-delay-1/2/3`,
-	 * `pulse-hover`, `glow-hover`, `card-hover-lift`, `data-aos`). Previously the
-	 * preview and front-end each hand-maintained their own copy of this list and
+	 * `pulse-hover`, `glow-hover`, `card-hover-lift`, `nfd-scroll-fade`) plus the
+	 * decorative shell classes (`nfd-max-w-640/720`, `nfd-rounded-img`,
+	 * `nfd-accent-bar`) that replaced the archetypes' old unbacked inline styles
+	 * — a raw inline style with no matching block attribute fails Gutenberg's own
+	 * re-validation in the editor even when it renders correctly, so anything
+	 * purely decorative now goes through a real className instead (see
+	 * `RendersMarkup::render_heading()`'s note). `nfd-scroll-fade` itself replaced
+	 * a `data-aos="fade-up"` attribute for the same reason: a bare `data-*`
+	 * attribute isn't a validated block attribute either. Previously the
 	 * drifted — `pulse-hover`/`glow-hover` existed only in the preview's copy, so
 	 * those classes animated in the editor but did nothing on the published page.
 	 * Adding a class here now updates both surfaces at once; it cannot drift again.
@@ -344,10 +346,16 @@ class AIPageDesigner {
 			' . $sel( '.pulse-hover:hover' ) . ' { animation: ' . $pulse . ' 1s infinite; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
 			' . $sel( '.glow-hover' ) . ' { transition: all 0.3s ease; }
 			' . $sel( '.glow-hover:hover' ) . ' { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6), 0 0 60px rgba(59, 130, 246, 0.4); }
-			' . $sel( '.card-hover-lift' ) . ' { transition: all 0.3s ease; }
+			' . $sel( '.card-hover-lift' ) . ' { border-radius: 16px; box-shadow: 0 20px 60px -15px rgba(0,0,0,.35); overflow: hidden; transition: all 0.3s ease; }
 			' . $sel( '.card-hover-lift:hover' ) . ' { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
-			' . $sel( '[data-aos]' ) . ' { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
-			' . $sel( '[data-aos].aos-animate' ) . ' { opacity: 1; transform: translateY(0); }
+			' . $sel( '.nfd-scroll-fade' ) . ' { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
+			' . $sel( '.nfd-scroll-fade.aos-animate' ) . ' { opacity: 1; transform: translateY(0); }
+			' . $sel( '.nfd-max-w-640' ) . ' { max-width: 640px; margin-left: auto; margin-right: auto; }
+			' . $sel( '.nfd-max-w-720' ) . ' { max-width: 720px; margin-left: auto; margin-right: auto; }
+			' . $sel( '.nfd-rounded-img' ) . ' { border-radius: 16px; overflow: hidden; box-shadow: 0 12px 32px -12px rgba(0,0,0,.25); }
+			' . $sel( '.nfd-rounded-img img' ) . ' { width: 100%; height: 100%; object-fit: cover; }
+			' . $sel( '.nfd-accent-bar' ) . ' { width: 48px; height: 4px; border: none; margin: 0 0 16px 0; }
+			' . $sel( '.nfd-accent-bar.nfd-accent-bar-center' ) . ' { margin-left: auto; margin-right: auto; }
 		';
 	}
 
@@ -448,13 +456,12 @@ class AIPageDesigner {
 				var observer = new IntersectionObserver(function(entries){
 					entries.forEach(function(entry){
 						if(entry.isIntersecting){
-							var delay = parseInt(entry.target.getAttribute("data-aos-delay")||"0",10);
-							setTimeout(function(){ entry.target.classList.add("aos-animate"); }, delay);
+							entry.target.classList.add("aos-animate");
 							observer.unobserve(entry.target);
 						}
 					});
 				},{threshold:0});
-				document.querySelectorAll(".entry-content [data-aos], .wp-block-post-content [data-aos]").forEach(function(el){ observer.observe(el); });
+				document.querySelectorAll(".entry-content .nfd-scroll-fade, .wp-block-post-content .nfd-scroll-fade").forEach(function(el){ observer.observe(el); });
 			})()'
 		);
 	}

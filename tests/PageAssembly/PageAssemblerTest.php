@@ -124,7 +124,7 @@ class PageAssemblerTest extends PageAssemblyTestCase {
 		// featureGrid's default floating-card variant nests further wp:group
 		// cards (which legitimately carry their own backgroundColor), so
 		// counting/inspecting every group would misfire.
-		preg_match_all( '/<!-- wp:group \{"align":"wide".*? -->/', $out, $matches );
+		preg_match_all( '/<!-- wp:group \{"className":"nfd-scroll-fade","align":"wide".*? -->/', $out, $matches );
 		$section_opens = $matches[0];
 		$this->assertCount( 2, $section_opens );
 		$this->assertStringNotContainsString( '"backgroundColor"', $section_opens[0] );

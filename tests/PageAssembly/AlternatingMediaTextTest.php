@@ -101,16 +101,14 @@ class AlternatingMediaTextTest extends PageAssemblyTestCase {
 		$alt = new AlternatingMediaText();
 		$out = $alt->render( $this->content(), null, $this->context(), null );
 
-		$this->assertStringContainsString( 'border-radius:16px', $out );
-		$this->assertStringContainsString( 'box-shadow', $out );
+		$this->assertStringContainsString( 'class="nfd-rounded-img', $out );
 	}
 
 	public function test_flat_variant_keeps_unstyled_images(): void {
 		$alt = new AlternatingMediaText();
 		$out = $alt->render( $this->content(), 'flat', $this->context(), null );
 
-		$this->assertStringNotContainsString( 'border-radius:16px', $out );
-		$this->assertStringNotContainsString( 'box-shadow', $out );
+		$this->assertStringNotContainsString( 'class="nfd-rounded-img', $out );
 	}
 
 	public function test_flat_variant_is_correct_by_construction(): void {

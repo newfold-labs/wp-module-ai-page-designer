@@ -1295,7 +1295,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
               // out-cascade the srcdoc's blanket transition:none streaming rule
               // (same specificity, later in the document, so it wins).
               // The [data-nfd-streaming] variants match the specificity of the
-              // srcdoc's streaming rules (e.g. its [data-aos]{opacity:1
+              // srcdoc's streaming rules (e.g. its .nfd-scroll-fade{opacity:1
               // !important} guard, which sections now carry) so this later
               // stylesheet wins the cascade and the hide actually hides.
               st.textContent =

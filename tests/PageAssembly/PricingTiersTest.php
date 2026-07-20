@@ -97,7 +97,7 @@ class PricingTiersTest extends PageAssemblyTestCase {
 		$pricing = new PricingTiers();
 		$out     = $pricing->render( $this->content(), 'cards', $this->context(), null );
 
-		$this->assertSame( 2, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertSame( 2, substr_count( $out, 'class="card-hover-lift' ) );
 	}
 
 	public function test_cards_variant_highlighted_tier_keeps_the_loud_accent_card(): void {
@@ -121,7 +121,7 @@ class PricingTiersTest extends PageAssemblyTestCase {
 		$pricing = new PricingTiers();
 		$out     = $pricing->render( $this->content(), '3-tier', $this->context(), null );
 
-		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
 	}
 
 	public function test_accent_bar_variant_bars_plain_tiers_and_cards_the_highlighted_one(): void {
@@ -131,7 +131,7 @@ class PricingTiersTest extends PageAssemblyTestCase {
 
 		// One plain tier gets the bar; the highlighted tier keeps the loud card.
 		$this->assertSame( 1, substr_count( $out, '<!-- wp:separator ' ) );
-		$this->assertSame( 1, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertSame( 1, substr_count( $out, 'class="card-hover-lift' ) );
 		$this->assertStringContainsString( '"backgroundColor":"' . $ctx->accent_slug() . '"', $out );
 	}
 

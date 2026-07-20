@@ -95,6 +95,6 @@ class ArchetypeRegistryTest extends PageAssemblyTestCase {
 
 		$legacy = $grid->render( $content, 'cards-3', $ctx, null );
 		$this->assertNotSame( $grid->render( $content, null, $ctx, null ), $legacy );
-		$this->assertStringNotContainsString( 'border-radius:16px', $legacy );
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $legacy );
 	}
 }

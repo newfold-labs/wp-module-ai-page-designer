@@ -75,7 +75,7 @@ class CtaBannerTest extends PageAssemblyTestCase {
 		$ctx = $this->context();
 		$out = $cta->render( $this->content(), 'floating-card', $ctx, $cta->default_background( $ctx ) );
 
-		$this->assertStringContainsString( 'border-radius:16px', $out );
+		$this->assertStringContainsString( 'class="card-hover-lift', $out );
 		$this->assertStringContainsString( 'Ready to start?', $out );
 		$this->assertStringContainsString( 'Join today.', $out );
 		$this->assertStringContainsString( 'Sign up', $out );
@@ -87,7 +87,7 @@ class CtaBannerTest extends PageAssemblyTestCase {
 		$out = $cta->render( $this->content(), 'split', $ctx, $cta->default_background( $ctx ) );
 
 		$this->assertSame( 2, substr_count( $out, '<!-- wp:column ' ) );
-		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
 		$this->assertStringNotContainsString( '"width"', $out );
 		$this->assertStringContainsString( 'Ready to start?', $out );
 		$this->assertStringContainsString( 'Sign up', $out );

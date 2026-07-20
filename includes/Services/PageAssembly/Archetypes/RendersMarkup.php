@@ -158,29 +158,31 @@ trait RendersMarkup {
 	 * @return string
 	 */
 	private function render_heading( string $text, int $level, ?string $text_slug, bool $center = false ): string {
-		$classes      = array( 'wp-block-heading' );
-		$attrs        = array( 'level' => $level );
-		$declarations = array();
+		// Class order and the absence of any inline style here are load-bearing:
+		// WordPress's own core/heading save() never inlines text-align or a
+		// named/preset text color — both are class-only — and it puts the
+		// align class BEFORE "wp-block-heading". Anything else fails Gutenberg's
+		// own re-validation in the editor ("Block contains unexpected or invalid
+		// content") even though the rendered result looks identical, because the
+		// stored HTML no longer matches what save() would regenerate from these
+		// attrs. Confirmed against this WP version's actual validator output.
+		$classes = array();
+		$attrs   = array( 'level' => $level );
 		if ( $center ) {
 			$classes[]          = 'has-text-align-center';
 			$attrs['textAlign'] = 'center';
-			// Inline fallback: the has-text-align-center RULE ships with the
-			// heading block's own CSS, which block themes load per page — the
-			// preview's copied front-page styles may not include it.
-			$declarations[] = 'text-align:center';
 		}
+		$classes[] = 'wp-block-heading';
 		if ( null !== $text_slug ) {
 			$classes[]          = 'has-' . $text_slug . '-color';
 			$classes[]          = 'has-text-color';
 			$attrs['textColor'] = $text_slug;
-			$declarations[]     = 'color:var(--wp--preset--color--' . $text_slug . ')';
 		}
-		$style = empty( $declarations ) ? '' : ' style="' . implode( ';', $declarations ) . '"';
 		$tag = 'h' . $level;
 		return $this->comment_wrap(
 			'heading',
 			$attrs,
-			"<{$tag} class=\"" . implode( ' ', $classes ) . "\"{$style}>" . $this->esc_html( $text ) . "</{$tag}>"
+			"<{$tag} class=\"" . implode( ' ', $classes ) . "\">" . $this->esc_html( $text ) . "</{$tag}>"
 		);
 	}
 
@@ -193,27 +195,25 @@ trait RendersMarkup {
 	 * @return string
 	 */
 	private function render_paragraph( string $text, ?string $text_slug, bool $center = false ): string {
-		$classes      = array();
-		$attrs        = array();
-		$declarations = array();
+		// No inline style here either — see render_heading()'s note; core/paragraph's
+		// save() is class-only for align/textColor too, and this class order
+		// (align, then color) already matches its output.
+		$classes = array();
+		$attrs   = array();
 		if ( $center ) {
 			$classes[]      = 'has-text-align-center';
 			$attrs['align'] = 'center';
-			// Same inline fallback rationale as render_heading().
-			$declarations[] = 'text-align:center';
 		}
 		if ( null !== $text_slug ) {
 			$classes[]          = 'has-' . $text_slug . '-color';
 			$classes[]          = 'has-text-color';
 			$attrs['textColor'] = $text_slug;
-			$declarations[]     = 'color:var(--wp--preset--color--' . $text_slug . ')';
 		}
-		$style = empty( $declarations ) ? '' : ' style="' . implode( ';', $declarations ) . '"';
 		$class_attr = empty( $classes ) ? '' : ' class="' . implode( ' ', $classes ) . '"';
 		return $this->comment_wrap(
 			'paragraph',
 			$attrs,
-			"<p{$class_attr}{$style}>" . $this->esc_html( $text ) . '</p>'
+			"<p{$class_attr}>" . $this->esc_html( $text ) . '</p>'
 		);
 	}
 
@@ -228,30 +228,36 @@ trait RendersMarkup {
 	 * @return string
 	 */
 	private function render_button( string $label, string $url, ?string $bg_slug, ?string $text_slug, bool $outline = false ): string {
-		$classes = array( 'wp-block-button__link', 'wp-element-button' );
+		// No inline style, and this exact class order (link class, then text-color
+		// slug, then background-color slug, then the two "has-*" markers, then
+		// wp-element-button last; outline modifier before "wp-block-button" on the
+		// wrapper) — matches core/button's actual save() output for named/preset
+		// colors. See render_heading()'s note.
+		$classes = array( 'wp-block-button__link' );
 		$attrs   = array();
-		$style   = array();
 
 		if ( $outline ) {
 			$attrs['className'] = 'is-style-outline';
 		}
-		if ( null !== $bg_slug ) {
-			$classes[]                = 'has-' . $bg_slug . '-background-color';
-			$classes[]                = 'has-background';
-			$attrs['backgroundColor'] = $bg_slug;
-			$style[]                  = 'background-color:var(--wp--preset--color--' . $bg_slug . ')';
-		}
 		if ( null !== $text_slug ) {
 			$classes[]          = 'has-' . $text_slug . '-color';
-			$classes[]          = 'has-text-color';
 			$attrs['textColor'] = $text_slug;
-			$style[]            = 'color:var(--wp--preset--color--' . $text_slug . ')';
 		}
+		if ( null !== $bg_slug ) {
+			$classes[]                = 'has-' . $bg_slug . '-background-color';
+			$attrs['backgroundColor'] = $bg_slug;
+		}
+		if ( null !== $text_slug ) {
+			$classes[] = 'has-text-color';
+		}
+		if ( null !== $bg_slug ) {
+			$classes[] = 'has-background';
+		}
+		$classes[] = 'wp-element-button';
 
-		$style_attr    = empty( $style ) ? '' : ' style="' . implode( ';', $style ) . '"';
-		$wrapper_class = 'wp-block-button' . ( $outline ? ' is-style-outline' : '' );
+		$wrapper_class = ( $outline ? 'is-style-outline ' : '' ) . 'wp-block-button';
 
-		$link = '<a class="' . implode( ' ', $classes ) . '" href="' . $this->esc_url( $url ) . '"' . $style_attr . '>' . $this->esc_html( $label ) . '</a>';
+		$link = '<a class="' . implode( ' ', $classes ) . '" href="' . $this->esc_url( $url ) . '">' . $this->esc_html( $label ) . '</a>';
 
 		return $this->comment_wrap( 'button', $attrs, '<div class="' . $wrapper_class . '">' . $link . '</div>' );
 	}
@@ -270,36 +276,42 @@ trait RendersMarkup {
 		if ( $center ) {
 			$attrs['layout']['justifyContent'] = 'center';
 		}
-		// The layout attr alone only lays the row out when WordPress generates
-		// layout CSS for it — which the raw-markup preview never does (block
-		// themes load core block CSS per page, so the preview's copied front-page
-		// styles may not include the buttons rules at all) and the front-end does
-		// inconsistently for static markup. Emit the flex layout as classes +
-		// inline styles too — for EVERY row, not just centered ones: a
-		// non-centered row without them renders as unpositioned blocks that
-		// overlap under the entrance transform.
-		$classes = 'wp-block-buttons is-layout-flex wp-block-buttons-is-layout-flex' . ( $center ? ' is-content-justification-center' : '' );
-		$style   = ' style="display:flex;flex-wrap:wrap;gap:0.5em;align-items:center;justify-content:' . ( $center ? 'center' : 'flex-start' ) . '"';
-		return $this->comment_wrap( 'buttons', $attrs, '<div class="' . $classes . '"' . $style . '>' . $buttons_html . '</div>' );
+		// No inline style, and this exact class order — core/buttons' actual
+		// save() output for a flex layout never inlines display/gap/justify-content
+		// (WordPress generates that CSS separately at render time from the
+		// `layout` attr); it only emits these classes, in this order, with
+		// "wp-block-buttons" LAST. See render_heading()'s note. The raw-markup
+		// preview iframe doesn't get that generated CSS (block themes load it
+		// per-page), so usePreviewIframe.ts's fallback stylesheet reproduces the
+		// same flex/gap visuals there instead of inlining them into saved markup.
+		$classes = 'is-layout-flex wp-block-buttons-is-layout-flex' . ( $center ? ' is-content-justification-center' : '' ) . ' wp-block-buttons';
+		return $this->comment_wrap( 'buttons', $attrs, '<div class="' . $classes . '">' . $buttons_html . '</div>' );
 	}
 
 	/**
 	 * Wrap `core/column` blocks in a `core/columns` row with a comfortable gap
-	 * between the columns and (optionally) vertical centering. WordPress applies
-	 * a column's default gap via generated layout CSS that the raw-markup preview
-	 * doesn't render, so the gap and alignment are ALSO emitted as inline styles
-	 * here — otherwise the columns render flush against each other in the preview
-	 * (the "no spacing between the image and text" issue). Kept as an explicit
-	 * inline `gap`/`align-items` so preview and published front-end match (WYSIWYG).
+	 * between the columns and (optionally) vertical centering.
 	 *
 	 * @param string  $columns_html      Concatenated `core/column` block markup.
 	 * @param Context $ctx               Theme/conformance context.
 	 * @param bool    $vertically_center Whether to vertically centre the columns.
 	 * @param string  $gap_size          Logical spacing size for the inter-column gap.
-	 * @param bool    $center_group      Whether to horizontally centre the column row as a group.
+	 * @param bool    $center_group      Currently a no-op: core/columns has no WordPress-native
+	 *                                   way to horizontally centre an under-filled row without
+	 *                                   an inline style that fails Gutenberg's own block
+	 *                                   validation (see render_heading()'s note), so this no
+	 *                                   longer affects the saved markup. Kept in the signature
+	 *                                   since callers still pass it.
 	 * @return string
 	 */
 	private function render_columns_wrap( string $columns_html, Context $ctx, bool $vertically_center = true, string $gap_size = 'md', bool $center_group = false ): string {
+		// No inline style here either — core/columns' actual save() output never
+		// inlines the blockGap/flex/align-items CSS (WordPress generates it
+		// separately at render time from the `style.spacing.blockGap` /
+		// `verticalAlignment` attrs); it's class-only. See render_heading()'s
+		// note. usePreviewIframe.ts's fallback stylesheet covers the raw-markup
+		// preview instead. $center_group has no WordPress attrs equivalent for a
+		// columns row, so it no longer affects the saved markup.
 		$attrs   = array(
 			'style' => array(
 				'spacing' => array(
@@ -308,19 +320,11 @@ trait RendersMarkup {
 			),
 		);
 		$classes = array( 'wp-block-columns' );
-		// display:flex inline for the same reason as the gap below — the
-		// columns block's own flex rule ships in per-page block CSS that the
-		// preview's copied front-page styles may not include (block themes).
-		$style   = 'display:flex;gap:' . $ctx->spacing_css( $gap_size );
 		if ( $vertically_center ) {
 			$attrs['verticalAlignment'] = 'center';
 			$classes[]                  = 'are-vertically-aligned-center';
-			$style                     .= ';align-items:center';
 		}
-		if ( $center_group ) {
-			$style .= ';justify-content:center';
-		}
-		return $this->comment_wrap( 'columns', $attrs, '<div class="' . implode( ' ', $classes ) . '" style="' . $style . '">' . $columns_html . '</div>' );
+		return $this->comment_wrap( 'columns', $attrs, '<div class="' . implode( ' ', $classes ) . '">' . $columns_html . '</div>' );
 	}
 
 	/**
@@ -340,34 +344,50 @@ trait RendersMarkup {
 	private function render_section( ?string $heading, ?string $intro, string $inner, Context $ctx, ?string $background_slug ): string {
 		$text_slug = $this->text_slug_for_background( $ctx, $background_slug );
 
+		// No inline background-color/color, and padding declared in top, right,
+		// bottom, left order — see render_heading()'s note; core/group's actual
+		// save() output for named/preset colors is class-only, and inlines
+		// padding (the one property it does inline) in that exact order.
+		// className "nfd-scroll-fade" (always first in the class list, before
+		// "wp-block-group" — matches how a custom className is actually
+		// serialized) replaces the old `data-aos="fade-up"` attribute: a raw
+		// data-* attribute has no block-attribute backing and fails Gutenberg's
+		// own validation just like the inline styles did, but a declared
+		// className is a real, validated block attribute. The preview iframe
+		// and the published front-end both still run an IntersectionObserver
+		// keyed off this class (see get_motion_css()/usePreviewIframe.ts), so
+		// the scroll-triggered fade-up entrance is unchanged visually.
 		$group_attrs   = array(
-			'align' => 'wide',
-			'style' => array(
+			'className' => 'nfd-scroll-fade',
+			'align'     => 'wide',
+			'style'     => array(
 				'spacing' => array(
 					'padding' => array(
 						'top'    => $ctx->spacing_attr( 'lg' ),
+						'right'  => $ctx->spacing_attr( 'md' ),
 						'bottom' => $ctx->spacing_attr( 'lg' ),
 						'left'   => $ctx->spacing_attr( 'md' ),
-						'right'  => $ctx->spacing_attr( 'md' ),
 					),
 				),
 			),
 		);
-		$group_classes = array( 'wp-block-group', 'alignwide' );
-		$group_style   = 'padding-top:' . $ctx->spacing_css( 'lg' ) . ';padding-bottom:' . $ctx->spacing_css( 'lg' )
-			. ';padding-left:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' );
+		$group_classes = array( 'nfd-scroll-fade', 'wp-block-group', 'alignwide' );
+		$group_style   = 'padding-top:' . $ctx->spacing_css( 'lg' ) . ';padding-right:' . $ctx->spacing_css( 'md' )
+			. ';padding-bottom:' . $ctx->spacing_css( 'lg' ) . ';padding-left:' . $ctx->spacing_css( 'md' );
 
-		if ( null !== $background_slug ) {
-			$group_attrs['backgroundColor'] = $background_slug;
-			$group_classes[]                = 'has-' . $background_slug . '-background-color';
-			$group_classes[]                = 'has-background';
-			$group_style                   .= ';background-color:var(--wp--preset--color--' . $background_slug . ')';
-		}
 		if ( null !== $text_slug ) {
 			$group_attrs['textColor'] = $text_slug;
 			$group_classes[]          = 'has-' . $text_slug . '-color';
-			$group_classes[]          = 'has-text-color';
-			$group_style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
+		}
+		if ( null !== $background_slug ) {
+			$group_attrs['backgroundColor'] = $background_slug;
+			$group_classes[]                = 'has-' . $background_slug . '-background-color';
+		}
+		if ( null !== $text_slug ) {
+			$group_classes[] = 'has-text-color';
+		}
+		if ( null !== $background_slug ) {
+			$group_classes[] = 'has-background';
 		}
 
 		$content = '';
@@ -379,14 +399,10 @@ trait RendersMarkup {
 		}
 		$content .= $inner;
 
-		// data-aos: scroll-triggered entrance from the canonical motion
-		// vocabulary — the preview iframe and the published front-end both run
-		// an IntersectionObserver for it, so the section fades up once when it
-		// enters the viewport on BOTH surfaces (WYSIWYG), and never loops.
 		return $this->comment_wrap(
 			'group',
 			$group_attrs,
-			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '" data-aos="fade-up">' . $content . '</div>'
+			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '">' . $content . '</div>'
 		);
 	}
 
@@ -402,14 +418,15 @@ trait RendersMarkup {
 	 * a jarring role jump (e.g. dark-to-accent, which reads as "colors that
 	 * don't match the theme" against some palettes).
 	 *
-	 * Deliberately never set as a `backgroundColor` *attribute* (only ever as a
-	 * raw inline `style` declaration) — {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Validator::check_non_solid_colors()}
+	 * Deliberately never set as a `backgroundColor` *attribute* — {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Validator::check_non_solid_colors()}
 	 * only inspects the `textColor`/`backgroundColor` JSON attrs for non-solid
-	 * values, never arbitrary inline CSS, so this is safe by construction as
-	 * long as the block's own `backgroundColor` attr/class still carries a real
-	 * solid slug (for editor/recolor compatibility) and this declaration is
-	 * emitted *after* that solid `background-color:` declaration in the same
-	 * style string, so it wins the cascade.
+	 * values, never `style.color.gradient`, so this is safe by construction.
+	 * It IS set as a real `style.color.gradient` block attribute (not a bare
+	 * inline style with no attrs backing) — confirmed against this WP version's
+	 * actual block validator, `core/group`'s save() output inlines a *custom*
+	 * (non-preset) gradient value from that attr verbatim, so this round-trips
+	 * cleanly through Gutenberg's own re-validation, unlike an unbacked inline
+	 * style (see render_heading()'s note).
 	 *
 	 * @param Context     $ctx     Theme/conformance context.
 	 * @param string|null $bg_slug Anchor background slug, or null for the dark fallback.
@@ -470,48 +487,60 @@ trait RendersMarkup {
 	 * @return string
 	 */
 	private function render_gradient_section( string $inner, Context $ctx, ?string $background_slug ): string {
+		// Same no-inline-color / top,right,bottom,left padding order / class
+		// order / className-based scroll-fade rationale as render_section().
 		$group_attrs   = array(
-			'align' => 'wide',
-			'style' => array(
+			'className' => 'nfd-scroll-fade',
+			'align'     => 'wide',
+			'style'     => array(
 				'spacing' => array(
 					'padding' => array(
 						'top'    => $ctx->spacing_attr( 'lg' ),
+						'right'  => $ctx->spacing_attr( 'md' ),
 						'bottom' => $ctx->spacing_attr( 'lg' ),
 						'left'   => $ctx->spacing_attr( 'md' ),
-						'right'  => $ctx->spacing_attr( 'md' ),
 					),
 				),
 			),
 		);
-		$group_classes = array( 'wp-block-group', 'alignwide' );
-		$group_style   = 'padding-top:' . $ctx->spacing_css( 'lg' ) . ';padding-bottom:' . $ctx->spacing_css( 'lg' )
-			. ';padding-left:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' );
+		$group_classes = array( 'nfd-scroll-fade', 'wp-block-group', 'alignwide' );
 
 		$text_slug = $this->text_slug_for_background( $ctx, $background_slug );
+		$gradient  = $this->gradient_style_declaration( $ctx, $background_slug );
 
-		if ( null !== $background_slug ) {
-			$group_attrs['backgroundColor'] = $background_slug;
-			$group_classes[]                = 'has-' . $background_slug . '-background-color';
-			$group_classes[]                = 'has-background';
-			$group_style                   .= ';background-color:var(--wp--preset--color--' . $background_slug . ')';
-		}
 		if ( null !== $text_slug ) {
 			$group_attrs['textColor'] = $text_slug;
 			$group_classes[]          = 'has-' . $text_slug . '-color';
-			$group_classes[]          = 'has-text-color';
-			$group_style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
 		}
-
-		$gradient = $this->gradient_style_declaration( $ctx, $background_slug );
+		// A gradient replaces the solid backgroundColor attr/class entirely —
+		// confirmed against the real block validator, core/group's save()
+		// drops the solid color class whenever style.color.gradient is set, so
+		// declaring both would itself be a mismatch.
 		if ( '' !== $gradient ) {
-			$group_style .= ';' . $gradient;
+			$group_attrs['style']['color'] = array( 'gradient' => $gradient );
+		} elseif ( null !== $background_slug ) {
+			$group_attrs['backgroundColor'] = $background_slug;
+			$group_classes[]                = 'has-' . $background_slug . '-background-color';
+		}
+		if ( null !== $text_slug ) {
+			$group_classes[] = 'has-text-color';
+		}
+		if ( '' !== $gradient || null !== $background_slug ) {
+			$group_classes[] = 'has-background';
 		}
 
-		// Same scroll-triggered entrance as render_section() — see there.
+		// No inline background-color here even in the solid-color fallback —
+		// same as render_section(): a named/preset backgroundColor is class-only
+		// in core/group's actual save() output. Only the gradient (a genuinely
+		// custom value) and padding are ever inlined.
+		$group_style = '' !== $gradient ? $gradient . ';' : '';
+		$group_style .= 'padding-top:' . $ctx->spacing_css( 'lg' ) . ';padding-right:' . $ctx->spacing_css( 'md' )
+			. ';padding-bottom:' . $ctx->spacing_css( 'lg' ) . ';padding-left:' . $ctx->spacing_css( 'md' );
+
 		return $this->comment_wrap(
 			'group',
 			$group_attrs,
-			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '" data-aos="fade-up">' . $inner . '</div>'
+			'<div class="' . implode( ' ', $group_classes ) . '" style="' . $group_style . '">' . $inner . '</div>'
 		);
 	}
 
@@ -530,42 +559,51 @@ trait RendersMarkup {
 	 * @return string
 	 */
 	private function render_floating_card( string $inner, Context $ctx, ?string $card_slug, ?string $text_slug, ?int $max_width = null ): string {
+		// className "card-hover-lift" (always first in the class list — see
+		// render_heading()'s note on custom className ordering) is real,
+		// enqueued CSS: AIPageDesigner.php's get_motion_css() carries the
+		// hover-gated lift/shadow transition (both preview and front-end), and
+		// its own resting-state rule (border-radius/shadow/overflow — see the
+		// same stylesheet) replaces what used to be inlined here directly.
+		// $max_width maps to a small fixed set of "nfd-max-w-{n}" classes for
+		// the same reason: WordPress's own core/group save() never inlines
+		// max-width/margin for a bare group with no matching attr, so an
+		// unbacked inline style here would fail Gutenberg's re-validation just
+		// like the color/align ones did.
+		$classes = array( 'card-hover-lift' );
+		if ( null !== $max_width ) {
+			$classes[] = 'nfd-max-w-' . $max_width;
+		}
 		$group_attrs   = array(
-			// card-hover-lift: hover-gated motion from the canonical vocabulary
-			// (subtle lift + shadow on hover, defined by get_motion_css() for
-			// both preview and front-end). Hover-only — never plays on load,
-			// never loops.
-			'className' => 'card-hover-lift',
+			'className' => implode( ' ', $classes ),
 			'style'     => array(
 				'spacing' => array(
 					'padding' => array(
 						'top'    => $ctx->spacing_attr( 'md' ),
+						'right'  => $ctx->spacing_attr( 'md' ),
 						'bottom' => $ctx->spacing_attr( 'md' ),
 						'left'   => $ctx->spacing_attr( 'md' ),
-						'right'  => $ctx->spacing_attr( 'md' ),
 					),
 				),
 			),
 		);
-		$group_classes = array( 'wp-block-group', 'card-hover-lift' );
-		$group_style   = 'padding-top:' . $ctx->spacing_css( 'md' ) . ';padding-bottom:' . $ctx->spacing_css( 'md' )
-			. ';padding-left:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' )
-			. ';border-radius:16px;box-shadow:0 20px 60px -15px rgba(0,0,0,.35);overflow:hidden';
-		if ( null !== $max_width ) {
-			$group_style .= ';max-width:' . $max_width . 'px;margin-left:auto;margin-right:auto';
-		}
+		$group_classes = array_merge( $classes, array( 'wp-block-group' ) );
+		$group_style   = 'padding-top:' . $ctx->spacing_css( 'md' ) . ';padding-right:' . $ctx->spacing_css( 'md' )
+			. ';padding-bottom:' . $ctx->spacing_css( 'md' ) . ';padding-left:' . $ctx->spacing_css( 'md' );
 
-		if ( null !== $card_slug ) {
-			$group_attrs['backgroundColor'] = $card_slug;
-			$group_classes[]                = 'has-' . $card_slug . '-background-color';
-			$group_classes[]                = 'has-background';
-			$group_style                   .= ';background-color:var(--wp--preset--color--' . $card_slug . ')';
-		}
 		if ( null !== $text_slug ) {
 			$group_attrs['textColor'] = $text_slug;
 			$group_classes[]          = 'has-' . $text_slug . '-color';
-			$group_classes[]          = 'has-text-color';
-			$group_style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
+		}
+		if ( null !== $card_slug ) {
+			$group_attrs['backgroundColor'] = $card_slug;
+			$group_classes[]                = 'has-' . $card_slug . '-background-color';
+		}
+		if ( null !== $text_slug ) {
+			$group_classes[] = 'has-text-color';
+		}
+		if ( null !== $card_slug ) {
+			$group_classes[] = 'has-background';
 		}
 
 		return $this->comment_wrap(
@@ -592,14 +630,27 @@ trait RendersMarkup {
 		if ( null === $bar_slug ) {
 			return '';
 		}
-		$h_margin = $center ? 'auto' : '0';
-		$classes  = 'wp-block-separator has-alpha-channel-opacity has-' . $bar_slug . '-background-color has-background';
-		$style    = 'width:48px;height:4px;border:none;margin:0 ' . $h_margin . ' ' . $ctx->spacing_css( 'sm' ) . ' ' . $h_margin
-			. ';background-color:var(--wp--preset--color--' . $bar_slug . ')';
+		// No inline style: core/separator's actual save() output for a
+		// backgroundColor attr is class-only — see render_heading()'s note. It
+		// also automatically pairs a matching textColor class of its own
+		// (WordPress's own quirk for colored separators), which is why the
+		// docblock above only ever sets backgroundColor. The 48x4 bar sizing
+		// and centering have no WordPress-native representation, so they move
+		// to real CSS keyed off "nfd-accent-bar"/"nfd-accent-bar-center"
+		// (className is a real, validated block attribute; an unbacked inline
+		// style is not — same reasoning as render_floating_card()'s max-width).
+		$classes = array( 'nfd-accent-bar' );
+		if ( $center ) {
+			$classes[] = 'nfd-accent-bar-center';
+		}
+		$class_name = implode( ' ', $classes );
 		return $this->comment_wrap(
 			'separator',
-			array( 'backgroundColor' => $bar_slug ),
-			'<hr class="' . $classes . '" style="' . $style . '"/>'
+			array(
+				'backgroundColor' => $bar_slug,
+				'className'       => $class_name,
+			),
+			'<hr class="' . $class_name . ' wp-block-separator has-text-color has-' . $bar_slug . '-color has-alpha-channel-opacity has-' . $bar_slug . '-background-color has-background"/>'
 		);
 	}
 
@@ -614,12 +665,22 @@ trait RendersMarkup {
 		if ( '' === $image_url ) {
 			return '';
 		}
-		$img_style = 'width:100%;height:100%;object-fit:cover' . ( $rounded ? ';border-radius:16px' : '' );
-		$img       = '<img src="' . $this->esc_url( $image_url ) . '" alt="" style="' . $img_style . '"/>';
+		// core/image's actual save() output never inlines figure/img style —
+		// see render_heading()'s note. The rounded "card image" look (rounded
+		// corners, cropped fill, drop shadow) has no WordPress-native
+		// representation, so it moves to real CSS keyed off "nfd-rounded-img"
+		// (className is a real, validated block attribute).
+		$attrs = array( 'sizeSlug' => 'large' );
+		$class = 'wp-block-image size-large';
+		if ( $rounded ) {
+			$attrs['className'] = 'nfd-rounded-img';
+			$class               = 'nfd-rounded-img ' . $class;
+		}
+		$img = '<img src="' . $this->esc_url( $image_url ) . '" alt=""/>';
 		return $this->comment_wrap(
 			'image',
-			array( 'sizeSlug' => 'large' ),
-			'<figure class="wp-block-image size-large"' . ( $rounded ? ' style="border-radius:16px;overflow:hidden;box-shadow:0 12px 32px -12px rgba(0,0,0,.25)"' : '' ) . '>' . $img . '</figure>'
+			$attrs,
+			'<figure class="' . $class . '">' . $img . '</figure>'
 		);
 	}
 

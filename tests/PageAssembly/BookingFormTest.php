@@ -115,8 +115,8 @@ class BookingFormTest extends PageAssemblyTestCase {
 		$form = new BookingForm();
 		$out  = $form->render( $this->content(), 'card', $this->context(), null );
 
-		$this->assertStringContainsString( 'border-radius:16px', $out );
-		$this->assertStringContainsString( 'max-width:640px', $out );
+		$this->assertStringContainsString( 'class="card-hover-lift', $out );
+		$this->assertStringContainsString( 'nfd-max-w-640', $out );
 		$this->assertStringContainsString( '<input type="text" id="name" name="name"', $out );
 	}
 
@@ -124,7 +124,7 @@ class BookingFormTest extends PageAssemblyTestCase {
 		$form = new BookingForm();
 		$out  = $form->render( $this->content(), 'stacked', $this->context(), null );
 
-		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
 	}
 
 	public function test_card_variant_is_correct_by_construction_with_and_without_background(): void {
@@ -147,7 +147,7 @@ class BookingFormTest extends PageAssemblyTestCase {
 		$out  = $form->render( $this->content(), 'split', $this->context(), null );
 
 		$this->assertSame( 2, substr_count( $out, '<!-- wp:column ' ) );
-		$this->assertStringContainsString( 'border-radius:16px', $out );
+		$this->assertStringContainsString( 'class="card-hover-lift', $out );
 		$this->assertStringContainsString( 'Book a table', $out );
 		$this->assertStringContainsString( '<form>', $out );
 		$this->assertStringNotContainsString( '"width"', $out );

@@ -55,7 +55,7 @@ class GalleryGridTest extends PageAssemblyTestCase {
 		$gallery = new GalleryGrid();
 		$out     = $gallery->render( $this->content(), 'grid-3', $this->context(), null );
 
-		$this->assertStringContainsString( 'border-radius:16px', $out );
+		$this->assertStringContainsString( 'class="nfd-rounded-img', $out );
 	}
 
 	public function test_is_correct_by_construction(): void {

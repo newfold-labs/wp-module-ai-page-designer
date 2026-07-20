@@ -171,6 +171,17 @@ export const usePreviewIframe = (
           #nfd-preview-root .has-text-align-center { text-align: center; }
           #nfd-preview-root .has-text-align-left { text-align: left; }
           #nfd-preview-root .has-text-align-right { text-align: right; }
+          /* Same rationale, for core/columns: the archetypes no longer inline
+             display/gap/align-items on the columns wrapper either (an unbacked
+             inline style fails Gutenberg's own block validation in the Site
+             Editor — see RendersMarkup::render_heading()'s note), so the
+             raw-markup preview needs this class-based fallback instead. */
+          #nfd-preview-root .wp-block-columns {
+            display: flex; flex-wrap: wrap; gap: 24px;
+          }
+          #nfd-preview-root .wp-block-columns.are-vertically-aligned-center {
+            align-items: center;
+          }
 
           /* Override ALL transitions and animations during streaming.
              The AIPageDesigner.php enqueues animation rules via
@@ -189,7 +200,7 @@ export const usePreviewIframe = (
           #nfd-preview-root[data-nfd-streaming] .fade-in-delay-1,
           #nfd-preview-root[data-nfd-streaming] .fade-in-delay-2,
           #nfd-preview-root[data-nfd-streaming] .fade-in-delay-3,
-          #nfd-preview-root[data-nfd-streaming] [data-aos],
+          #nfd-preview-root[data-nfd-streaming] .nfd-scroll-fade,
           #nfd-preview-root[data-nfd-streaming] .pulse-hover,
           #nfd-preview-root[data-nfd-streaming] .glow-hover,
           #nfd-preview-root[data-nfd-streaming] .card-hover-lift {
@@ -382,19 +393,18 @@ export const usePreviewIframe = (
             document.head.appendChild(style);
             }
 
-            // (Re)attach the IntersectionObserver on every finalize so data-aos
-            // elements from a fresh generation get observed even when the style
-            // tag already exists from a prior run.
+            // (Re)attach the IntersectionObserver on every finalize so
+            // nfd-scroll-fade elements from a fresh generation get observed
+            // even when the style tag already exists from a prior run.
             var observer = new IntersectionObserver(function(entries) {
               entries.forEach(function(entry) {
                 if (entry.isIntersecting) {
-                  var delay = parseInt(entry.target.getAttribute('data-aos-delay') || '0', 10);
-                  setTimeout(function() { entry.target.classList.add('aos-animate'); }, delay);
+                  entry.target.classList.add('aos-animate');
                   observer.unobserve(entry.target);
                 }
               });
             }, { threshold: 0 });
-            document.querySelectorAll('#nfd-preview-root [data-aos]').forEach(function(el) { observer.observe(el); });
+            document.querySelectorAll('#nfd-preview-root .nfd-scroll-fade').forEach(function(el) { observer.observe(el); });
           }
 
           // Design tab: instant palette/typography swap, no LLM call. Lives in
@@ -476,10 +486,11 @@ export const usePreviewIframe = (
             if (finalize) {
               root.removeAttribute('data-nfd-streaming');
               // Render FIRST, then enable animations: _enableAnimations()
-              // attaches the IntersectionObserver to the [data-aos] nodes in
-              // the DOM, so it must run on the freshly rendered content —
-              // observing the about-to-be-replaced nodes leaves the new
-              // sections permanently at the [data-aos] base opacity:0 (blank).
+              // attaches the IntersectionObserver to the .nfd-scroll-fade
+              // nodes in the DOM, so it must run on the freshly rendered
+              // content — observing the about-to-be-replaced nodes leaves the
+              // new sections permanently at the .nfd-scroll-fade base
+              // opacity:0 (blank).
               _applyContent(root, html, true);
               _applyTargetHighlight(root, null);
               _enableAnimations();

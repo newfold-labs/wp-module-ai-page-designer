@@ -82,7 +82,7 @@ class TestimonialsTest extends PageAssemblyTestCase {
 		$testimonials = new Testimonials();
 		$out          = $testimonials->render( $this->content(), 'cards', $this->context(), null );
 
-		$this->assertSame( 2, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertSame( 2, substr_count( $out, 'class="card-hover-lift' ) );
 		$this->assertStringContainsString( 'This changed everything for us.', $out );
 	}
 
@@ -90,7 +90,7 @@ class TestimonialsTest extends PageAssemblyTestCase {
 		$testimonials = new Testimonials();
 		$out          = $testimonials->render( $this->content(), 'grid-3', $this->context(), null );
 
-		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
 	}
 
 	public function test_cards_variant_is_correct_by_construction(): void {
@@ -107,7 +107,7 @@ class TestimonialsTest extends PageAssemblyTestCase {
 		$out          = $testimonials->render( $this->content(), 'spotlight', $this->context(), null );
 
 		$this->assertStringNotContainsString( '<!-- wp:columns', $out );
-		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
 		$this->assertSame( 2, substr_count( $out, 'max-width:720px' ) );
 		$this->assertSame( 2, substr_count( $out, 'font-size:1.375rem' ) );
 		$this->assertStringContainsString( 'This changed everything for us.', $out );

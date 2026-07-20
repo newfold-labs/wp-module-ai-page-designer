@@ -64,7 +64,7 @@ class TeamGridTest extends PageAssemblyTestCase {
 		$team = new TeamGrid();
 		$out  = $team->render( $this->content(), 'cards', $this->context(), null );
 
-		$this->assertSame( 3, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertSame( 3, substr_count( $out, 'class="card-hover-lift' ) );
 	}
 
 	public function test_is_correct_by_construction(): void {
@@ -87,7 +87,7 @@ class TeamGridTest extends PageAssemblyTestCase {
 		$team = new TeamGrid();
 		$out  = $team->render( $this->content(), 'minimal', $this->context(), null );
 
-		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
 		$this->assertStringContainsString( 'Ana Silva', $out );
 		$this->assertStringContainsString( 'border-radius:9999px', $out );
 	}

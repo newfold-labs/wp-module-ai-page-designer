@@ -79,7 +79,7 @@ class StatsBarTest extends PageAssemblyTestCase {
 		$ctx   = $this->context();
 		$out   = $stats->render( $this->content(), 'stat-cards', $ctx, $stats->default_background( $ctx ) );
 
-		$this->assertSame( 3, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertSame( 3, substr_count( $out, 'class="card-hover-lift' ) );
 		$this->assertStringContainsString( '10k', $out );
 	}
 
@@ -88,7 +88,7 @@ class StatsBarTest extends PageAssemblyTestCase {
 		$ctx   = $this->context();
 		$out   = $stats->render( $this->content(), 'accent-band', $ctx, $stats->default_background( $ctx ) );
 
-		$this->assertStringNotContainsString( 'border-radius:16px', $out );
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
 	}
 
 	public function test_stat_cards_variant_is_correct_by_construction(): void {
@@ -114,7 +114,7 @@ class StatsBarTest extends PageAssemblyTestCase {
 		$ctx   = $this->context();
 		$out   = $stats->render( $this->content(), 'panel', $ctx, $stats->default_background( $ctx ) );
 
-		$this->assertSame( 1, substr_count( $out, 'border-radius:16px' ) );
+		$this->assertSame( 1, substr_count( $out, 'class="card-hover-lift' ) );
 		$this->assertSame( 3, substr_count( $out, '<!-- wp:column ' ) );
 		$this->assertStringContainsString( '10k', $out );
 	}
