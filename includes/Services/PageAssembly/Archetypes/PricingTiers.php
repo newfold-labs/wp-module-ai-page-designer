@@ -214,25 +214,28 @@ class PricingTiers implements Archetype {
 	 * @return string
 	 */
 	private function render_feature_list( array $features, ?string $text_slug ): string {
-		$classes = array( 'wp-block-list', 'has-text-align-center' );
-		// Centre the list and drop bullet markers — centered bullets read awkwardly;
-		// a clean centered list is the standard pricing-tier treatment. The
-		// browser's default <ul> padding-inline-start (~40px) must go too, or
-		// the "centered" text sits visibly right of centre once bullets are gone.
-		$declarations = array( 'text-align:center', 'list-style:none', 'padding-left:0', 'margin-left:0' );
+		// core/list has no align/textAlign support at all (unlike paragraph/
+		// heading), so centering it and dropping bullet markers — centered
+		// bullets read awkwardly; a clean centered list is the standard
+		// pricing-tier treatment — has no attrs-backed representation either
+		// way. Both move to the real "nfd-list-plain" CSS class (className is
+		// a real, validated block attribute; an unbacked inline style is not
+		// — see RendersMarkup::render_heading()'s note) instead of an inline
+		// style with no matching attr.
+		$classes = array( 'nfd-list-plain', 'wp-block-list' );
+		$attrs   = array( 'className' => 'nfd-list-plain' );
 		if ( null !== $text_slug ) {
-			$classes[]      = 'has-' . $text_slug . '-color';
-			$classes[]      = 'has-text-color';
-			$declarations[] = 'color:var(--wp--preset--color--' . $text_slug . ')';
+			$classes[]          = 'has-' . $text_slug . '-color';
+			$classes[]          = 'has-text-color';
+			$attrs['textColor'] = $text_slug;
 		}
-		$style = ' style="' . implode( ';', $declarations ) . '"';
 
 		$items = '';
 		foreach ( $features as $feature ) {
 			$items .= $this->comment_wrap( 'list-item', array(), '<li>' . $this->esc_html( (string) $feature ) . '</li>' );
 		}
 
-		return $this->comment_wrap( 'list', array( 'textAlign' => 'center' ), '<ul class="' . implode( ' ', $classes ) . '"' . $style . '>' . $items . '</ul>' );
+		return $this->comment_wrap( 'list', $attrs, '<ul class="' . implode( ' ', $classes ) . '">' . $items . '</ul>' );
 	}
 
 	/**

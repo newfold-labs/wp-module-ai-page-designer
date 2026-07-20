@@ -108,7 +108,7 @@ class FaqAccordion implements Archetype {
 		foreach ( $items as $item ) {
 			$question  = isset( $item['q'] ) ? (string) $item['q'] : '';
 			$answer    = isset( $item['a'] ) ? (string) $item['a'] : '';
-			$details[] = $this->render_details( $question, $answer, $ctx, $card_slug, $card_text );
+			$details[] = $this->render_details( $question, $answer, $card_slug, $card_text );
 		}
 
 		$inner = 'two-column' === $variant && count( $details ) >= 4
@@ -144,39 +144,43 @@ class FaqAccordion implements Archetype {
 	 *
 	 * @param string      $question  Question text.
 	 * @param string      $answer    Answer text.
-	 * @param Context     $ctx       Theme/conformance context.
 	 * @param string|null $card_slug Card background slug, or null for the plain stack.
 	 * @param string|null $text_slug Card text color slug.
 	 * @return string
 	 */
-	private function render_details( string $question, string $answer, Context $ctx, ?string $card_slug, ?string $text_slug ): string {
-		$classes = array( 'wp-block-details' );
+	private function render_details( string $question, string $answer, ?string $card_slug, ?string $text_slug ): string {
+		// className-based card look ("nfd-faq-card", real CSS in
+		// get_motion_css()), not an unbacked inline style — core/details'
+		// actual save() output for named/preset colors is class-only, same as
+		// every other block covered by RendersMarkup::render_heading()'s note.
+		$classes = array();
 		$attrs   = array();
-		$style   = '';
+		if ( null !== $card_slug ) {
+			$classes[] = 'nfd-faq-card';
+			$attrs['className'] = 'nfd-faq-card';
+		}
+		$classes[] = 'wp-block-details';
 
 		if ( null !== $card_slug ) {
-			$classes[]                = 'has-' . $card_slug . '-background-color';
-			$classes[]                = 'has-background';
-			$attrs['backgroundColor'] = $card_slug;
-			$style                    = 'border-radius:12px'
-				. ';padding:' . $ctx->spacing_css( 'sm' ) . ' ' . $ctx->spacing_css( 'md' )
-				. ';margin-bottom:' . $ctx->spacing_css( 'sm' )
-				. ';background-color:var(--wp--preset--color--' . $card_slug . ')';
 			if ( null !== $text_slug ) {
 				$classes[]          = 'has-' . $text_slug . '-color';
-				$classes[]          = 'has-text-color';
 				$attrs['textColor'] = $text_slug;
-				$style             .= ';color:var(--wp--preset--color--' . $text_slug . ')';
 			}
+			$classes[]                = 'has-' . $card_slug . '-background-color';
+			$attrs['backgroundColor'] = $card_slug;
+			if ( null !== $text_slug ) {
+				$classes[] = 'has-text-color';
+			}
+			$classes[] = 'has-background';
 		}
 
-		$style_attr = '' !== $style ? ' style="' . $style . '"' : '';
-		// Summary styling belongs to the cards look only — the legacy stacked
-		// variant stays byte-identical to its original output.
-		$summary = null !== $card_slug
-			? '<summary style="cursor:pointer;font-weight:600">' . $this->esc_html( $question ) . '</summary>'
-			: '<summary>' . $this->esc_html( $question ) . '</summary>';
-		$html    = '<details class="' . implode( ' ', $classes ) . '"' . $style_attr . '>' . $summary
+		// The <summary> element can't carry its own class either — confirmed
+		// live (wp.blocks.parse().isValid), core/details has no attribute
+		// backing a summary className at all, so even that fails validation.
+		// The "cards" cursor/weight styling is covered by the .nfd-faq-card
+		// selector in get_motion_css() targeting the summary descendant instead.
+		$summary = '<summary>' . $this->esc_html( $question ) . '</summary>';
+		$html    = '<details class="' . implode( ' ', $classes ) . '">' . $summary
 			. $this->render_paragraph( $answer, $text_slug )
 			. '</details>';
 

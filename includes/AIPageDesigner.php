@@ -356,6 +356,11 @@ class AIPageDesigner {
 			' . $sel( '.nfd-rounded-img img' ) . ' { width: 100%; height: 100%; object-fit: cover; }
 			' . $sel( '.nfd-accent-bar' ) . ' { width: 48px; height: 4px; border: none; margin: 0 0 16px 0; }
 			' . $sel( '.nfd-accent-bar.nfd-accent-bar-center' ) . ' { margin-left: auto; margin-right: auto; }
+			' . $sel( '.nfd-list-plain' ) . ' { text-align: center; list-style: none; padding-left: 0; margin-left: 0; }
+			' . $sel( '.nfd-banner-strip' ) . ' { height: 120px; overflow: hidden; border-radius: 16px; }
+			' . $sel( '.nfd-banner-strip img' ) . ' { width: 100%; height: 100%; object-fit: cover; }
+			' . $sel( '.nfd-faq-card' ) . ' { border-radius: 12px; padding: 16px 24px; margin-bottom: 16px; }
+			' . $sel( '.nfd-faq-card summary' ) . ' { cursor: pointer; font-weight: 600; }
 		';
 	}
 

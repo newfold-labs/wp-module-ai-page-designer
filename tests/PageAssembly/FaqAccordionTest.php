@@ -68,7 +68,7 @@ class FaqAccordionTest extends PageAssemblyTestCase {
 		$ctx = $this->context();
 		$out = $faq->render( $this->content(), 'cards', $ctx, null );
 
-		$this->assertSame( 2, substr_count( $out, 'border-radius:12px' ) );
+		$this->assertSame( 2, substr_count( $out, 'class="nfd-faq-card' ) );
 		$this->assertStringContainsString( '"backgroundColor":"' . $ctx->muted_light_slug() . '"', $out );
 		$this->assertStringContainsString( 'What is this?', $out );
 	}

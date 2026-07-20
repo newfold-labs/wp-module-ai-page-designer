@@ -311,31 +311,37 @@ class HeroCover implements Archetype {
 		if ( '' === $image_url ) {
 			return '';
 		}
-		$img = '<img src="' . $this->esc_url( $image_url ) . '" alt="" style="width:100%;height:100%;object-fit:cover"/>';
+		// className-based, not inline style — see RendersMarkup::render_heading()'s
+		// note: core/image's actual save() output never inlines figure/img
+		// style, so an unbacked inline style here fails Gutenberg's own
+		// re-validation. "nfd-max-w-720" (width/centering) + "nfd-banner-strip"
+		// (fixed height/crop/radius) are real CSS classes in get_motion_css().
+		$img = '<img src="' . $this->esc_url( $image_url ) . '" alt=""/>';
 		return $this->comment_wrap(
 			'image',
-			array( 'sizeSlug' => 'large' ),
-			'<figure class="wp-block-image size-large" '
-				. 'style="max-width:720px;height:120px;margin-left:auto;margin-right:auto;overflow:hidden;border-radius:16px">'
-				. $img . '</figure>'
+			array(
+				'sizeSlug'  => 'large',
+				'className' => 'nfd-max-w-720 nfd-banner-strip',
+			),
+			'<figure class="nfd-max-w-720 nfd-banner-strip wp-block-image size-large">' . $img . '</figure>'
 		);
 	}
 
 	/**
 	 * Wrap already-rendered block markup in a plain, width-constrained,
 	 * horizontally-centered `core/group` — the shared shell behind the
-	 * `centered`/`stacked` variants' text stack. Deliberately a bare inline
-	 * `max-width`/`margin:auto` (no `layout: constrained` attribute), matching
-	 * every other size/spacing declaration in this trait.
+	 * `centered`/`stacked` variants' text stack.
 	 *
 	 * @param string $inner Rendered inner block markup.
 	 * @return string
 	 */
 	private function wrap_constrained( string $inner ): string {
+		// className "nfd-max-w-720" (real CSS in get_motion_css()), not an
+		// unbacked inline style — see render_stacked_image()'s note above.
 		return $this->comment_wrap(
 			'group',
-			array(),
-			'<div class="wp-block-group" style="max-width:720px;margin-left:auto;margin-right:auto">' . $inner . '</div>'
+			array( 'className' => 'nfd-max-w-720' ),
+			'<div class="nfd-max-w-720 wp-block-group">' . $inner . '</div>'
 		);
 	}
 
