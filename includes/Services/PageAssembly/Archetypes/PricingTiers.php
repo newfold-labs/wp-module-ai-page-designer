@@ -251,7 +251,7 @@ class PricingTiers implements Archetype {
 		// No inline background-color/color, padding in top/right/bottom/left
 		// order, text-color class before background-color class — see
 		// RendersMarkup::render_heading()'s note.
-		$attrs = array(
+		$attrs   = array(
 			'style' => array(
 				'spacing' => array(
 					'padding' => array(

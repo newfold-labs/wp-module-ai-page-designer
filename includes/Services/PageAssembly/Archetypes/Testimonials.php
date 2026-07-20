@@ -242,13 +242,13 @@ class Testimonials implements Archetype {
 			$column_inner = '';
 			if ( '' !== $avatar_url ) {
 				$column_inner .= $this->comment_wrap(
-				'image',
-				array(
-					'sizeSlug'  => 'large',
-					'className' => 'nfd-avatar-56',
-				),
-				'<figure class="nfd-avatar-56 wp-block-image size-large"><img src="' . $this->esc_url( $avatar_url ) . '" alt=""/></figure>'
-			);
+					'image',
+					array(
+						'sizeSlug'  => 'large',
+						'className' => 'nfd-avatar-56',
+					),
+					'<figure class="nfd-avatar-56 wp-block-image size-large"><img src="' . $this->esc_url( $avatar_url ) . '" alt=""/></figure>'
+				);
 			}
 			$column_inner .= $this->render_quote( $quote, $author, $role );
 

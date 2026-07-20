@@ -182,7 +182,7 @@ trait RendersMarkup {
 		return $this->comment_wrap(
 			'heading',
 			$attrs,
-			"<{$tag} class=\"" . implode( ' ', $classes ) . "\">" . $this->esc_html( $text ) . "</{$tag}>"
+			"<{$tag} class=\"" . implode( ' ', $classes ) . '\">' . $this->esc_html( $text ) . "</{$tag}>"
 		);
 	}
 
@@ -533,7 +533,7 @@ trait RendersMarkup {
 		// same as render_section(): a named/preset backgroundColor is class-only
 		// in core/group's actual save() output. Only the gradient (a genuinely
 		// custom value) and padding are ever inlined.
-		$group_style = '' !== $gradient ? $gradient . ';' : '';
+		$group_style  = '' !== $gradient ? $gradient . ';' : '';
 		$group_style .= 'padding-top:' . $ctx->spacing_css( 'lg' ) . ';padding-right:' . $ctx->spacing_css( 'md' )
 			. ';padding-bottom:' . $ctx->spacing_css( 'lg' ) . ';padding-left:' . $ctx->spacing_css( 'md' );
 
@@ -674,7 +674,7 @@ trait RendersMarkup {
 		$class = 'wp-block-image size-large';
 		if ( $rounded ) {
 			$attrs['className'] = 'nfd-rounded-img';
-			$class               = 'nfd-rounded-img ' . $class;
+			$class              = 'nfd-rounded-img ' . $class;
 		}
 		$img = '<img src="' . $this->esc_url( $image_url ) . '" alt=""/>';
 		return $this->comment_wrap(

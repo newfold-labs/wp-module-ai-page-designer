@@ -99,7 +99,7 @@ class StatsBar implements Archetype {
 
 		// No heading slot here — the first stat's value+label is the most
 		// identifying deterministic seed this archetype has.
-		$seed     = isset( $items[0]['value'] ) ? (string) $items[0]['value'] . ( isset( $items[0]['label'] ) ? (string) $items[0]['label'] : '' ) : '';
+		$seed    = isset( $items[0]['value'] ) ? (string) $items[0]['value'] . ( isset( $items[0]['label'] ) ? (string) $items[0]['label'] : '' ) : '';
 		$variant = $this->resolve_variant( $variant, $seed );
 
 		$inner = '';

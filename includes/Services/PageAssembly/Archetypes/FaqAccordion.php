@@ -156,7 +156,7 @@ class FaqAccordion implements Archetype {
 		$classes = array();
 		$attrs   = array();
 		if ( null !== $card_slug ) {
-			$classes[] = 'nfd-faq-card';
+			$classes[]          = 'nfd-faq-card';
 			$attrs['className'] = 'nfd-faq-card';
 		}
 		$classes[] = 'wp-block-details';
