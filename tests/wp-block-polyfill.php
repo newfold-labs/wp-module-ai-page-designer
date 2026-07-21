@@ -1,6 +1,6 @@
 <?php
 /**
- * Test-only polyfill for parse_blocks()/serialize_blocks().
+ * Test-only polyfill for parse_blocks()/serialize_blocks() and WP_Post.
  *
  * Loads WordPress's standalone block parser (pure PHP, no DB) by searching
  * upward for a wp-includes directory, then reimplements the thin serialize
@@ -11,10 +11,6 @@
  *
  * @package NewfoldLabs\WP\Module\AIPageDesigner
  */
-
-if ( function_exists( 'parse_blocks' ) ) {
-	return;
-}
 
 $nfd_wp_includes = null;
 $dir             = __DIR__;
@@ -29,6 +25,20 @@ for ( $i = 0; $i < 10; $i++ ) {
 		break;
 	}
 	$dir = $parent;
+}
+
+// WP_Post's constructor just copies stdClass properties across, no DB
+// involved, so it's safe to load standalone for tests that need a real
+// instanceof \WP_Post (e.g. WooCommerceGuardTest).
+if ( null !== $nfd_wp_includes && ! class_exists( 'WP_Post' ) ) {
+	$wp_post_file = $nfd_wp_includes . '/class-wp-post.php';
+	if ( is_file( $wp_post_file ) ) {
+		require_once $wp_post_file;
+	}
+}
+
+if ( function_exists( 'parse_blocks' ) ) {
+	return;
 }
 
 if ( null === $nfd_wp_includes ) {

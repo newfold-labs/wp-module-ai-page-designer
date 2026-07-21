@@ -13,11 +13,13 @@
 		<testsuite name="page-assembly">
 			<directory>tests/PageAssembly</directory>
 		</testsuite>
+		<testsuite name="services">
+			<directory>tests/Services</directory>
+		</testsuite>
 	</testsuites>
 	<coverage>
 		<include>
-			<directory>includes/Services/MarkupHarness</directory>
-			<directory>includes/Services/PageAssembly</directory>
+			<directory>includes/Services</directory>
 		</include>
 	</coverage>
 </phpunit>

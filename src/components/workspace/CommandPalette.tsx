@@ -18,12 +18,14 @@ const CommandPalette = ( { open, apiUrl, onClose, onSelectItem }: Props ) => {
   const [ results, setResults ] = useState<SearchResult[]>( [] );
   const [ loading, setLoading ] = useState( false );
   const [ resolvingId, setResolvingId ] = useState<number | null>( null );
+  const [ errorMessage, setErrorMessage ] = useState<string | null>( null );
   const inputRef = useRef<HTMLInputElement>( null );
 
   useEffect( () => {
     if ( open ) {
       setQuery( '' );
       setResults( [] );
+      setErrorMessage( null );
       // Let the overlay mount before focusing.
       requestAnimationFrame( () => inputRef.current?.focus() );
     }
@@ -51,12 +53,16 @@ const CommandPalette = ( { open, apiUrl, onClose, onSelectItem }: Props ) => {
 
   const handleSelect = ( result: SearchResult ) => {
     setResolvingId( result.id );
+    setErrorMessage( null );
     fetchContentItem( apiUrl, result.subtype, result.id )
       .then( ( item ) => {
         onSelectItem( item );
         onClose();
       } )
-      .catch( ( error ) => console.error( 'Failed to open search result:', error ) )
+      .catch( ( error ) => {
+        console.error( 'Failed to open search result:', error );
+        setErrorMessage( ( error && error.message ) || 'Failed to open this item.' );
+      } )
       .finally( () => setResolvingId( null ) );
   };
 
@@ -73,7 +79,10 @@ const CommandPalette = ( { open, apiUrl, onClose, onSelectItem }: Props ) => {
             ref={ inputRef }
             type="text"
             value={ query }
-            onChange={ ( event ) => setQuery( event.target.value ) }
+            onChange={ ( event ) => {
+              setQuery( event.target.value );
+              setErrorMessage( null );
+            } }
             onKeyDown={ ( event ) => {
               if ( event.key === 'Escape' ) {
                 onClose();
@@ -84,6 +93,9 @@ const CommandPalette = ( { open, apiUrl, onClose, onSelectItem }: Props ) => {
           />
           <kbd className="ai-command-palette__hint">Esc</kbd>
         </div>
+        { errorMessage && (
+          <div className="publish-status publish-status--error ai-command-palette__error">{ errorMessage }</div>
+        ) }
         <ul className="ai-command-palette__list">
           { loading && <li className="ai-command-palette__status">Searching...</li> }
           { ! loading && query.trim() && results.length === 0 && (

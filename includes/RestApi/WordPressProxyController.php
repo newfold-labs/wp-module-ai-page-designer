@@ -10,6 +10,7 @@ namespace NewfoldLabs\WP\Module\AIPageDesigner\RestApi;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\ImageService;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Harness;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\WooCommerceGuard;
 
 /**
  * REST API Controller for WordPress Content Operations
@@ -240,6 +241,13 @@ class WordPressProxyController extends \WP_REST_Controller {
 		$data  = array();
 
 		foreach ( $posts as $post ) {
+			// WooCommerce's Cart/Checkout/Mini-Cart pages are populated at render
+			// time from cart/session state and their blocks are template-locked
+			// by WooCommerce itself — there is nothing here for the Designer to
+			// show or safely edit, so keep them out of the list entirely.
+			if ( WooCommerceGuard::is_dynamic_template( $post ) ) {
+				continue;
+			}
 			$data[] = $this->build_item_data( $post );
 		}
 
@@ -262,6 +270,10 @@ class WordPressProxyController extends \WP_REST_Controller {
 				__( 'Content not found', 'wp-module-ai-page-designer' ),
 				array( 'status' => 404 )
 			);
+		}
+
+		if ( WooCommerceGuard::is_dynamic_template( $post ) ) {
+			return $this->woocommerce_dynamic_template_error();
 		}
 
 		$data = $this->build_item_data( $post );
@@ -340,6 +352,10 @@ class WordPressProxyController extends \WP_REST_Controller {
 				__( 'Content not found', 'wp-module-ai-page-designer' ),
 				array( 'status' => 404 )
 			);
+		}
+
+		if ( WooCommerceGuard::is_dynamic_template( $post ) ) {
+			return $this->woocommerce_dynamic_template_error();
 		}
 
 		$post_data = array(
@@ -470,7 +486,7 @@ class WordPressProxyController extends \WP_REST_Controller {
 		foreach ( $entries as $entry ) {
 			$id   = isset( $entry['id'] ) ? absint( $entry['id'] ) : 0;
 			$post = $id ? get_post( $id ) : null;
-			if ( ! $post ) {
+			if ( ! $post || WooCommerceGuard::is_dynamic_template( $post ) ) {
 				continue;
 			}
 			$data[] = $this->build_item_data( $post );
@@ -607,6 +623,20 @@ class WordPressProxyController extends \WP_REST_Controller {
 	 */
 	public function check_permission() {
 		return CapabilityGate::rest_permission();
+	}
+
+	/**
+	 * Standard error for a WooCommerce dynamic-template page (Cart, Checkout,
+	 * Mini-Cart, My Account) reached directly by ID.
+	 *
+	 * @return \WP_Error
+	 */
+	private function woocommerce_dynamic_template_error() {
+		return new \WP_Error(
+			'woocommerce_dynamic_template',
+			__( 'This page is managed by WooCommerce and can\'t be opened in the AI Page Designer.', 'wp-module-ai-page-designer' ),
+			array( 'status' => 403 )
+		);
 	}
 
 	/**

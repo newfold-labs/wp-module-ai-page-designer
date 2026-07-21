@@ -1023,6 +1023,13 @@ body.nfd-ai-workspace-active {
   font-family: inherit;
 }
 
+.publish-status.ai-command-palette__error {
+  /* .publish-status's own margin (12px 20px 0) is tuned for PublishModal's
+     layout, not this one — zero it out and rely on the search box's existing
+     8px margin-bottom for the gap above, matched here for the gap below. */
+  margin: 0 0 8px;
+}
+
 .ai-command-palette__list {
   list-style: none;
   margin: 0;
