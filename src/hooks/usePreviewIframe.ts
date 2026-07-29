@@ -446,7 +446,13 @@ export const usePreviewIframe = (
             }
 
             if (headingFont) {
-              rules.push('#nfd-preview-root h1, #nfd-preview-root h2, #nfd-preview-root h3, #nfd-preview-root h4, #nfd-preview-root h5, #nfd-preview-root h6, #nfd-preview-root .wp-block-heading { font-family: ' + headingFont + ' !important; }');
+              // :not(.nfd-fancy-heading) -- this rule and the fancy-heading rule
+              // from get_motion_css() (in #nfd-anim-style) are both scoped
+              // #nfd-preview-root + h1/.wp-block-heading selectors with equal
+              // specificity and !important, so without the exclusion whichever
+              // <style> element happens to exist in <head> last silently wins
+              // the tie instead of the fancy heading's own font declaration.
+              rules.push('#nfd-preview-root h1:not(.nfd-fancy-heading), #nfd-preview-root h2:not(.nfd-fancy-heading), #nfd-preview-root h3:not(.nfd-fancy-heading), #nfd-preview-root h4:not(.nfd-fancy-heading), #nfd-preview-root h5:not(.nfd-fancy-heading), #nfd-preview-root h6:not(.nfd-fancy-heading), #nfd-preview-root .wp-block-heading:not(.nfd-fancy-heading) { font-family: ' + headingFont + ' !important; }');
             }
 
             styleEl.textContent = rules.join(' ');

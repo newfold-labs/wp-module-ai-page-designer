@@ -61,6 +61,7 @@ class AIPageDesigner {
 		add_filter( 'wp_kses_allowed_html', array( $this, 'allow_animation_classes' ), 10, 2 );
 		add_filter( 'safe_style_css', array( $this, 'allow_animation_styles' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_animations' ) );
+		add_action( 'enqueue_block_editor_assets', array( $this, 'enqueue_editor_animations' ) );
 	}
 
 	/**
@@ -414,7 +415,12 @@ class AIPageDesigner {
 		}
 
 		if ( ! empty( $heading_font ) ) {
-			$rules[] = 'h1, h2, h3, h4, h5, h6, .wp-block-heading { font-family: ' . sanitize_text_field( $heading_font ) . ' !important; }';
+			// :not(.nfd-fancy-heading) — this rule and the fancy-heading rule in
+			// get_motion_css() are both scoped `h1`/`.wp-block-heading`-level
+			// selectors with equal specificity and !important, so without the
+			// exclusion whichever stylesheet happens to load/apply last silently
+			// wins the tie instead of the fancy heading's own font declaration.
+			$rules[] = 'h1:not(.nfd-fancy-heading), h2:not(.nfd-fancy-heading), h3:not(.nfd-fancy-heading), h4:not(.nfd-fancy-heading), h5:not(.nfd-fancy-heading), h6:not(.nfd-fancy-heading), .wp-block-heading:not(.nfd-fancy-heading) { font-family: ' . sanitize_text_field( $heading_font ) . ' !important; }';
 		}
 
 		return implode( ' ', $rules );
@@ -477,5 +483,65 @@ class AIPageDesigner {
 				document.querySelectorAll(".entry-content .nfd-scroll-fade, .wp-block-post-content .nfd-scroll-fade").forEach(function(el){ observer.observe(el); });
 			})()'
 		);
+	}
+
+	/**
+	 * Enqueue the same motion/typography CSS + fonts inside the Gutenberg
+	 * editor canvas. Without this, generated pages only look right on the
+	 * published page and in the Designer's own preview — the block editor
+	 * has no idea `.nfd-fancy-heading` or the animation classes exist, so
+	 * headings fall back to the theme's default font while editing.
+	 *
+	 * WordPress copies any stylesheet enqueued during this hook into the
+	 * post editor's iframed canvas automatically, so a plain wp_enqueue_style()
+	 * here is sufficient — no add_editor_style() call needed.
+	 */
+	public function enqueue_editor_animations() {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || ! in_array( $screen->post_type, array( 'page', 'post' ), true ) ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'nfd-ai-page-fonts',
+			'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Raleway:wght@400;600;700&family=Inter:wght@400;500;600&family=Manrope:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@1,400&display=swap',
+			array(),
+			NFD_MODULE_AI_PAGE_DESIGNER_VERSION
+		);
+
+		// .editor-styles-wrapper is the class WordPress wraps the iframed
+		// canvas content in; .wp-block-post-content mirrors the frontend scope.
+		$content_scope = '.editor-styles-wrapper, .wp-block-post-content';
+		wp_add_inline_style( 'wp-block-library', self::get_motion_css( $content_scope, 'nfd-editor-' ) );
+
+		// get_motion_css()'s `.nfd-scroll-fade` rule starts elements at opacity:0,
+		// relying on enqueue_frontend_animations()'s IntersectionObserver script to
+		// add `.aos-animate` once scrolled into view. That script only ever runs on
+		// the published page (and, separately, inside the Designer's own preview
+		// iframe via usePreviewIframe.ts) — a script enqueued on this hook executes
+		// in the top wp-admin document, not inside the block editor's iframed
+		// canvas, so it could never reach these elements anyway. Without this
+		// override every scroll-fade section would stay permanently invisible
+		// while editing.
+		$scroll_fade_override = array();
+		foreach ( array_map( 'trim', explode( ',', $content_scope ) ) as $scope_part ) {
+			$scroll_fade_override[] = $scope_part . ' .nfd-scroll-fade { opacity: 1 !important; transform: none !important; }';
+		}
+		wp_add_inline_style( 'wp-block-library', implode( ' ', $scroll_fade_override ) );
+
+		$post = get_post();
+		if ( $post ) {
+			$design_tokens = get_post_meta( $post->ID, RestApi\WordPressProxyController::DESIGN_TOKENS_META_KEY, true );
+			if ( is_array( $design_tokens ) ) {
+				$tokens_css = self::get_design_tokens_css(
+					isset( $design_tokens['colors'] ) ? $design_tokens['colors'] : null,
+					isset( $design_tokens['headingFont'] ) ? $design_tokens['headingFont'] : '',
+					isset( $design_tokens['bodyFont'] ) ? $design_tokens['bodyFont'] : ''
+				);
+				if ( '' !== $tokens_css ) {
+					wp_add_inline_style( 'wp-block-library', $tokens_css );
+				}
+			}
+		}
 	}
 }
