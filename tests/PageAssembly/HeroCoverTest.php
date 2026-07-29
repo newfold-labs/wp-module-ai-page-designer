@@ -104,14 +104,20 @@ class HeroCoverTest extends PageAssemblyTestCase {
 		$this->assertSame( $once, $hero->render( $this->content(), 'image-bg', $ctx, $bg ) );
 	}
 
-	public function test_split_is_the_default_variant(): void {
-		$hero = new HeroCover();
-		$ctx  = $this->context();
-		$out  = $hero->render( $this->content(), null, $ctx, $hero->default_background( $ctx ) );
+	public function test_split_is_a_reachable_auto_picked_variant(): void {
+		$hero    = new HeroCover();
+		$ctx     = $this->context();
+		$content = $this->content();
+		// This specific heading is chosen only because it happens to hash to
+		// "split" in the auto-pick pool (see resolve_variant()) — the point of
+		// this test is that the unspecified-variant path CAN reach "split" on
+		// its own, not that this exact string is special.
+		$content['heading'] = 'Your neighborhood coffee spot';
+		$out                = $hero->render( $content, null, $ctx, $hero->default_background( $ctx ) );
 
 		$this->assertStringContainsString( '<!-- wp:columns', $out );
 		$this->assertStringNotContainsString( '<!-- wp:cover', $out );
-		$this->assertStringContainsString( 'Fresh coffee, faster mornings', $out );
+		$this->assertStringContainsString( 'Your neighborhood coffee spot', $out );
 		$this->assertStringContainsString( 'New for 2026', $out );
 		$this->assertStringContainsString( 'Order now', $out );
 		$this->assertStringContainsString( 'View menu', $out );
@@ -239,14 +245,16 @@ class HeroCoverTest extends PageAssemblyTestCase {
 		$content = $this->content();
 
 		$shapes = array();
-		foreach ( array( 'Fresh coffee, faster mornings', 'A totally different headline', 'Something else entirely new' ) as $heading ) {
+		foreach ( array( 'Welcome to our shop', 'Your neighborhood coffee spot', 'Handcrafted brews, every day' ) as $heading ) {
 			$content['heading'] = $heading;
 			$out                = $hero->render( $content, null, $ctx, $bg );
 			$shapes[]           = strpos( $out, '<!-- wp:columns' ) !== false
 				? 'split'
-				: ( strpos( $out, '<!-- wp:cover' ) !== false
-					? 'image-bg'
-					: ( strpos( $out, '<!-- wp:image' ) !== false ? 'stacked' : 'centered' ) );
+				: ( strpos( $out, '<!-- wp:image' ) !== false
+					? 'stacked'
+					: ( strpos( $out, 'has-parallax' ) !== false
+						? 'parallax'
+						: ( strpos( $out, '<!-- wp:cover' ) !== false ? 'image-bg' : 'centered' ) ) );
 		}
 
 		// Not every heading needs to land on a different variant, but they
@@ -260,5 +268,31 @@ class HeroCoverTest extends PageAssemblyTestCase {
 		$bg   = $hero->default_background( $ctx );
 		$out  = $hero->render( $this->content(), 'not-a-real-variant', $ctx, $bg );
 		$this->assertSame( $out, $hero->render( $this->content(), null, $ctx, $bg ) );
+	}
+
+	/**
+	 * @return string[] The four recognized variant names.
+	 */
+	public static function variant_provider(): array {
+		return array(
+			'split'    => array( 'split' ),
+			'image-bg' => array( 'image-bg' ),
+			'centered' => array( 'centered' ),
+			'stacked'  => array( 'stacked' ),
+		);
+	}
+
+	/**
+	 * @dataProvider variant_provider
+	 * @param string $variant Variant name under test.
+	 */
+	public function test_heading_uses_the_fancy_display_face( string $variant ): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$out  = $hero->render( $this->content(), $variant, $ctx, $hero->default_background( $ctx ) );
+
+		$this->assertStringContainsString( '"className":"nfd-fancy-heading"', $out );
+		$this->assertStringContainsString( 'nfd-fancy-heading', $out );
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
 	}
 }

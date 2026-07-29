@@ -18,6 +18,7 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\FaqAcc
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\FeatureGrid;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\GalleryGrid;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\HeroCover;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\ParallaxBanner;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\PricingTiers;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\ProcessSteps;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\RichText;
@@ -71,6 +72,7 @@ class PageAssembler {
 
 		$archetypes       = null === $archetypes ? array(
 			new HeroCover(),
+			new ParallaxBanner(),
 			new FeatureGrid(),
 			new AlternatingMediaText(),
 			new CtaBanner(),

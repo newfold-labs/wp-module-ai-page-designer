@@ -54,6 +54,8 @@ class PagePlanController {
 		'heroCover'            => 'eyebrow?: string, heading: string, subheading?: string, '
 			. 'primaryCta: { label: string, url: string }, secondaryCta?: { label: string, url: string }, '
 			. 'imageQuery: string (a short Unsplash search phrase for the hero image; not used by the "centered" variant)',
+		'parallaxBanner'       => 'heading?: string (only shown by the "heading" variant), '
+			. 'imageQuery: string (a short Unsplash search phrase for a full-bleed fixed-background photo)',
 		'featureGrid'          => 'heading?: string, intro?: string, items: exactly 3 of { title: string, body: string }',
 		'alternatingMediaText' => 'heading?: string, intro?: string, rows: array of { heading: string, body: string, '
 			. 'imageQuery: string (short Unsplash search phrase), cta?: { label: string, url: string } }',
@@ -273,8 +275,11 @@ class PagePlanController {
 
 		if ( ! $is_homepage ) {
 			$plan = $this->cap_focused_sections( $plan );
-		} elseif ( count( $plan ) < $min_sections ) {
-			$plan = $this->pad_homepage_sections( $plan, $prompt, $min_sections - count( $plan ) );
+		} else {
+			if ( count( $plan ) < $min_sections ) {
+				$plan = $this->pad_homepage_sections( $plan, $prompt, $min_sections - count( $plan ) );
+			}
+			$plan = $this->ensure_parallax_banner( $plan );
 		}
 
 		$content = ( new PageAssembler() )->assemble( $plan );
@@ -510,6 +515,63 @@ class PagePlanController {
 	}
 
 	/**
+	 * Deterministically guarantee a homepage/landing-page plan includes a
+	 * "parallaxBanner" section — the same class of unreliable-self-regulation
+	 * problem MAX_FOCUSED_SECTIONS/cap_focused_sections()/pad_homepage_sections()
+	 * already guard against elsewhere in this file: telling the model to use
+	 * it "sparingly" in build_system_prompt() measurably under-fires once it's
+	 * one of ~9 archetypes competing for a "pick 4-6 varied sections" slot, so
+	 * verified live, it essentially never got picked on its own. No-ops if the
+	 * model already included one, or if the plan has no "heroCover" to source
+	 * an image query from (never fabricates content otherwise).
+	 *
+	 * @param array<int, array<string, mixed>> $plan Parsed section items.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function ensure_parallax_banner( array $plan ): array {
+		foreach ( $plan as $item ) {
+			if ( is_array( $item ) && isset( $item['archetype'] ) && 'parallaxBanner' === $item['archetype'] ) {
+				return $plan;
+			}
+		}
+
+		$hero_query = '';
+		foreach ( $plan as $item ) {
+			if ( is_array( $item ) && isset( $item['archetype'], $item['content']['imageQuery'] )
+				&& 'heroCover' === $item['archetype'] && is_string( $item['content']['imageQuery'] ) ) {
+				$hero_query = $item['content']['imageQuery'];
+				break;
+			}
+		}
+		if ( '' === $hero_query ) {
+			return $plan;
+		}
+
+		$banner = array(
+			'archetype' => 'parallaxBanner',
+			'variant'   => 'image',
+			// A distinct-but-related search phrase, not the hero's own query
+			// verbatim — reusing it exactly would resolve to the identical
+			// image twice (PageAssembler/ImageService always take the first
+			// result for a given query).
+			'content'   => array(
+				'imageQuery' => $hero_query . ' wide angle',
+			),
+		);
+
+		// Insert roughly mid-plan — after the opening heroCover, before a
+		// trailing "ctaBanner" if present — so it reads as a breather between
+		// content sections, never as a jarring bookend.
+		$last          = end( $plan );
+		$ends_with_cta = is_array( $last ) && isset( $last['archetype'] ) && 'ctaBanner' === $last['archetype'];
+		$body          = $ends_with_cta ? array_slice( $plan, 0, -1 ) : $plan;
+		$insert_at     = (int) ceil( count( $body ) / 2 );
+		array_splice( $body, $insert_at, 0, array( $banner ) );
+
+		return $ends_with_cta ? array_merge( $body, array( $last ) ) : $body;
+	}
+
+	/**
 	 * Build the prompt's per-archetype schema lines from ARCHETYPE_SCHEMAS,
 	 * appending each multi-variant archetype's variant hint straight from its
 	 * registry ({@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\Archetype::variants()})
@@ -599,9 +661,12 @@ class PagePlanController {
 			. 'single-purpose page (About/story, Contact, FAQ, a single topic) needs about 2-4 sections total: '
 			. 'heroCover, one or two sections covering that purpose, and done. A homepage or broad landing-page '
 			. 'request benefits from 4-6 varied sections (for example featureGrid, alternatingMediaText, testimonials, '
-			. 'statsBar, pricingTiers, processSteps, galleryGrid, teamGrid, or faqAccordion), ending with a "ctaBanner". '
+			. 'statsBar, pricingTiers, processSteps, galleryGrid, teamGrid, parallaxBanner, or faqAccordion), ending '
+			. 'with a "ctaBanner". '
 			. 'Prefer galleryGrid for visual businesses (food, interiors, portfolios), teamGrid for about/people pages, and '
-			. 'processSteps when the service has a clear how-it-works flow. '
+			. 'processSteps when the service has a clear how-it-works flow. Use parallaxBanner sparingly (at most once '
+			. 'per page) as a visual breather between content sections on a homepage or landing page — never as the '
+			. 'opening section, that is always heroCover. '
 			. $site_context
 			. $redesign_context
 			. 'Write real, specific copy for the described business/topic — never placeholder text like "Lorem ipsum" or "Heading here".';

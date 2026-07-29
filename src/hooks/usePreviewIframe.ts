@@ -126,7 +126,7 @@ export const usePreviewIframe = (
       // The script exposes window.nfdSetContent(html) for in-place content updates.
       // Content is NOT embedded here; Effect 2 calls nfdSetContent after load.
       const script = `
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Raleway:wght@400;600;700&display=swap">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Raleway:wght@400;600;700&family=Cormorant+Garamond:ital,wght@1,400&display=swap">
         <style>
           body { margin: 0; padding: 0; }
           #nfd-preview-root { padding: 10px; }

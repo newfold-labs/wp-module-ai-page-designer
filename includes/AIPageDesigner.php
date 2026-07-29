@@ -365,6 +365,7 @@ class AIPageDesigner {
 			' . $sel( '.nfd-avatar-112' ) . ' { display: block; width: 112px; height: 112px; border-radius: 9999px; overflow: hidden; margin-left: auto; margin-right: auto; }
 			' . $sel( '.nfd-avatar-56' ) . ' { display: block; width: 56px; height: 56px; border-radius: 9999px; overflow: hidden; margin-left: auto; margin-right: auto; }
 			' . $sel( '.nfd-avatar-112 img' ) . ', ' . $sel( '.nfd-avatar-56 img' ) . ' { width: 100%; height: 100%; object-fit: cover; }
+			' . $sel( '.nfd-fancy-heading' ) . ' { font-family: "Cormorant Garamond", serif !important; font-style: italic !important; font-weight: 400 !important; font-size: clamp(3rem, 3rem + 5vw, 7rem) !important; line-height: 1.05 !important; margin-top: 0.15em !important; margin-bottom: 0.15em !important; }
 		';
 	}
 
@@ -432,7 +433,10 @@ class AIPageDesigner {
 			// Includes Inter/Manrope alongside the archetype fonts so every
 			// curated Design tab font pairing (designTokens.ts) is available
 			// on the published page, not just inside the admin preview build.
-			'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Raleway:wght@400;600;700&family=Inter:wght@400;500;600&family=Manrope:wght@400;600;700;800&display=swap',
+			// Cormorant Garamond (italic 400 only) backs the "nfd-fancy-heading"
+			// class every HeroCover/ParallaxBanner heading uses — see
+			// RendersMarkup::render_heading()'s $fancy param.
+			'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Raleway:wght@400;600;700&family=Inter:wght@400;500;600&family=Manrope:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@1,400&display=swap',
 			array(),
 			NFD_MODULE_AI_PAGE_DESIGNER_VERSION
 		);

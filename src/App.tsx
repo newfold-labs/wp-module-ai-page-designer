@@ -26,6 +26,26 @@ import type { WPItem } from './types';
 
 const DEFAULT_FONT_PAIRING_ID = 'default';
 
+// Auto-picked for brand-new pages instead of always starting on
+// DEFAULT_FONT_PAIRING_ID (theme default, no override) — otherwise every
+// generated page looks like plain, undifferentiated theme type by default,
+// and the curated pairings (see designTokens.ts) go undiscovered unless a
+// user happens to open the Design tab. Deterministic per site (hashes the
+// site URL, never randomly) rather than always the same pairing, mirroring
+// HeroCover::resolve_variant()'s crc32-hash approach on the PHP side — so
+// sites still diverge from each other instead of all converging on one look.
+const AUTO_FONT_PAIRING_IDS = CURATED_FONT_PAIRINGS
+  .map( ( pairing ) => pairing.id )
+  .filter( ( id ) => id !== DEFAULT_FONT_PAIRING_ID );
+
+function pickAutoFontPairingId( seed: string ): string {
+  let hash = 0;
+  for ( let i = 0; i < seed.length; i++ ) {
+    hash = ( hash * 31 + seed.charCodeAt( i ) ) >>> 0;
+  }
+  return AUTO_FONT_PAIRING_IDS[ hash % AUTO_FONT_PAIRING_IDS.length ];
+}
+
 declare global {
   interface Window {
     nfdAIPageDesigner: {
@@ -393,8 +413,14 @@ const App = () => {
     setOriginalMeta( null );
     setPublishTitle( '' );
     setSelectedPaletteId( null );
-    setSelectedFontPairingId( DEFAULT_FONT_PAIRING_ID );
-    setOriginalDesignTokens( null );
+    // Auto-pick a font pairing (see pickAutoFontPairingId's note) and seed
+    // the baseline with the SAME value — otherwise the auto-pick would
+    // immediately read as an unsaved user change (designTokensDirty diffs
+    // against DEFAULT_FONT_PAIRING_ID with no baseline), firing the
+    // unpublished-changes guard on a page nobody has touched yet.
+    const autoFontPairingId = pickAutoFontPairingId( nfdAIPageDesigner.siteUrl );
+    setSelectedFontPairingId( autoFontPairingId );
+    setOriginalDesignTokens( { paletteId: null, fontPairingId: autoFontPairingId } );
   };
 
   const handleCreateWithPrompt = ( prompt: string ) => {
@@ -412,8 +438,10 @@ const App = () => {
     setOriginalMeta( null );
     setPublishTitle( '' );
     setSelectedPaletteId( null );
-    setSelectedFontPairingId( DEFAULT_FONT_PAIRING_ID );
-    setOriginalDesignTokens( null );
+    // See the matching note in handleCreateNew().
+    const autoFontPairingId = pickAutoFontPairingId( nfdAIPageDesigner.siteUrl );
+    setSelectedFontPairingId( autoFontPairingId );
+    setOriginalDesignTokens( { paletteId: null, fontPairingId: autoFontPairingId } );
     conversation.handleSend( prompt );
   };
 

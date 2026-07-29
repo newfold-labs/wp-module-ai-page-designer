@@ -155,9 +155,16 @@ trait RendersMarkup {
 	 * @param int         $level     Heading level (1-6).
 	 * @param string|null $text_slug Text color slug, or null for the default.
 	 * @param bool        $center    Whether to center-align the heading.
+	 * @param bool        $fancy     Whether to render this heading in the "fancy" display face
+	 *                               (Cormorant Garamond, italic) — see the `nfd-fancy-heading` class
+	 *                               in `get_motion_css()`. Not a theme-preset `fontFamily` attribute:
+	 *                               this WP version's Font block-support only offers theme.json-
+	 *                               registered families in its own UI (confirmed live — no free-text
+	 *                               custom font entry), so a specific, always-available Google Font
+	 *                               is applied via `className` (a real, validated attribute) instead.
 	 * @return string
 	 */
-	private function render_heading( string $text, int $level, ?string $text_slug, bool $center = false ): string {
+	private function render_heading( string $text, int $level, ?string $text_slug, bool $center = false, bool $fancy = false ): string {
 		// Class order and the absence of any inline style here are load-bearing:
 		// WordPress's own core/heading save() never inlines text-align or a
 		// named/preset text color — both are class-only — and it puts the
@@ -168,6 +175,15 @@ trait RendersMarkup {
 		// attrs. Confirmed against this WP version's actual validator output.
 		$classes = array();
 		$attrs   = array( 'level' => $level );
+		if ( $fancy ) {
+			// Custom className always first — matches this file's own convention
+			// elsewhere (e.g. "nfd-scroll-fade wp-block-group...", "card-hover-lift
+			// wp-block-group..."); confirmed live that class order isn't actually
+			// enforced by this WP version's validator, but staying consistent avoids
+			// two different conventions in the same codebase.
+			$classes[]           = 'nfd-fancy-heading';
+			$attrs['className'] = 'nfd-fancy-heading';
+		}
 		if ( $center ) {
 			$classes[]          = 'has-text-align-center';
 			$attrs['textAlign'] = 'center';
@@ -182,7 +198,7 @@ trait RendersMarkup {
 		return $this->comment_wrap(
 			'heading',
 			$attrs,
-			"<{$tag} class=\"" . implode( ' ', $classes ) . '\">' . $this->esc_html( $text ) . "</{$tag}>"
+			"<{$tag} class=\"" . implode( ' ', $classes ) . '">' . $this->esc_html( $text ) . "</{$tag}>"
 		);
 	}
 
@@ -652,6 +668,45 @@ trait RendersMarkup {
 			),
 			'<hr class="' . $class_name . ' wp-block-separator has-text-color has-' . $bar_slug . '-color has-alpha-channel-opacity has-' . $bar_slug . '-background-color has-background"/>'
 		);
+	}
+
+	/**
+	 * Render a `core/cover` background image element for the `hasParallax`
+	 * case — a plain `<div>`, not an `<img>`: real `core/cover` `save()`
+	 * output drops the `<img class="wp-block-cover__image-background">`
+	 * element entirely once `hasParallax` is true and instead paints the
+	 * image via inline `background-image` on that same class (now a `<div>`),
+	 * with `has-parallax` appended to its class list (and to the outer
+	 * wrapper's). `background-position:50% 50%` is always present too —
+	 * WordPress's own save() emits the centered default even with no
+	 * `focalPoint` attribute set. Shared by every hasParallax cover archetype
+	 * ({@see HeroCover}, {@see ParallaxBanner}) — confirmed live by
+	 * round-tripping this exact markup through `wp.blocks.parse()`/
+	 * `getSaveContent()` in this WP version's block editor.
+	 *
+	 * @param string $image_url Resolved image URL.
+	 * @return string
+	 */
+	private function render_parallax_image( string $image_url ): string {
+		if ( '' === $image_url ) {
+			return '';
+		}
+		return '<div class="wp-block-cover__image-background has-parallax" style="background-position:50% 50%;background-image:url(' . $this->esc_url( $image_url ) . ')"></div>';
+	}
+
+	/**
+	 * Render a `core/cover` dim overlay span for a given dim ratio, including
+	 * `dimRatio:0` (a fully-transparent overlay, e.g. for a clean-photo
+	 * variant) — the numeric `has-background-dim-{ratio}` class is present at
+	 * every ratio including 0, confirmed live via the block editor's Code
+	 * editor (the one ratio WordPress omits the numeric suffix for is exactly
+	 * 50, its own default — never used by any caller here, so unhandled).
+	 *
+	 * @param int $dim_ratio Dim ratio percentage (0-100).
+	 * @return string
+	 */
+	private function render_cover_dim_span( int $dim_ratio ): string {
+		return '<span aria-hidden="true" class="wp-block-cover__background has-background-dim-' . $dim_ratio . ' has-background-dim"></span>';
 	}
 
 	/**

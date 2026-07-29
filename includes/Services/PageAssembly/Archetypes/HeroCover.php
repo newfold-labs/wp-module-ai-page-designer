@@ -44,6 +44,22 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  *    distinct from both `split`'s side-by-side columns and `image-bg`'s
  *    full-bleed treatment.
  *
+ * A fixed-background ("parallax") full-bleed image lives in its own
+ * {@see ParallaxBanner} archetype rather than as a fifth variant here — it
+ * was one originally, but sharing this archetype's 5-way auto-pick hash pool
+ * meant it only turned up on roughly 1 in 5 generated pages, and only ever as
+ * the opening hero. A standalone archetype can appear as its own plan item
+ * anywhere on the page (including more than once), so it's no longer this
+ * rare or hero-only.
+ *
+ * The heading (H1, every variant) renders in the "fancy" display face — see
+ * {@see RendersMarkup::render_heading()}'s `$fancy` param — a specific,
+ * always-loaded Google Font (Cormorant Garamond, italic) rather than a
+ * theme-preset `fontFamily` attribute: this WP version's Font block-support
+ * UI only offers theme.json-registered families (confirmed live — no
+ * free-text custom font entry), so a theme-registered slug can't reliably
+ * carry an arbitrary display font.
+ *
  * The plan item's own `variant` wins when it names one of the four above;
  * otherwise render() picks one deterministically from a hash of the heading
  * (never randomly — archetypes are pure functions, see PageAssembler's own
@@ -145,7 +161,7 @@ class HeroCover implements Archetype {
 		if ( '' !== $eyebrow ) {
 			$text_column .= $this->render_paragraph( $eyebrow, $text_slug, false );
 		}
-		$text_column .= $this->render_heading( $heading, 1, $text_slug, false );
+		$text_column .= $this->render_heading( $heading, 1, $text_slug, false, true );
 		if ( '' !== $subheading ) {
 			$text_column .= $this->render_paragraph( $subheading, $text_slug, false );
 		}
@@ -212,7 +228,7 @@ class HeroCover implements Archetype {
 		if ( '' !== $eyebrow ) {
 			$inner .= $this->render_paragraph( $eyebrow, $text_slug, true );
 		}
-		$inner .= $this->render_heading( $heading, 1, $text_slug, true );
+		$inner .= $this->render_heading( $heading, 1, $text_slug, true, true );
 		if ( '' !== $subheading ) {
 			$inner .= $this->render_paragraph( $subheading, $text_slug, true );
 		}
@@ -251,7 +267,7 @@ class HeroCover implements Archetype {
 		if ( '' !== $eyebrow ) {
 			$stack .= $this->render_paragraph( $eyebrow, $text_slug, true );
 		}
-		$stack .= $this->render_heading( $heading, 1, $text_slug, true );
+		$stack .= $this->render_heading( $heading, 1, $text_slug, true, true );
 		if ( '' !== $subheading ) {
 			$stack .= $this->render_paragraph( $subheading, $text_slug, true );
 		}
@@ -286,7 +302,7 @@ class HeroCover implements Archetype {
 		if ( '' !== $eyebrow ) {
 			$stack .= $this->render_paragraph( $eyebrow, $text_slug, true );
 		}
-		$stack .= $this->render_heading( $heading, 1, $text_slug, true );
+		$stack .= $this->render_heading( $heading, 1, $text_slug, true, true );
 		if ( '' !== $subheading ) {
 			$stack .= $this->render_paragraph( $subheading, $text_slug, true );
 		}
