@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { HistoryEntry, Message, WPItem } from '../types';
 import { generateContent, generateContentStream } from '../api';
 import { extractHtml } from '../util/aiDesignerHelpers';
-import { classifyIntent, generateMetadata, isIntentClassifierEnabled } from '../util/intentClassifier';
+import { classifyIntent, generateMetadata, isIntentClassifierEnabled, type EditIntent } from '../util/intentClassifier';
 import { generatePagePlanPage, isPagePlanEnabled } from '../util/pagePlan';
 
 type UseAiConversationOptions = {
@@ -51,7 +51,7 @@ type UseAiConversationResult = {
   setInput: (value: string) => void;
   setIsHistoryOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
   setPublishTitle: (value: string) => void;
-  handleSend: (overrideText?: string) => Promise<void>;
+  handleSend: (overrideText?: string, opts?: { forceNewPage?: boolean }) => Promise<void>;
   handleConfirmRevertChanges: () => void;
   handleRevertToEntry: (id: string) => void;
   resetAiConversation: () => void;
@@ -645,7 +645,17 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setMessages( ( prev ) => [ ...prev, message ] );
   }, [] );
 
-  const handleSend = useCallback( async ( overrideText?: string ) => {
+  // `opts.forceNewPage` marks "this message starts a page from nothing", which
+  // the caller knows for certain but this callback cannot infer. App.tsx's
+  // handleCreateWithPrompt() clears previewHtml/selectedItem and then calls
+  // handleSend() synchronously in the same tick, so the state resets have not
+  // been applied yet and this closure still sees the OUTGOING page's
+  // previewHtml. Without the flag, `isBrandNewPage` below reads false for what
+  // is unambiguously a brand-new page, and a prompt with no redesign keyword
+  // then fell through to the freeform markup path — which is why "New Page ->
+  // Generate" produced an undesigned page while the very first generation
+  // after a hard reload (genuinely null previewHtml) came out correct.
+  const handleSend = useCallback( async ( overrideText?: string, opts?: { forceNewPage?: boolean } ) => {
     const text = ( overrideText !== undefined ? overrideText : input ).trim();
     const wantsExcerpt = /excerpt/i.test( text );
     const wantsFeaturedImage = /(featured image|feature image|featured-image|featured-img)/i.test( text );
@@ -1199,6 +1209,34 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     try {
       setIsLoading( true );
 
+      const hasSelection = selectedBlockIndex !== null && selectedBlockHtml !== null;
+      const selectedTypeForCtx = ( () => {
+        if ( ! hasSelection || ! previewHtml ) {
+          return '';
+        }
+        const idx = parseInt( String( selectedBlockIndex ).split( '-' )[ 0 ], 10 );
+        const tops = splitTopLevelBlocks( previewHtml );
+        const m = ! isNaN( idx ) && tops[ idx ] ? tops[ idx ].match( /<!--\s*wp:([a-z0-9\/-]+)/i ) : null;
+        return m ? m[ 1 ].replace( /^core\//, '' ) : '';
+      } )();
+
+      // One classify call per message, shared by the whole-page routing gate
+      // just below and the edit-intent handlers much further down. Both need
+      // the same answer for the same text, so memoise it rather than paying for
+      // two identical model round-trips.
+      let cachedIntent: EditIntent | null = null;
+      const getIntent = async (): Promise< EditIntent > => {
+        if ( ! cachedIntent ) {
+          cachedIntent = await classifyIntent( apiUrl, text, {
+            has_selection: hasSelection,
+            selected_block_type: selectedTypeForCtx,
+            has_generated: hasAIGenerated || !! previewHtml,
+            palette: ( window as any )?.nfdAIPageDesigner?.colorPalette || [],
+          } );
+        }
+        return cachedIntent;
+      };
+
       // Build a page from a PageAssembler page-plan (typed archetypes) instead of
       // freeform AI markup. Engages for a brand-new page ("create a new page
       // from a prompt", no existing preview/selected item) OR an explicit
@@ -1211,8 +1249,48 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       // re-skinning colors/images instead of changing the layout. Falls
       // through to the normal AI generate path on any failure or if disabled
       // (generatePagePlanPage never throws).
-      const isBrandNewPage = ! previewHtml && ! selectedItem;
-      const isExistingPageRedesign = !! selectedItem && selectedItem.type === 'page' && isRedesignRequest;
+      // See the note on handleSend's `opts.forceNewPage` param: the flag is the
+      // only reliable signal here, because the state resets that would make
+      // previewHtml/selectedItem falsy have not been applied yet when the
+      // new-page flow calls this in the same tick.
+      const isBrandNewPage = !! opts?.forceNewPage || ( ! previewHtml && ! selectedItem );
+
+      // Whether this message means "(re)build the whole page" rather than "edit
+      // what's already here". A brand-new page is unambiguous and needs no model
+      // call; for a page that already HAS content this used to be a literal
+      // substring match against REDESIGN_KEYWORDS, which silently misrouted any
+      // full-page request phrased outside that list — "Create a modern homepage
+      // with a hero section, key features, and a call to action" contains
+      // "create" but not the listed "create new" — into the freeform edit
+      // pipeline. Those pages then came back as raw model markup with none of
+      // the archetype typography or sections (no fancy display heading, no
+      // eyebrow labels, no parallax banner), which is exactly the "the styling
+      // only applies to some pages" bug. The classifier already models this
+      // distinction properly (a `redesign` action plus a selected-vs-page
+      // `target`), so ask it instead of pattern-matching prose.
+      //
+      // Never consulted while a block is selected: a scoped single-block edit
+      // must stay scoped and can never escalate into rebuilding the page.
+      let wantsWholePageRedesign = isRedesignRequest;
+      if ( ! isBrandNewPage && ! hasSelection && isIntentClassifierEnabled() ) {
+        const routeIntent = await getIntent();
+        // action 'freeform' at confidence 0 is precisely how BOTH failure paths
+        // report "no usable classification" — the client's own catch and the
+        // server's fail-soft freeform( 'classifier_unavailable' | 'unparseable' ).
+        // Keep the keyword answer in that case so a classifier outage degrades
+        // to the old behaviour instead of regressing routing that used to work.
+        const classifierAnswered = ! ( routeIntent.action === 'freeform' && routeIntent.confidence === 0 );
+        if ( classifierAnswered ) {
+          wantsWholePageRedesign = routeIntent.action === 'redesign' && routeIntent.target !== 'selected';
+        }
+      }
+
+      // Both of these are mutually exclusive with a brand-new page by
+      // definition, and stating that explicitly matters: on the forceNewPage
+      // path the stale previewHtml/selectedItem this closure still sees could
+      // otherwise make one of them true and send the OUTGOING page's
+      // title/excerpt along as "redesign context" for the new page.
+      const isExistingPageRedesign = ! isBrandNewPage && !! selectedItem && selectedItem.type === 'page' && wantsWholePageRedesign;
       // "Create another version" of a page generated THIS session (previewHtml
       // exists but nothing is saved/selected yet). Without this, the request
       // fell through to the edit pipeline, which reliably returned near-empty
@@ -1221,7 +1299,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       // current title/excerpt ride along as redesign context, same as the
       // saved-page path, so a bare "create another version" (no topic in the
       // message itself) still tells the planner what the page is about.
-      const isInSessionRegenerate = !! previewHtml && ! selectedItem && isRedesignRequest;
+      const isInSessionRegenerate = ! isBrandNewPage && !! previewHtml && ! selectedItem && wantsWholePageRedesign;
       if ( isPagePlanEnabled() && ( isBrandNewPage || isExistingPageRedesign || isInSessionRegenerate ) ) {
         const planResult = isExistingPageRedesign || isInSessionRegenerate
           ? await generatePagePlanPage( apiUrl, text, metaTitle, metaExcerpt )
@@ -1776,23 +1854,11 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       let classifiedInsertDirection: 'before' | 'after' | null = null;
 
       if ( isIntentClassifierEnabled() ) {
-        const hasSelection = selectedBlockIndex !== null && selectedBlockHtml !== null;
-        const selectedTypeForCtx = ( () => {
-          if ( ! hasSelection || ! previewHtml ) {
-            return '';
-          }
-          const idx = parseInt( String( selectedBlockIndex ).split( '-' )[ 0 ], 10 );
-          const tops = splitTopLevelBlocks( previewHtml );
-          const m = ! isNaN( idx ) && tops[ idx ] ? tops[ idx ].match( /<!--\s*wp:([a-z0-9\/-]+)/i ) : null;
-          return m ? m[ 1 ].replace( /^core\//, '' ) : '';
-        } )();
-
-        const intent = await classifyIntent( apiUrl, text, {
-          has_selection: hasSelection,
-          selected_block_type: selectedTypeForCtx,
-          has_generated: hasAIGenerated || !! previewHtml,
-          palette: ( window as any )?.nfdAIPageDesigner?.colorPalette || [],
-        } );
+        // Reuses the memoised classification from the routing gate above
+        // (hasSelection/selectedTypeForCtx are hoisted there too), so a message
+        // that already consulted the classifier for routing doesn't pay for a
+        // second identical call here.
+        const intent = await getIntent();
 
         if ( intent.confidence >= 0.5 ) {
           if ( intent.action === 'remove' && hasSelection ) {

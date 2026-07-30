@@ -57,7 +57,14 @@ class PagePlanController {
 			. 'subheading?: string, '
 			. 'primaryCta: { label: string, url: string }, secondaryCta?: { label: string, url: string }, '
 			. 'imageQuery: string (a short Unsplash search phrase for the hero image; not used by the "centered" variant)',
-		'parallaxBanner'       => 'heading?: string (only shown by the "heading" variant), '
+		// heading is documented as effectively required even though the archetype
+		// tolerates its absence: the textless "image" variant renders as a bare
+		// photo strip that reads as decoration rather than a designed section
+		// (and is easily mistaken for the page's other images), so always give
+		// the band something to say.
+		'parallaxBanner'       => 'heading: string (a SHORT evocative statement — 3 to 7 words, no trailing '
+			. 'period — set over a full-bleed photo, e.g. "Rooted in the neighborhood", "Crafted in the summit"; '
+			. 'do not reuse the hero heading), '
 			. 'imageQuery: string (a short Unsplash search phrase for a full-bleed fixed-background photo)',
 		'featureGrid'          => 'heading?: string, intro?: string, items: exactly 3 of { title: string, body: string }',
 		'alternatingMediaText' => 'heading?: string, intro?: string, rows: array of { heading: string, body: string, '
@@ -284,7 +291,7 @@ class PagePlanController {
 			if ( count( $plan ) < $min_sections ) {
 				$plan = $this->pad_homepage_sections( $plan, $prompt, $min_sections - count( $plan ) );
 			}
-			$plan = $this->ensure_parallax_banner( $plan );
+			$plan = $this->ensure_parallax_banner( $plan, $plan_title );
 		}
 
 		$content = ( new PageAssembler() )->assemble( $plan );
@@ -530,10 +537,12 @@ class PagePlanController {
 	 * model already included one, or if the plan has no "heroCover" to source
 	 * an image query from (never fabricates content otherwise).
 	 *
-	 * @param array<int, array<string, mixed>> $plan Parsed section items.
+	 * @param array<int, array<string, mixed>> $plan       Parsed section items.
+	 * @param string                           $plan_title The plan's own page title, used as the
+	 *                                                     inserted banner's heading when present.
 	 * @return array<int, array<string, mixed>>
 	 */
-	private function ensure_parallax_banner( array $plan ): array {
+	private function ensure_parallax_banner( array $plan, string $plan_title = '' ): array {
 		foreach ( $plan as $item ) {
 			if ( is_array( $item ) && isset( $item['archetype'] ) && 'parallaxBanner' === $item['archetype'] ) {
 				return $plan;
@@ -552,16 +561,30 @@ class PagePlanController {
 			return $plan;
 		}
 
-		$banner = array(
-			'archetype' => 'parallaxBanner',
-			'variant'   => 'image',
+		// Prefer the text-bearing "heading" variant: the textless "image" variant
+		// renders as a bare full-bleed photo strip, which on a page that already
+		// has a hero photo and (often) a gallery reads as one more decorative
+		// image rather than a designed section — verified live, users don't
+		// register it as a section at all. The heading has to be REAL copy from
+		// this plan, never invented here (same rule as the image query below), so
+		// the page title is used and the variant falls back to "image" when the
+		// model gave us no title to work with.
+		$banner_content = array(
 			// A distinct-but-related search phrase, not the hero's own query
 			// verbatim — reusing it exactly would resolve to the identical
 			// image twice (PageAssembler/ImageService always take the first
 			// result for a given query).
-			'content'   => array(
-				'imageQuery' => $hero_query . ' wide angle',
-			),
+			'imageQuery' => $hero_query . ' wide angle',
+		);
+		$banner_title   = trim( $plan_title );
+		if ( '' !== $banner_title ) {
+			$banner_content['heading'] = $banner_title;
+		}
+
+		$banner = array(
+			'archetype' => 'parallaxBanner',
+			'variant'   => '' !== $banner_title ? 'heading' : 'image',
+			'content'   => $banner_content,
 		);
 
 		// Insert roughly mid-plan — after the opening heroCover, before a

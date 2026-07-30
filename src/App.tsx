@@ -442,7 +442,11 @@ const App = () => {
     const autoFontPairingId = pickAutoFontPairingId( nfdAIPageDesigner.siteUrl );
     setSelectedFontPairingId( autoFontPairingId );
     setOriginalDesignTokens( { paletteId: null, fontPairingId: autoFontPairingId } );
-    conversation.handleSend( prompt );
+    // forceNewPage: every setState above is still pending when handleSend runs
+    // in this same tick, so handleSend's own closure would still see the
+    // outgoing page's previewHtml/selectedItem and misroute this away from the
+    // archetype page-plan pipeline. See the note on its `opts` param.
+    conversation.handleSend( prompt, { forceNewPage: true } );
   };
 
   const handleRevertConfirm = () => {

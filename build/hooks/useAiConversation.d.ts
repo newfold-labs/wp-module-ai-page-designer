@@ -39,7 +39,9 @@ type UseAiConversationResult = {
     setInput: (value: string) => void;
     setIsHistoryOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
     setPublishTitle: (value: string) => void;
-    handleSend: (overrideText?: string) => Promise<void>;
+    handleSend: (overrideText?: string, opts?: {
+        forceNewPage?: boolean;
+    }) => Promise<void>;
     handleConfirmRevertChanges: () => void;
     handleRevertToEntry: (id: string) => void;
     resetAiConversation: () => void;

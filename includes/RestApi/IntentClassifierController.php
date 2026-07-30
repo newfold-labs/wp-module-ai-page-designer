@@ -406,7 +406,25 @@ class IntentClassifierController {
 			. '"change/make the text/font colour ..." => recolor_text. '
 			. '"change the background ..." => recolor_background. '
 			. '"remove/delete this section" => remove. '
-			. '"redesign/regenerate/start over" => redesign. '
+			// The frontend routes `redesign` to the archetype page-plan pipeline
+			// (typed sections, designed typography) rather than the freeform
+			// markup path, so this action has to cover EVERY "build me the whole
+			// page" phrasing — not just the literal words redesign/regenerate.
+			// A full-page brief that happens to open with "create"/"build"/"make"
+			// and then lists sections is the single most common way users ask for
+			// this, and mistaking it for an edit is what produces an
+			// undesigned-looking page.
+			. 'Whole-page (re)generation => redesign, with target "page". This covers "redesign", '
+			. '"regenerate", "start over", "start fresh", "from scratch", "another/different version", '
+			. 'AND any brief describing a whole page to build rather than a change to make — e.g. '
+			. '"create a modern homepage with a hero section, key features and a call to action", '
+			. '"build a landing page for our dental clinic", "make a pricing page with three tiers", '
+			. '"design an about page that tells our story". Signals: it names a PAGE TYPE '
+			. '(homepage/landing page/about page/pricing page/contact page) and/or enumerates the '
+			. 'SECTIONS the page should contain, instead of pointing at something already on the page. '
+			. 'If the instruction only adjusts, rewrites, restyles, adds to or removes part of what is '
+			. 'already there ("make the hero copy punchier", "add a testimonial below this", '
+			. '"change the heading colour", "shorten the intro"), it is NOT a redesign. '
 			. '"update/rewrite the excerpt/title" => edit_metadata with metadata_fields set (NOT when the phrase is about a colour/font of a heading). '
 			. '"add a <block> below/above this" => add_block with block_type and insert_direction. '
 			. '"replace/swap this image" => replace_image. '
