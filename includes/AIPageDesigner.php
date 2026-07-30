@@ -366,7 +366,7 @@ class AIPageDesigner {
 			' . $sel( '.nfd-avatar-112' ) . ' { display: block; width: 112px; height: 112px; border-radius: 9999px; overflow: hidden; margin-left: auto; margin-right: auto; }
 			' . $sel( '.nfd-avatar-56' ) . ' { display: block; width: 56px; height: 56px; border-radius: 9999px; overflow: hidden; margin-left: auto; margin-right: auto; }
 			' . $sel( '.nfd-avatar-112 img' ) . ', ' . $sel( '.nfd-avatar-56 img' ) . ' { width: 100%; height: 100%; object-fit: cover; }
-			' . $sel( '.nfd-fancy-heading' ) . ' { font-family: "Cormorant Garamond", serif !important; font-style: italic !important; font-weight: 400 !important; font-size: clamp(3rem, 3rem + 5vw, 7rem) !important; line-height: 1.05 !important; margin-top: 0.15em !important; margin-bottom: 0.15em !important; }
+			' . $sel( '.nfd-fancy-heading' ) . ' { font-family: "Cormorant Garamond", serif !important; font-style: italic !important; font-weight: 400 !important; font-size: clamp(2.5rem, 2.5rem + 3.5vw, 5.5rem) !important; line-height: 1.1 !important; margin-top: 0.15em !important; margin-bottom: 0.15em !important; }
 			' . $sel( '.nfd-fancy-quote' ) . ' { font-family: "Cormorant Garamond", serif !important; font-style: italic !important; line-height: 1.5 !important; }
 		';
 	}
