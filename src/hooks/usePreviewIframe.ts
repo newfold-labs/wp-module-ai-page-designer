@@ -263,6 +263,24 @@ export const usePreviewIframe = (
           #nfd-preview-root [style*="background:"] [style*="color:#ffffff"],
           #nfd-preview-root [style*="background:"] [style*="color: #ffffff"] { color: #fff !important; }
         </style>
+        <style id="nfd-anim-style">
+          /* motionCss (AIPageDesigner::get_motion_css()) loaded unconditionally on first
+             paint, NOT gated behind streaming finalize like _enableAnimations() used to do.
+             It was gated because get_motion_css() also defines the entrance-animation
+             classes (.fade-in, .nfd-scroll-fade, etc.) that truly must not fire mid-stream
+             -- but that gate accidentally also withheld the STATIC typography/layout rules
+             sharing the same stylesheet (.nfd-fancy-heading, .nfd-fancy-quote, .nfd-rounded-img,
+             .nfd-avatar-56, .nfd-accent-bar, .card-hover-lift's resting state, etc.), so a
+             hero's fancy heading font (or a testimonial's fancy quote face) rendered in the
+             theme's plain font throughout the whole streaming phase and only snapped to the
+             correct face once generation finished. The entrance-animation classes are already
+             independently neutralized during streaming by the [data-nfd-streaming] CSS
+             override above and by _applyContent()'s DOM-level class stripping below, so
+             loading this stylesheet immediately introduces no risk of a premature animation.
+             This is a real style tag with a real id (not a magic string) so the same-id
+             creation in _enableAnimations() below finds it already present and no-ops. */
+          ${ motionCss }
+        </style>
         <script>
           // Module-level state for nfdSetContent.
           var _lastHtml = '';
@@ -377,25 +395,22 @@ export const usePreviewIframe = (
             return 'Section';
           }
 
-          // Inject animation CSS (once) + (re)attach the IntersectionObserver.
-          // Called only on finalize (stream complete / non-streamed update), never
-          // during streaming — so no animation can fire while deltas are arriving.
-          // The CSS itself comes from the parent (AIPageDesigner::get_motion_css(),
-          // scoped to #nfd-preview-root) rather than being duplicated here — it's
-          // the same source enqueue_frontend_animations() uses for the published
-          // page, so a motion class can never animate in the editor and silently
-          // do nothing once published (or vice versa).
+          // (Re)attach the IntersectionObserver on finalize (stream complete or a
+          // non-streamed update). The #nfd-anim-style stylesheet itself now loads
+          // unconditionally as a static <style> tag above (see its own comment for
+          // why) — this function used to also (re)create that tag here, guarded to
+          // finalize-only, but only the observer actually needs to wait: nothing to
+          // reveal mid-stream, and re-querying/observing on every streaming delta
+          // would be wasted work. The CSS comes from the parent
+          // (AIPageDesigner::get_motion_css(), scoped to #nfd-preview-root) rather
+          // than being duplicated here — it's the same source
+          // enqueue_frontend_animations() uses for the published page, so a motion
+          // class can never animate in the editor and silently do nothing once
+          // published (or vice versa).
           function _enableAnimations() {
-            if (!document.getElementById('nfd-anim-style')) {
-            var style = document.createElement('style');
-            style.id = 'nfd-anim-style';
-            style.textContent = ${ JSON.stringify( motionCss ) };
-            document.head.appendChild(style);
-            }
-
             // (Re)attach the IntersectionObserver on every finalize so
-            // nfd-scroll-fade elements from a fresh generation get observed
-            // even when the style tag already exists from a prior run.
+            // nfd-scroll-fade elements from a fresh generation get observed,
+            // even on a second/later generation in the same iframe session.
             var observer = new IntersectionObserver(function(entries) {
               entries.forEach(function(entry) {
                 if (entry.isIntersecting) {

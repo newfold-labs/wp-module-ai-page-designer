@@ -367,6 +367,7 @@ class AIPageDesigner {
 			' . $sel( '.nfd-avatar-56' ) . ' { display: block; width: 56px; height: 56px; border-radius: 9999px; overflow: hidden; margin-left: auto; margin-right: auto; }
 			' . $sel( '.nfd-avatar-112 img' ) . ', ' . $sel( '.nfd-avatar-56 img' ) . ' { width: 100%; height: 100%; object-fit: cover; }
 			' . $sel( '.nfd-fancy-heading' ) . ' { font-family: "Cormorant Garamond", serif !important; font-style: italic !important; font-weight: 400 !important; font-size: clamp(3rem, 3rem + 5vw, 7rem) !important; line-height: 1.05 !important; margin-top: 0.15em !important; margin-bottom: 0.15em !important; }
+			' . $sel( '.nfd-fancy-quote' ) . ' { font-family: "Cormorant Garamond", serif !important; font-style: italic !important; line-height: 1.5 !important; }
 		';
 	}
 
@@ -411,7 +412,12 @@ class AIPageDesigner {
 		}
 
 		if ( ! empty( $body_font ) ) {
-			$rules[] = 'body, body * { font-family: ' . sanitize_text_field( $body_font ) . ' !important; }';
+			// :not(.nfd-fancy-quote) — same rationale as the heading exclusion
+			// just below: this rule and the `.nfd-fancy-quote` rule in
+			// get_motion_css() are both `!important`, so without the exclusion
+			// a saved Design tab body font would silently clobber the fancy
+			// testimonial quote face instead of leaving it alone.
+			$rules[] = 'body, body *:not(.nfd-fancy-quote) { font-family: ' . sanitize_text_field( $body_font ) . ' !important; }';
 		}
 
 		if ( ! empty( $heading_font ) ) {

@@ -295,4 +295,49 @@ class HeroCoverTest extends PageAssemblyTestCase {
 		$this->assertStringContainsString( 'nfd-fancy-heading', $out );
 		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
 	}
+
+	/**
+	 * @dataProvider variant_provider
+	 * @param string $variant Variant name under test.
+	 */
+	public function test_eyebrow_uses_the_tracked_uppercase_label_style( string $variant ): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$out  = $hero->render( $this->content(), $variant, $ctx, $hero->default_background( $ctx ) );
+
+		$this->assertStringContainsString( 'New for 2026', $out );
+		$this->assertStringContainsString( 'text-transform:uppercase', $out );
+		$this->assertStringContainsString( 'letter-spacing:0.08em', $out );
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
+
+	/**
+	 * @dataProvider variant_provider
+	 * @param string $variant Variant name under test.
+	 */
+	public function test_heading_highlight_renders_as_an_inline_accent_mark( string $variant ): void {
+		$hero    = new HeroCover();
+		$ctx     = $this->context();
+		$content = $this->content();
+
+		$content['headingHighlight'] = 'actually works';
+		$out                         = $hero->render( $content, $variant, $ctx, $hero->default_background( $ctx ) );
+
+		$this->assertStringContainsString( '<mark', $out );
+		$this->assertStringContainsString( 'has-inline-color', $out );
+		$this->assertStringContainsString( 'actually works</mark>', $out );
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
+
+	/**
+	 * @dataProvider variant_provider
+	 * @param string $variant Variant name under test.
+	 */
+	public function test_omitting_heading_highlight_renders_no_mark( string $variant ): void {
+		$hero = new HeroCover();
+		$ctx  = $this->context();
+		$out  = $hero->render( $this->content(), $variant, $ctx, $hero->default_background( $ctx ) );
+
+		$this->assertStringNotContainsString( '<mark', $out );
+	}
 }

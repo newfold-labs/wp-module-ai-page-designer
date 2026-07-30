@@ -152,4 +152,44 @@ class CtaBannerTest extends PageAssemblyTestCase {
 		$once = $cta->render( $this->content(), 'floating-card', $ctx, $bg );
 		$this->assertSame( $once, $cta->render( $this->content(), 'floating-card', $ctx, $bg ) );
 	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function content_with_highlight(): array {
+		$content                     = $this->content();
+		$content['headingHighlight'] = 'Adventure';
+		return $content;
+	}
+
+	public function test_split_variant_heading_highlight_renders_as_inline_accent_mark(): void {
+		$cta = new CtaBanner();
+		$ctx = $this->context();
+		$out = $cta->render( $this->content_with_highlight(), 'split', $ctx, $cta->default_background( $ctx ) );
+
+		$this->assertStringContainsString( '<mark', $out );
+		$this->assertStringContainsString( 'has-inline-color', $out );
+		$this->assertStringContainsString( 'Adventure</mark>', $out );
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
+
+	public function test_floating_card_variant_heading_highlight_renders_as_inline_accent_mark(): void {
+		$cta = new CtaBanner();
+		$ctx = $this->context();
+		$out = $cta->render( $this->content_with_highlight(), 'floating-card', $ctx, $cta->default_background( $ctx ) );
+
+		$this->assertStringContainsString( '<mark', $out );
+		$this->assertStringContainsString( 'has-inline-color', $out );
+		$this->assertStringContainsString( 'Adventure</mark>', $out );
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
+
+	public function test_accent_band_variant_ignores_heading_highlight(): void {
+		$cta = new CtaBanner();
+		$ctx = $this->context();
+		$out = $cta->render( $this->content_with_highlight(), 'accent-band', $ctx, $cta->default_background( $ctx ) );
+
+		$this->assertStringNotContainsString( '<mark', $out );
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
 }

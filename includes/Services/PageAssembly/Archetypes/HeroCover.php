@@ -19,14 +19,24 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * Content shape:
  * ```
  * [
- *   'eyebrow'      => string|null,
- *   'heading'      => string (required),
- *   'subheading'   => string|null,
- *   'primaryCta'   => [ 'label' => string, 'url' => string ] (required),
- *   'secondaryCta' => [ 'label' => string, 'url' => string ]|null,
- *   'imageUrl'     => string (required — already resolved; see PageAssembler),
+ *   'eyebrow'          => string|null,
+ *   'heading'          => string (required),
+ *   'headingHighlight' => string|null (an optional trailing phrase appended
+ *                         after the heading and set in the theme accent color —
+ *                         see {@see RendersMarkup::render_heading()}'s
+ *                         `$highlight` param — for a two-tone headline like
+ *                         "Start with a prompt that **actually works**"),
+ *   'subheading'       => string|null,
+ *   'primaryCta'       => [ 'label' => string, 'url' => string ] (required),
+ *   'secondaryCta'     => [ 'label' => string, 'url' => string ]|null,
+ *   'imageUrl'         => string (required — already resolved; see PageAssembler),
  * ]
  * ```
+ *
+ * The eyebrow (every variant) renders via {@see RendersMarkup::render_eyebrow()}
+ * — a small, uppercase, letter-spaced label, not a plain paragraph — matching
+ * the caption style used above nearly every section heading in Bluehost's own
+ * AI site generator output (e.g. "PRECISION SERVICES").
  *
  * Four variants:
  *  - `split`: a two-column `core/columns` row — left is the text stack,
@@ -150,18 +160,19 @@ class HeroCover implements Archetype {
 		$bg_slug   = $background_slug ?? $this->default_background( $ctx );
 		$text_slug = $this->text_slug_for_background( $ctx, $bg_slug );
 
-		$eyebrow       = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
-		$heading       = isset( $content['heading'] ) ? (string) $content['heading'] : '';
-		$subheading    = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
-		$image_url     = isset( $content['imageUrl'] ) ? (string) $content['imageUrl'] : '';
-		$primary_cta   = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
-		$secondary_cta = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
+		$eyebrow           = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
+		$heading           = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$heading_highlight = isset( $content['headingHighlight'] ) ? (string) $content['headingHighlight'] : '';
+		$subheading        = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
+		$image_url         = isset( $content['imageUrl'] ) ? (string) $content['imageUrl'] : '';
+		$primary_cta       = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
+		$secondary_cta     = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
 
 		$text_column = '';
 		if ( '' !== $eyebrow ) {
-			$text_column .= $this->render_paragraph( $eyebrow, $text_slug, false );
+			$text_column .= $this->render_eyebrow( $eyebrow, $text_slug, false );
 		}
-		$text_column .= $this->render_heading( $heading, 1, $text_slug, false, true );
+		$text_column .= $this->render_heading( $heading, 1, $text_slug, false, true, $heading_highlight, $this->contrasting_slug( $ctx, $bg_slug ) );
 		if ( '' !== $subheading ) {
 			$text_column .= $this->render_paragraph( $subheading, $text_slug, false );
 		}
@@ -192,12 +203,13 @@ class HeroCover implements Archetype {
 		$bg_slug   = $background_slug ?? $this->default_background( $ctx );
 		$text_slug = $this->text_slug_for_background( $ctx, $bg_slug );
 
-		$eyebrow       = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
-		$heading       = isset( $content['heading'] ) ? (string) $content['heading'] : '';
-		$subheading    = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
-		$image_url     = isset( $content['imageUrl'] ) ? (string) $content['imageUrl'] : '';
-		$primary_cta   = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
-		$secondary_cta = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
+		$eyebrow           = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
+		$heading           = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$heading_highlight = isset( $content['headingHighlight'] ) ? (string) $content['headingHighlight'] : '';
+		$subheading        = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
+		$image_url         = isset( $content['imageUrl'] ) ? (string) $content['imageUrl'] : '';
+		$primary_cta       = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
+		$secondary_cta     = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
 
 		$attrs = array(
 			'url'           => $image_url,
@@ -226,9 +238,9 @@ class HeroCover implements Archetype {
 		$inner .= '<span aria-hidden="true" class="' . $dim_classes . '"></span>';
 		$inner .= '<div class="wp-block-cover__inner-container">';
 		if ( '' !== $eyebrow ) {
-			$inner .= $this->render_paragraph( $eyebrow, $text_slug, true );
+			$inner .= $this->render_eyebrow( $eyebrow, $text_slug, true );
 		}
-		$inner .= $this->render_heading( $heading, 1, $text_slug, true, true );
+		$inner .= $this->render_heading( $heading, 1, $text_slug, true, true, $heading_highlight, $this->contrasting_slug( $ctx, $bg_slug ) );
 		if ( '' !== $subheading ) {
 			$inner .= $this->render_paragraph( $subheading, $text_slug, true );
 		}
@@ -257,17 +269,18 @@ class HeroCover implements Archetype {
 		$bg_slug   = $background_slug ?? $this->default_background( $ctx );
 		$text_slug = $this->text_slug_for_background( $ctx, $bg_slug );
 
-		$eyebrow       = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
-		$heading       = isset( $content['heading'] ) ? (string) $content['heading'] : '';
-		$subheading    = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
-		$primary_cta   = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
-		$secondary_cta = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
+		$eyebrow           = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
+		$heading           = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$heading_highlight = isset( $content['headingHighlight'] ) ? (string) $content['headingHighlight'] : '';
+		$subheading        = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
+		$primary_cta       = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
+		$secondary_cta     = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
 
 		$stack = '';
 		if ( '' !== $eyebrow ) {
-			$stack .= $this->render_paragraph( $eyebrow, $text_slug, true );
+			$stack .= $this->render_eyebrow( $eyebrow, $text_slug, true );
 		}
-		$stack .= $this->render_heading( $heading, 1, $text_slug, true, true );
+		$stack .= $this->render_heading( $heading, 1, $text_slug, true, true, $heading_highlight, $this->contrasting_slug( $ctx, $bg_slug ) );
 		if ( '' !== $subheading ) {
 			$stack .= $this->render_paragraph( $subheading, $text_slug, true );
 		}
@@ -291,18 +304,19 @@ class HeroCover implements Archetype {
 		$bg_slug   = $background_slug ?? $this->default_background( $ctx );
 		$text_slug = $this->text_slug_for_background( $ctx, $bg_slug );
 
-		$eyebrow       = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
-		$heading       = isset( $content['heading'] ) ? (string) $content['heading'] : '';
-		$subheading    = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
-		$image_url     = isset( $content['imageUrl'] ) ? (string) $content['imageUrl'] : '';
-		$primary_cta   = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
-		$secondary_cta = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
+		$eyebrow           = isset( $content['eyebrow'] ) ? (string) $content['eyebrow'] : '';
+		$heading           = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$heading_highlight = isset( $content['headingHighlight'] ) ? (string) $content['headingHighlight'] : '';
+		$subheading        = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
+		$image_url         = isset( $content['imageUrl'] ) ? (string) $content['imageUrl'] : '';
+		$primary_cta       = isset( $content['primaryCta'] ) && is_array( $content['primaryCta'] ) ? $content['primaryCta'] : null;
+		$secondary_cta     = isset( $content['secondaryCta'] ) && is_array( $content['secondaryCta'] ) ? $content['secondaryCta'] : null;
 
 		$stack = '';
 		if ( '' !== $eyebrow ) {
-			$stack .= $this->render_paragraph( $eyebrow, $text_slug, true );
+			$stack .= $this->render_eyebrow( $eyebrow, $text_slug, true );
 		}
-		$stack .= $this->render_heading( $heading, 1, $text_slug, true, true );
+		$stack .= $this->render_heading( $heading, 1, $text_slug, true, true, $heading_highlight, $this->contrasting_slug( $ctx, $bg_slug ) );
 		if ( '' !== $subheading ) {
 			$stack .= $this->render_paragraph( $subheading, $text_slug, true );
 		}
@@ -346,24 +360,6 @@ class HeroCover implements Archetype {
 				'className' => 'nfd-max-w-720 nfd-banner-strip',
 			),
 			'<figure class="nfd-max-w-720 nfd-banner-strip wp-block-image size-large">' . $img . '</figure>'
-		);
-	}
-
-	/**
-	 * Wrap already-rendered block markup in a plain, width-constrained,
-	 * horizontally-centered `core/group` — the shared shell behind the
-	 * `centered`/`stacked` variants' text stack.
-	 *
-	 * @param string $inner Rendered inner block markup.
-	 * @return string
-	 */
-	private function wrap_constrained( string $inner ): string {
-		// className "nfd-max-w-720" (real CSS in get_motion_css()), not an
-		// unbacked inline style — see render_stacked_image()'s note above.
-		return $this->comment_wrap(
-			'group',
-			array( 'className' => 'nfd-max-w-720' ),
-			'<div class="nfd-max-w-720 wp-block-group">' . $inner . '</div>'
 		);
 	}
 

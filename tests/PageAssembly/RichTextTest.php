@@ -68,4 +68,27 @@ class RichTextTest extends PageAssemblyTestCase {
 		$rich = new RichText();
 		$this->assertNull( $rich->default_background( $this->context() ) );
 	}
+
+	public function test_body_renders_left_aligned_with_a_drop_cap(): void {
+		$rich = new RichText();
+		$ctx  = $this->context();
+		$out  = $rich->render(
+			array(
+				'heading' => 'About us',
+				'body'    => 'We are a company that does things.',
+			),
+			null,
+			$ctx,
+			null
+		);
+
+		$this->assertStringContainsString( '"dropCap":true', $out );
+		// The body paragraph itself starts with "has-drop-cap" (no align class
+		// before it, per RendersMarkup::render_paragraph()'s "align, then
+		// drop-cap" order) — unlike the section's own heading, which
+		// render_section() still centers, so a bare "has-text-align-center"
+		// absence check across the whole string would be a false negative.
+		$this->assertStringContainsString( '<p class="has-drop-cap', $out );
+		$this->assertSame( array(), ( new Validator() )->validate( $out, $ctx ) );
+	}
 }

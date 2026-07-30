@@ -30,9 +30,14 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * Content shape:
  * ```
  * [
- *   'heading'    => string (required),
- *   'subheading' => string|null,
- *   'cta'        => [ 'label' => string, 'url' => string ] (required),
+ *   'heading'          => string (required),
+ *   'headingHighlight' => string|null (an optional trailing phrase in the theme
+ *                         accent color — see {@see RendersMarkup::render_heading()}'s
+ *                         `$highlight` param — for a two-tone closing headline
+ *                         like "Begin Your **Adventure**"; only the `split` and
+ *                         `floating-card` variants render it),
+ *   'subheading'       => string|null,
+ *   'cta'              => [ 'label' => string, 'url' => string ] (required),
  * ]
  * ```
  */
@@ -117,16 +122,17 @@ class CtaBanner implements Archetype {
 	 * @return string
 	 */
 	private function render_split( array $content, Context $ctx, ?string $background_slug ): string {
-		$bg_slug    = $background_slug ?? $this->default_background( $ctx );
-		$heading    = isset( $content['heading'] ) ? (string) $content['heading'] : '';
-		$subheading = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
-		$cta        = isset( $content['cta'] ) && is_array( $content['cta'] ) ? $content['cta'] : null;
+		$bg_slug           = $background_slug ?? $this->default_background( $ctx );
+		$heading           = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$heading_highlight = isset( $content['headingHighlight'] ) ? (string) $content['headingHighlight'] : '';
+		$subheading        = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
+		$cta               = isset( $content['cta'] ) && is_array( $content['cta'] ) ? $content['cta'] : null;
 
 		$text_slug = $this->text_slug_for_background( $ctx, $bg_slug );
 
 		$left_inner = '';
 		if ( '' !== $heading ) {
-			$left_inner .= $this->render_heading( $heading, 2, $text_slug );
+			$left_inner .= $this->render_heading( $heading, 2, $text_slug, false, false, $heading_highlight, $this->contrasting_slug( $ctx, $bg_slug ) );
 		}
 		if ( '' !== $subheading ) {
 			$left_inner .= $this->render_paragraph( $subheading, $text_slug );
@@ -155,17 +161,22 @@ class CtaBanner implements Archetype {
 	 * @return string
 	 */
 	private function render_floating_card_variant( array $content, Context $ctx, ?string $background_slug ): string {
-		$bg_slug    = $background_slug ?? $this->default_background( $ctx );
-		$heading    = isset( $content['heading'] ) ? (string) $content['heading'] : '';
-		$subheading = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
-		$cta        = isset( $content['cta'] ) && is_array( $content['cta'] ) ? $content['cta'] : null;
+		$bg_slug           = $background_slug ?? $this->default_background( $ctx );
+		$heading           = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$heading_highlight = isset( $content['headingHighlight'] ) ? (string) $content['headingHighlight'] : '';
+		$subheading        = isset( $content['subheading'] ) ? (string) $content['subheading'] : '';
+		$cta               = isset( $content['cta'] ) && is_array( $content['cta'] ) ? $content['cta'] : null;
 
 		$card_slug = $this->contrasting_slug( $ctx, $bg_slug );
 		$card_text = $this->text_slug_for_background( $ctx, $card_slug );
 
 		$card_inner = '';
 		if ( ! empty( $heading ) ) {
-			$card_inner .= $this->render_heading( $heading, 2, null, true );
+			// The highlight phrase contrasts against the CARD's own background
+			// (one level deeper than the section) — same chaining {@see contrasting_slug()}
+			// already uses for this variant's button below, so the highlight can
+			// never collide with the card behind it either.
+			$card_inner .= $this->render_heading( $heading, 2, null, true, false, $heading_highlight, $this->contrasting_slug( $ctx, $card_slug ) );
 		}
 		if ( ! empty( $subheading ) ) {
 			$card_inner .= $this->render_paragraph( $subheading, null, true );

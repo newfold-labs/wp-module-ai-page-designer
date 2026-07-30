@@ -135,4 +135,17 @@ class TestimonialsTest extends PageAssemblyTestCase {
 		}
 		$this->assertContains( $out, $explicit );
 	}
+
+	public function test_quotes_use_the_fancy_serif_face_in_every_variant(): void {
+		$testimonials = new Testimonials();
+		$ctx          = $this->context();
+
+		foreach ( array( 'grid-3', 'cards', 'spotlight' ) as $variant ) {
+			$out = $testimonials->render( $this->content(), $variant, $ctx, null );
+			// Two quotes in the fixture, each contributing two occurrences of the
+			// class name: once in the block comment's JSON attrs, once in the
+			// rendered <p class="..."> — see RendersMarkup::comment_wrap().
+			$this->assertSame( 4, substr_count( $out, 'nfd-fancy-quote' ), "variant: {$variant}" );
+		}
+	}
 }

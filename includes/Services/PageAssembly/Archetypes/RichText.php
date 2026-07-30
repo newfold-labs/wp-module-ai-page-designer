@@ -14,6 +14,14 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
  * with just a body paragraph and an optional CTA button — for content that
  * doesn't fit any other archetype's shape.
  *
+ * The body renders left-aligned with a drop cap (`core/paragraph`'s own native
+ * `dropCap` attribute — see {@see RendersMarkup::render_paragraph()}'s
+ * `$drop_cap` param) inside a centered, width-constrained column, rather than
+ * through {@see RendersMarkup::render_section()}'s own centered `$intro` slot
+ * — an editorial "magazine" treatment for the one archetype whose whole job is
+ * prose, matching the drop-cap bios/story sections used throughout Bluehost's
+ * own AI site generator output.
+ *
  * Content shape:
  * ```
  * [
@@ -83,13 +91,18 @@ class RichText implements Archetype {
 		$body    = isset( $content['body'] ) ? (string) $content['body'] : '';
 		$cta     = isset( $content['cta'] ) && is_array( $content['cta'] ) ? $content['cta'] : null;
 
-		$inner = '';
+		$text_slug = $this->text_slug_for_background( $ctx, $background_slug );
+
+		$stack = '';
+		if ( '' !== $body ) {
+			$stack .= $this->render_paragraph( $body, $text_slug, false, true );
+		}
 		if ( null !== $cta && ! empty( $cta['label'] ) ) {
 			$button_bg   = $this->contrasting_slug( $ctx, $background_slug );
 			$button_text = $this->text_slug_for_background( $ctx, $button_bg );
-			$inner       = $this->render_buttons_wrap( $this->render_button( (string) $cta['label'], isset( $cta['url'] ) ? (string) $cta['url'] : '#', $button_bg, $button_text ), false );
+			$stack      .= $this->render_buttons_wrap( $this->render_button( (string) $cta['label'], isset( $cta['url'] ) ? (string) $cta['url'] : '#', $button_bg, $button_text ), false );
 		}
 
-		return $this->render_section( $heading, $body, $inner, $ctx, $background_slug );
+		return $this->render_section( $heading, null, $this->wrap_constrained( $stack ), $ctx, $background_slug );
 	}
 }

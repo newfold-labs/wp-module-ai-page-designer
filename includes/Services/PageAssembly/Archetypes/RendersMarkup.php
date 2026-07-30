@@ -151,20 +151,32 @@ trait RendersMarkup {
 	/**
 	 * Render a heading.
 	 *
-	 * @param string      $text      Heading text.
-	 * @param int         $level     Heading level (1-6).
-	 * @param string|null $text_slug Text color slug, or null for the default.
-	 * @param bool        $center    Whether to center-align the heading.
-	 * @param bool        $fancy     Whether to render this heading in the "fancy" display face
-	 *                               (Cormorant Garamond, italic) — see the `nfd-fancy-heading` class
-	 *                               in `get_motion_css()`. Not a theme-preset `fontFamily` attribute:
-	 *                               this WP version's Font block-support only offers theme.json-
-	 *                               registered families in its own UI (confirmed live — no free-text
-	 *                               custom font entry), so a specific, always-available Google Font
-	 *                               is applied via `className` (a real, validated attribute) instead.
+	 * @param string      $text           Heading text.
+	 * @param int         $level          Heading level (1-6).
+	 * @param string|null $text_slug      Text color slug, or null for the default.
+	 * @param bool        $center         Whether to center-align the heading.
+	 * @param bool        $fancy          Whether to render this heading in the "fancy" display face
+	 *                                    (Cormorant Garamond, italic) — see the `nfd-fancy-heading` class
+	 *                                    in `get_motion_css()`. Not a theme-preset `fontFamily` attribute:
+	 *                                    this WP version's Font block-support only offers theme.json-
+	 *                                    registered families in its own UI (confirmed live — no free-text
+	 *                                    custom font entry), so a specific, always-available Google Font
+	 *                                    is applied via `className` (a real, validated attribute) instead.
+	 * @param string|null $highlight      An optional trailing phrase appended after `$text` (with a
+	 *                                    separating space) and wrapped in an inline `<mark>` — the
+	 *                                    real markup WordPress's own "Text color" RichText format
+	 *                                    produces (`tagName: "mark"`, `className: "has-inline-color"`,
+	 *                                    confirmed against this WP version's own compiled
+	 *                                    format-library source), giving a two-tone headline (e.g.
+	 *                                    "Start with a prompt that **actually works**"). Ignored when
+	 *                                    `$highlight_slug` is null — an unstyled trailing phrase isn't
+	 *                                    worth the markup. Confirmed valid via `wp.blocks.parse()`
+	 *                                    live in this WP version, combined with every other heading
+	 *                                    attribute this method sets (align, textColor, fancy).
+	 * @param string|null $highlight_slug Palette slug for the `$highlight` phrase's inline color.
 	 * @return string
 	 */
-	private function render_heading( string $text, int $level, ?string $text_slug, bool $center = false, bool $fancy = false ): string {
+	private function render_heading( string $text, int $level, ?string $text_slug, bool $center = false, bool $fancy = false, ?string $highlight = null, ?string $highlight_slug = null ): string {
 		// Class order and the absence of any inline style here are load-bearing:
 		// WordPress's own core/heading save() never inlines text-align or a
 		// named/preset text color — both are class-only — and it puts the
@@ -194,11 +206,25 @@ trait RendersMarkup {
 			$classes[]          = 'has-text-color';
 			$attrs['textColor'] = $text_slug;
 		}
+		$content = $this->esc_html( $text );
+		if ( null !== $highlight && '' !== $highlight && null !== $highlight_slug ) {
+			// background-color:transparent is deliberate, not decorative: <mark>'s
+			// browser default user-agent style is a yellow highlighter background
+			// (color alone doesn't clear it), and WordPress's own "Text color"
+			// RichText format never sets a background — so an unset background
+			// here would silently render as a highlighter box behind the accent
+			// text in any browser, confirmed live. Still valid `wp.blocks.parse()`
+			// content since a heading's rich-text `content` attribute is captured
+			// verbatim, not reconstructed from a save()-style comparison.
+			$sep      = '' !== $text ? ' ' : '';
+			$content .= $sep . '<mark style="color:var(--wp--preset--color--' . $highlight_slug . ');background-color:transparent" class="has-inline-color has-' . $highlight_slug . '-color">' . $this->esc_html( $highlight ) . '</mark>';
+		}
+
 		$tag = 'h' . $level;
 		return $this->comment_wrap(
 			'heading',
 			$attrs,
-			"<{$tag} class=\"" . implode( ' ', $classes ) . '">' . $this->esc_html( $text ) . "</{$tag}>"
+			"<{$tag} class=\"" . implode( ' ', $classes ) . '">' . $content . "</{$tag}>"
 		);
 	}
 
@@ -208,9 +234,14 @@ trait RendersMarkup {
 	 * @param string      $text      Paragraph text.
 	 * @param string|null $text_slug Text color slug, or null for the default.
 	 * @param bool        $center    Whether to center-align the paragraph.
+	 * @param bool        $drop_cap  Whether to render a large first-letter drop cap — `core/paragraph`'s
+	 *                                own native `dropCap` boolean attribute (not a custom className):
+	 *                                confirmed live via `wp.blocks.parse()` that `has-drop-cap` slots
+	 *                                between the align class and any color classes, matching this
+	 *                                method's existing "align, then color" order.
 	 * @return string
 	 */
-	private function render_paragraph( string $text, ?string $text_slug, bool $center = false ): string {
+	private function render_paragraph( string $text, ?string $text_slug, bool $center = false, bool $drop_cap = false ): string {
 		// No inline style here either — see render_heading()'s note; core/paragraph's
 		// save() is class-only for align/textColor too, and this class order
 		// (align, then color) already matches its output.
@@ -219,6 +250,10 @@ trait RendersMarkup {
 		if ( $center ) {
 			$classes[]      = 'has-text-align-center';
 			$attrs['align'] = 'center';
+		}
+		if ( $drop_cap ) {
+			$classes[]        = 'has-drop-cap';
+			$attrs['dropCap'] = true;
 		}
 		if ( null !== $text_slug ) {
 			$classes[]          = 'has-' . $text_slug . '-color';
@@ -230,6 +265,60 @@ trait RendersMarkup {
 			'paragraph',
 			$attrs,
 			"<p{$class_attr}>" . $this->esc_html( $text ) . '</p>'
+		);
+	}
+
+	/**
+	 * Render a tracked-out, uppercase "eyebrow" label — the small caption above
+	 * a heading (e.g. "PRECISION SERVICES") that Bluehost's own AI site
+	 * generator uses throughout its sample output. A `core/paragraph` with a
+	 * custom `style.typography` block, not a bespoke className: `fontSize`,
+	 * `fontWeight`, `textTransform`, and `letterSpacing` are all real,
+	 * block.json-declared typography supports on `core/paragraph` in this WP
+	 * version, so their values inline verbatim in that exact order — confirmed
+	 * live via `wp.blocks.parse()`, matching the same "custom typography value
+	 * inlines verbatim" pattern already proven in
+	 * {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\Testimonials::render_spotlight_quote()}.
+	 * Returns an empty string for empty text so callers can unconditionally
+	 * concatenate the result.
+	 *
+	 * @param string      $text      Eyebrow text.
+	 * @param string|null $text_slug Text color slug, or null for the default.
+	 * @param bool        $center    Whether to center-align the label.
+	 * @return string
+	 */
+	private function render_eyebrow( string $text, ?string $text_slug, bool $center = false ): string {
+		if ( '' === $text ) {
+			return '';
+		}
+
+		$typography = array(
+			'fontSize'      => '0.8125rem',
+			'fontWeight'    => '600',
+			'textTransform' => 'uppercase',
+			'letterSpacing' => '0.08em',
+		);
+		$style_decl = 'font-size:0.8125rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em';
+
+		$classes = array();
+		$attrs   = array(
+			'style' => array( 'typography' => $typography ),
+		);
+		if ( $center ) {
+			$classes[]      = 'has-text-align-center';
+			$attrs['align'] = 'center';
+		}
+		if ( null !== $text_slug ) {
+			$classes[]          = 'has-' . $text_slug . '-color';
+			$classes[]          = 'has-text-color';
+			$attrs['textColor'] = $text_slug;
+		}
+
+		$class_attr = empty( $classes ) ? '' : ' class="' . implode( ' ', $classes ) . '"';
+		return $this->comment_wrap(
+			'paragraph',
+			$attrs,
+			"<p{$class_attr} style=\"{$style_decl}\">" . $this->esc_html( $text ) . '</p>'
 		);
 	}
 
@@ -736,6 +825,24 @@ trait RendersMarkup {
 			'image',
 			$attrs,
 			'<figure class="' . $class . '">' . $img . '</figure>'
+		);
+	}
+
+	/**
+	 * Wrap already-rendered block markup in a plain, width-constrained,
+	 * horizontally-centered `core/group` — shared by {@see HeroCover}'s
+	 * `centered`/`stacked` variants and {@see RichText}'s editorial body copy.
+	 *
+	 * @param string $inner Rendered inner block markup.
+	 * @return string
+	 */
+	private function wrap_constrained( string $inner ): string {
+		// className "nfd-max-w-720" (real CSS in get_motion_css()), not an
+		// unbacked inline style — see render_heading()'s note.
+		return $this->comment_wrap(
+			'group',
+			array( 'className' => 'nfd-max-w-720' ),
+			'<div class="nfd-max-w-720 wp-block-group">' . $inner . '</div>'
 		);
 	}
 

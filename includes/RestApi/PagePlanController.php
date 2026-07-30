@@ -51,7 +51,10 @@ class PagePlanController {
 	 * @var array<string, string>
 	 */
 	private const ARCHETYPE_SCHEMAS = array(
-		'heroCover'            => 'eyebrow?: string, heading: string, subheading?: string, '
+		'heroCover'            => 'eyebrow?: string (a short, uppercase-style label above the heading, e.g. "Precision Services"), '
+			. 'heading: string, headingHighlight?: string (an optional short accent-colored phrase appended '
+			. 'after the heading for a two-tone headline, e.g. heading "Start with a prompt that", headingHighlight "actually works"), '
+			. 'subheading?: string, '
 			. 'primaryCta: { label: string, url: string }, secondaryCta?: { label: string, url: string }, '
 			. 'imageQuery: string (a short Unsplash search phrase for the hero image; not used by the "centered" variant)',
 		'parallaxBanner'       => 'heading?: string (only shown by the "heading" variant), '
@@ -59,7 +62,9 @@ class PagePlanController {
 		'featureGrid'          => 'heading?: string, intro?: string, items: exactly 3 of { title: string, body: string }',
 		'alternatingMediaText' => 'heading?: string, intro?: string, rows: array of { heading: string, body: string, '
 			. 'imageQuery: string (short Unsplash search phrase), cta?: { label: string, url: string } }',
-		'ctaBanner'            => 'heading: string, subheading?: string, cta: { label: string, url: string }',
+		'ctaBanner'            => 'heading: string, headingHighlight?: string (an optional short accent-colored '
+			. 'phrase appended after the heading for a two-tone closing headline, e.g. heading "Begin Your", '
+			. 'headingHighlight "Adventure"), subheading?: string, cta: { label: string, url: string }',
 		'bookingForm'          => 'heading?: string, intro?: string, submitLabel?: string, fields: array of '
 			. '{ type: one of "text"|"email"|"tel"|"date"|"time"|"number"|"select"|"textarea", name: string, label: string, '
 			. 'required?: boolean, options?: string[] (only for type "select") }',

@@ -199,14 +199,15 @@ class Testimonials implements Archetype {
 		$html = $this->comment_wrap(
 			'paragraph',
 			array(
-				'style' => array(
+				'className' => 'nfd-fancy-quote',
+				'style'     => array(
 					'typography' => array(
 						'fontSize'   => '1.375rem',
 						'lineHeight' => '1.6',
 					),
 				),
 			),
-			'<p class="" style="font-size:1.375rem;line-height:1.6">' . $this->esc_html( $quote ) . '</p>'
+			'<p class="nfd-fancy-quote" style="font-size:1.375rem;line-height:1.6">' . $this->esc_html( $quote ) . '</p>'
 		);
 		if ( '' !== $citation ) {
 			$html .= '<cite>' . $this->esc_html( $citation ) . '</cite>';
@@ -276,9 +277,11 @@ class Testimonials implements Archetype {
 			$citation .= ', ' . $role;
 		}
 
-		// Nested wp:paragraph child, no inline style — see
-		// render_spotlight_quote()'s note.
-		$html = $this->comment_wrap( 'paragraph', array(), '<p>' . $this->esc_html( $quote ) . '</p>' );
+		// Nested wp:paragraph child — see render_spotlight_quote()'s note.
+		// "nfd-fancy-quote" (real CSS in get_motion_css(), same italic serif
+		// face as the spotlight variant's quote) is the one styling difference
+		// from a bare paragraph here.
+		$html = $this->comment_wrap( 'paragraph', array( 'className' => 'nfd-fancy-quote' ), '<p class="nfd-fancy-quote">' . $this->esc_html( $quote ) . '</p>' );
 		if ( '' !== $citation ) {
 			$html .= '<cite>' . $this->esc_html( $citation ) . '</cite>';
 		}
