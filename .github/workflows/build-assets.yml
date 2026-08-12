@@ -10,14 +10,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Disable permissions for all available scopes by default.
+# Any needed permissions should be configured at the job level.
+permissions: {}
+
 jobs:
   build:
     name: Build and Commit Assets
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required so the workflow can commit and git push rebuilt assets back to the branch.
+    timeout-minutes: 30
     # Skip if triggered by the bot commit to prevent an infinite loop.
     if: github.actor != 'github-actions[bot]'
-    permissions:
-      contents: write
     steps:
 
       - name: Checkout
