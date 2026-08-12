@@ -19,6 +19,23 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\Unrenderab
 class Validator {
 
 	/**
+	 * The unrenderable-content rule, consulted as the assertion for its own
+	 * defect class — see {@see Validator::check_unrenderable_content()}.
+	 *
+	 * @var UnrenderableContentFallback
+	 */
+	private $fallback;
+
+	/**
+	 * Constructor.
+	 *
+	 * @param RenderSupport|null $support Environment probe (defaults to a real one; tests inject a double).
+	 */
+	public function __construct( ?RenderSupport $support = null ) {
+		$this->fallback = new UnrenderableContentFallback( $support );
+	}
+
+	/**
 	 * Validate markup and return a list of human-readable violations.
 	 *
 	 * @param string  $markup Block markup.
@@ -90,14 +107,15 @@ class Validator {
 
 	/**
 	 * Nothing on the page that this site cannot render: no unregistered block
-	 * that renders nothing, and no form shortcode that will print as raw text.
+	 * that renders nothing, no form (block or shortcode) whose plugin or form
+	 * ID is absent, and no block pointing at a pattern, synced pattern,
+	 * template part or menu that does not exist here.
 	 *
-	 * Mirrors {@see UnrenderableContentFallback} — and literally shares its
-	 * predicates, so "unrenderable" means exactly one thing in the repair and
-	 * in the assertion. The two canonical cases are a plugin form block on a
-	 * site without that plugin (`wp:forminator/contact-form`, whose section
-	 * shows its heading and nothing else) and a plugin form shortcode
-	 * (`[contact-form-7 id="0"]`, which the visitor reads verbatim).
+	 * Mirrors {@see UnrenderableContentFallback} by *calling it* — the repair
+	 * and the assertion run the same predicate over the same
+	 * {@see RenderSupport}, so they cannot drift apart into a harness that
+	 * loops (fixing what is never flagged) or lies (flagging what is never
+	 * fixed).
 	 *
 	 * @param string             $markup     Block markup.
 	 * @param array<int, string> $violations Violation accumulator (by reference).
@@ -122,16 +140,9 @@ class Validator {
 	 */
 	private function find_unrenderable_content( array $blocks ) {
 		foreach ( $blocks as $block ) {
-			$block_name = isset( $block['blockName'] ) ? $block['blockName'] : null;
-			if ( is_string( $block_name ) && '' !== $block_name
-				&& ! UnrenderableContentFallback::block_is_supported( $block_name )
-				&& UnrenderableContentFallback::block_renders_nothing( $block ) ) {
-				return 'unsupported_block:' . $block_name;
-			}
-
-			$shortcodes = UnrenderableContentFallback::unrenderable_form_shortcodes( $block );
-			if ( array() !== $shortcodes ) {
-				return 'unsupported_shortcode:' . $shortcodes[0]['tag'];
+			$reason = $this->fallback->unrenderable_reason( $block );
+			if ( null !== $reason ) {
+				return $reason;
 			}
 
 			if ( ! empty( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ) {

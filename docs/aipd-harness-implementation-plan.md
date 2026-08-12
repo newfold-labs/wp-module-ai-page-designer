@@ -22,9 +22,23 @@ One rule covers both (`UnrenderableContentFallback`, runs second, right after `R
 
 Guards, all verified against the real WP classes standalone: a block with saved HTML is never touched (JS-only-registered plugin blocks still render fine); if `core/paragraph` looks unregistered the block registry is treated as not-yet-populated and only the namespace is trusted; `[gallery]` is the same sentinel for the shortcode API. Also catches experimental `core/form`, which fails identically on a stock install.
 
-Ordering lesson worth keeping: the rule was first placed *after* `SanitizeCss`, which left the substituted form's inline styles unsanitized until the next conform — i.e. until save, reintroducing exactly the saved≠previewed drift the harness exists to prevent. **Anything that injects markup must run before the rules that clean markup.** 288 tests green.
+**The general case (same day).** Probing for other escape hatches found a third shape, and it subsumes the first two: **a *registered* block that points at a resource this site doesn't have.** `wp:pattern` naming a theme pattern that was never registered here, `wp:block` with an invented synced-pattern ref, `wp:template-part` in post content, `wp:navigation` with a made-up menu ref — all registered core blocks, so a registration check walks straight past them, and all render nothing. The root cause behind every one of these (and behind `forminator/contact-form`): **the model cannot know what this particular site has.**
 
-Still open: the substituted `<form>` has no action and no mail handler — it renders and validates but doesn't send. Pre-existing across `BookingForm` too; needs a real endpoint, tracked separately.
+So the check now goes one level deeper than "is it registered": *does the thing it names actually exist?* Form IDs get the same treatment — `[contact-form-7 id="999"]` is resolved against the plugin's own records (`wpcf7_contact_form` posts), because an installed plugin still renders "form not found" for an ID the model invented. Same on the block side (`{"module_id":"999"}`), which was an inconsistency in the first pass: the id check existed for shortcodes only.
+
+All environment probing moved out of the rule into **`RenderSupport`**, shared by the rule and the Validator — which now asserts by *calling* `UnrenderableContentFallback::unrenderable_reason()` rather than reimplementing it, so repair and assertion cannot drift into a harness that loops (fixes what is never flagged) or lies (flags what is never fixed). Its answers are deliberately **three-valued**: true / false / **null = cannot tell**, and only a definite `false` is ever acted on. Plugins that keep forms in their own tables (Ninja, Fluent, Formidable) answer null — guessing at a private schema risks deleting a form that is really there. Gravity Forms is the exception, via its documented `GFAPI::get_form()`.
+
+Two lessons banked:
+- **Ordering:** the rule was first placed *after* `SanitizeCss`, which left the substituted form's inline styles unsanitized until the next conform — i.e. until save, reintroducing exactly the saved≠previewed drift the harness exists to prevent. **Anything that injects markup must run before the rules that clean markup.**
+- **Cost:** the pattern sentinel first used `WP_Block_Patterns_Registry::get_all_registered()`, which hydrates every pattern's content and resolves hooked blocks for each — far too expensive per conform. `did_action( 'init' )` answers the same question precisely and for free.
+
+297 tests green, verified end-to-end against the real `WP_Block_Type_Registry`, `WP_Block_Patterns_Registry` and shortcode API on a simulated site (CF7 installed, form 12 present, form 999 absent): 15/15 cases behave as intended.
+
+**Known gaps, deliberately left:**
+- `core/embed` / `core/image` with an invented URL. Undetectable without a network call, and guessing wrong deletes real content.
+- Unrecognised non-form shortcodes still print raw. Deleting prose (`[see below]`) is the worse failure.
+- The substituted `<form>` has no action and no mail handler — it renders and validates but doesn't send. Pre-existing across `BookingForm` too; needs a real endpoint.
+- **The preview renders saved markup, not rendered output** (`usePreviewIframe.ts` does `root.innerHTML = html`; no `do_blocks()`/`do_shortcode()`). So every *dynamic* block (`core/query`, `core/latest-posts`) looks empty in the preview even when it works published, and every *working* shortcode shows as raw text. That is a WYSIWYG break in the opposite direction from the one this harness guards, and it will produce the same "only the headings show" report on markup that is completely fine. Needs a server-render seam for the preview — its own piece of work, not a rule.
 
 Original status (2026-07-02) follows — still accurate for everything it covers:
 
@@ -39,7 +53,7 @@ Original status (2026-07-02) follows — still accurate for everything it covers
 | Rule | What it does | Validator assertion | Status |
 |---|---|---|---|
 | `RepairDelimiters` | repair malformed/mismatched `<!-- wp: -->` comments | — (pre-parse repair) | done `ad24d1d` |
-| `UnrenderableContentFallback` | swap a block/shortcode this site can't render for one it can | `unsupported_block:<name>`, `unsupported_shortcode:<tag>` | done 2026-08-12 |
+| `UnrenderableContentFallback` | swap a block/shortcode this site can't render for one it can (via `RenderSupport`) | `unsupported_block:<name>`, `unsupported_shortcode:<tag>`, `missing_form:<name>`, `missing_resource:<name>` | done 2026-08-12 |
 | `SanitizeCss` | bare-unit CSS, `1fr1fr` run-together grid | `invalid_css:bare_unit`, `invalid_grid:run_together_fr` | done (earlier) |
 | `BackgroundImagePlaceholder` | drop a `placehold.co` background-image that shadows a real one | — (WYSIWYG repair) | done `58c1fb6` |
 | `UnwrapLoneGroup` | hoist children of a lone page-wrapper group | — | done (earlier) |

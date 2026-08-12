@@ -8,53 +8,59 @@
 namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules;
 
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\RenderSupport;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\BookingForm;
 
 /**
  * The model knows the wider WordPress ecosystem, so when asked for something
- * core has no block for — a contact form above all — it reaches for a plugin
- * it has seen in training. It does this two ways, and both fail on a site
- * without that plugin:
+ * core has no block for — a contact form above all — it reaches for whatever it
+ * saw in training. What it reaches for is frequently not on this site, and the
+ * failure is silent every time. Three distinct shapes, all seen live:
  *
- *  - **As a block**: `<!-- wp:forminator/contact-form {"id":42} /-->`,
- *    `wp:jetpack/contact-form`, `wp:wpforms/form-selector`, or the
- *    still-experimental `wp:core/form`. A self-closing block with no saved
- *    HTML renders *nothing* when its type is not registered — the section's
- *    heading and intro show, the form silently does not.
- *  - **As a shortcode**: `[contact-form-7 id="0" title="Contact form"]`. An
- *    unregistered shortcode is not stripped, it is printed verbatim, so the
- *    visitor reads the raw tag as body text. (Note the invented `id="0"`:
- *    the model has no way to know a real form ID, so the shortcode is broken
- *    even on a site that *does* have the plugin — which is why a form
- *    shortcode with an empty or `0` id counts as unrenderable regardless.)
+ *  1. **A plugin block** — `<!-- wp:forminator/contact-form {"id":42} /-->`.
+ *     A self-closing block whose type is not registered renders *nothing*: no
+ *     plugin, no output, no error. The section's heading and intro show; the
+ *     form silently does not.
+ *  2. **A plugin shortcode** — `[contact-form-7 id="0" title="Contact form"]`.
+ *     An unregistered shortcode is not stripped, it is printed, so the visitor
+ *     reads the raw tag as body text.
+ *  3. **A reference to a resource that does not exist** — `wp:pattern` naming a
+ *     theme pattern this site never registered, `wp:block` pointing at a synced
+ *     pattern ID it invented, `wp:template-part` in post content,
+ *     `wp:navigation` with a made-up menu ref. These block types ARE
+ *     registered, so registration alone says they are fine; they still render
+ *     nothing, because what they point at isn't there.
  *
- * Installing the plugin is not an option a page generator gets to take, so
- * both are substituted with markup that works everywhere: the same
- * theme-styled `core/html` form {@see BookingForm} renders (one definition of
- * "what a form looks like", already correct-by-construction and covered by its
- * own tests).
+ * Shape 3 is the general case the first two are instances of: **the model
+ * cannot know what this particular site has.** A form ID is the sharpest
+ * example — even with the plugin installed, `id="0"` (or any ID it made up)
+ * renders the plugin's "form not found" notice rather than a form, so the ID is
+ * checked against the plugin's own records, not just the plugin's presence.
  *
- * The two cases differ in what happens when the content ISN'T form-shaped, and
- * deliberately so:
- *  - An unrenderable **block** is dropped. A block delimiter is never prose,
- *    and a block that renders nothing on the front end while showing "your
- *    site doesn't include support for this block" in the editor is strictly
- *    worse than clean markup.
- *  - An unrecognised **shortcode** is left alone. `[see below]` is ordinary
- *    prose, and silently deleting a visitor-visible sentence is a worse
- *    failure than leaving one stray tag on screen. Only form shortcodes —
+ * Every "is it here?" question is delegated to {@see RenderSupport}, which the
+ * {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Validator}
+ * shares, so the repair and the assertion can never disagree. Crucially, those
+ * answers are three-valued and only a definite `false` is acted on: "I could
+ * not verify this" never becomes "delete it".
+ *
+ * What replaces the content depends on what it was:
+ *  - Form-shaped anything becomes the theme-styled `core/html` form
+ *    {@see BookingForm} renders — one definition of "what a form looks like",
+ *    already correct-by-construction and covered by its own tests.
+ *  - An unrenderable **block** is otherwise dropped. A block delimiter is never
+ *    prose, and a block that renders nothing on the front end while showing
+ *    "your site doesn't include support for this block" in the editor is
+ *    strictly worse than clean markup.
+ *  - An unrecognised **shortcode** is otherwise left alone. `[see below]` is
+ *    ordinary prose, and silently deleting a visitor-visible sentence is a
+ *    worse failure than leaving one stray tag on screen. Only form shortcodes —
  *    where the intent is unambiguous and a real replacement exists — are
  *    touched.
  *
- * Two guards keep the block half from eating markup it shouldn't:
- *  - Only blocks that render NOTHING are replaced. A static block whose plugin
- *    is missing still outputs its saved HTML (and plugins that register their
- *    block in JS only never appear in the PHP registry at all), so anything
- *    with real saved content is left alone.
- *  - If the block registry has not been populated yet — `core/paragraph`
- *    missing is the sentinel — the registry is not trusted and only the
- *    namespace is used, so an early/odd call site can never blank a page. The
- *    shortcode half has the same sentinel on `[gallery]`.
+ * One further guard on the block half: only blocks that render NOTHING are
+ * replaced. A static block whose plugin is missing still outputs its saved
+ * HTML (and plugins that register their block in JS only never appear in the
+ * PHP registry at all), so anything with real saved content is left alone.
  *
  * Uses native parse_blocks/serialize_blocks; no-ops if WordPress is
  * unavailable. Idempotent: after one pass nothing unrenderable remains, so a
@@ -105,19 +111,45 @@ class UnrenderableContentFallback implements Rule {
 	);
 
 	/**
-	 * Shortcodes WordPress itself registers — the fallback "is this known?"
-	 * answer when the shortcode API is unavailable (unit tests).
+	 * Attribute keys (lowercased) a form block carries its form ID in.
 	 *
 	 * @var string[]
 	 */
-	const CORE_SHORTCODES = array(
-		'audio',
-		'caption',
-		'embed',
-		'gallery',
-		'playlist',
-		'video',
-		'wp_caption',
+	const FORM_ID_KEYS = array( 'id', 'formid', 'form_id', 'moduleid', 'module_id' );
+
+	/**
+	 * Registered core blocks that render nothing when the resource they point
+	 * at is absent, and how to check that resource.
+	 *
+	 * `required` marks an attribute whose absence is itself fatal: a
+	 * `core/pattern` with no slug can never render, whereas a `core/navigation`
+	 * with no ref falls back to a page list and is left alone.
+	 *
+	 * @var array<string, array<string, mixed>>
+	 */
+	const RESOURCE_BLOCKS = array(
+		'core/block'         => array(
+			'attr'      => 'ref',
+			'kind'      => 'post',
+			'post_type' => 'wp_block',
+			'required'  => true,
+		),
+		'core/navigation'    => array(
+			'attr'      => 'ref',
+			'kind'      => 'post',
+			'post_type' => 'wp_navigation',
+			'required'  => false,
+		),
+		'core/pattern'       => array(
+			'attr'     => 'slug',
+			'kind'     => 'pattern',
+			'required' => true,
+		),
+		'core/template-part' => array(
+			'attr'     => 'slug',
+			'kind'     => 'template_part',
+			'required' => true,
+		),
 	);
 
 	/**
@@ -166,21 +198,19 @@ class UnrenderableContentFallback implements Rule {
 	const SHORTCODE_PATTERN = '/\[([a-z][a-z0-9_-]*)((?:\s[^\]\[]*)?)\]/';
 
 	/**
-	 * Overrides the block registry lookup — tests inject a predicate so both
-	 * the "plugin block" and "unregistered core block" cases are exercisable
-	 * without a WordPress bootstrap.
+	 * Answers every "does this site have it?" question.
 	 *
-	 * @var callable|null
+	 * @var RenderSupport
 	 */
-	private $is_supported;
+	private $support;
 
 	/**
 	 * Constructor.
 	 *
-	 * @param callable|null $is_supported Optional `fn( string $block_name ): bool` override.
+	 * @param RenderSupport|null $support Environment probe (defaults to a real one; tests inject a double).
 	 */
-	public function __construct( ?callable $is_supported = null ) {
-		$this->is_supported = $is_supported;
+	public function __construct( ?RenderSupport $support = null ) {
+		$this->support = null === $support ? new RenderSupport() : $support;
 	}
 
 	/**
@@ -215,30 +245,38 @@ class UnrenderableContentFallback implements Rule {
 	}
 
 	/**
-	 * Whether this site can render the named block.
+	 * Why this ONE block cannot render on this site, as a violation string, or
+	 * null when it can.
 	 *
-	 * Static so {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Validator}
-	 * asserts against the exact same predicate the rule repairs against.
+	 * Inspects only the block itself, never its descendants — the caller walks
+	 * the tree. {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Validator}
+	 * asserts through this exact method, so the assertion cannot drift from
+	 * the repair.
 	 *
-	 * @param string $block_name Fully-qualified block name.
-	 * @return bool
+	 * @param array<string, mixed> $block Parsed block.
+	 * @return string|null
 	 */
-	public static function block_is_supported( string $block_name ): bool {
-		if ( ! class_exists( '\WP_Block_Type_Registry' ) ) {
-			return self::is_core_block( $block_name );
+	public function unrenderable_reason( array $block ) {
+		$block_name = isset( $block['blockName'] ) ? $block['blockName'] : null;
+
+		if ( is_string( $block_name ) && '' !== $block_name ) {
+			if ( ! $this->support->block_is_registered( $block_name ) ) {
+				if ( self::block_renders_nothing( $block ) ) {
+					return 'unsupported_block:' . $block_name;
+				}
+			} elseif ( $this->has_missing_form( $block, $block_name ) ) {
+				return 'missing_form:' . $block_name;
+			} elseif ( $this->has_missing_resource( $block, $block_name ) ) {
+				return 'missing_resource:' . $block_name;
+			}
 		}
 
-		$registry = \WP_Block_Type_Registry::get_instance();
-
-		// Sentinel: blocks register on `init`, so a call before that would see
-		// an empty registry and condemn the entire page. If core's most basic
-		// block is missing, the registry is not ready — fall back to the
-		// namespace and change nothing that isn't obviously third-party.
-		if ( ! $registry->is_registered( 'core/paragraph' ) ) {
-			return self::is_core_block( $block_name );
+		$shortcodes = $this->unrenderable_form_shortcodes( $block );
+		if ( array() !== $shortcodes ) {
+			return 'unsupported_shortcode:' . $shortcodes[0]['tag'];
 		}
 
-		return $registry->is_registered( $block_name );
+		return null;
 	}
 
 	/**
@@ -247,8 +285,6 @@ class UnrenderableContentFallback implements Rule {
 	 *
 	 * This is what separates "the plugin is missing and the section is empty"
 	 * from "the plugin is missing but its saved HTML still renders fine".
-	 *
-	 * Static for the same reason as {@see UnrenderableContentFallback::block_is_supported()}.
 	 *
 	 * @param array<string, mixed> $block Parsed block.
 	 * @return bool
@@ -264,12 +300,10 @@ class UnrenderableContentFallback implements Rule {
 	 * so a group is not blamed for a shortcode belonging to the paragraph
 	 * inside it.
 	 *
-	 * Static for the same reason as {@see UnrenderableContentFallback::block_is_supported()}.
-	 *
 	 * @param array<string, mixed> $block Parsed block.
 	 * @return array<int, array{tag: string, text: string}> Matched shortcodes, in order.
 	 */
-	public static function unrenderable_form_shortcodes( array $block ): array {
+	public function unrenderable_form_shortcodes( array $block ): array {
 		$found = array();
 
 		if ( ! preg_match_all( self::SHORTCODE_PATTERN, self::own_html( $block ), $matches, PREG_SET_ORDER ) ) {
@@ -283,7 +317,7 @@ class UnrenderableContentFallback implements Rule {
 				// Either way there is no safe substitute, so leave it be.
 				continue;
 			}
-			if ( self::shortcode_is_renderable( $tag, $match[2] ) ) {
+			if ( ! $this->shortcode_form_is_missing( $tag, $match[2] ) ) {
 				continue;
 			}
 			$found[] = array(
@@ -296,48 +330,88 @@ class UnrenderableContentFallback implements Rule {
 	}
 
 	/**
-	 * Whether a form shortcode will actually produce a form on this site.
+	 * Whether a form shortcode will fail to produce a form on this site —
+	 * either the plugin is absent, or the form ID it names is not in the
+	 * database.
 	 *
 	 * @param string $tag        Shortcode tag.
 	 * @param string $attributes Raw attribute string from the shortcode call.
 	 * @return bool
 	 */
-	private static function shortcode_is_renderable( string $tag, string $attributes ): bool {
-		if ( ! self::shortcode_is_registered( $tag ) ) {
-			return false;
-		}
-
-		// The plugin is here, but the model invented the form ID — an empty or
-		// zero id renders the plugin's own "form not found" notice, not a form.
-		if ( preg_match( '/\bid\s*=\s*["\']?([^"\'\s\]]*)/i', $attributes, $id_match ) ) {
-			$id = trim( $id_match[1] );
-			if ( '' === $id || '0' === $id ) {
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	/**
-	 * Whether a shortcode tag is registered on this site.
-	 *
-	 * @param string $tag Shortcode tag.
-	 * @return bool
-	 */
-	private static function shortcode_is_registered( string $tag ): bool {
-		if ( ! function_exists( 'shortcode_exists' ) ) {
-			return in_array( $tag, self::CORE_SHORTCODES, true );
-		}
-
-		// Same sentinel as the block registry: if core's own `[gallery]` is
-		// missing, shortcodes have not been registered yet and nothing here
-		// can be trusted, so change nothing.
-		if ( ! shortcode_exists( 'gallery' ) ) {
+	private function shortcode_form_is_missing( string $tag, string $attributes ): bool {
+		if ( ! $this->support->shortcode_is_registered( $tag ) ) {
 			return true;
 		}
 
-		return shortcode_exists( $tag );
+		if ( ! preg_match( '/\bid\s*=\s*["\']?([^"\'\s\]]*)/i', $attributes, $id_match ) ) {
+			return false;
+		}
+
+		return false === $this->support->form_exists( $tag, $id_match[1] );
+	}
+
+	/**
+	 * Whether a registered form block names a form that is not in the database.
+	 *
+	 * The block-side twin of {@see UnrenderableContentFallback::shortcode_form_is_missing()}:
+	 * an installed plugin still renders "form not found" for an ID the model
+	 * invented.
+	 *
+	 * @param array<string, mixed> $block      Parsed block.
+	 * @param string               $block_name Fully-qualified block name.
+	 * @return bool
+	 */
+	private function has_missing_form( array $block, string $block_name ): bool {
+		if ( ! self::is_form_name( $block_name ) ) {
+			return false;
+		}
+
+		$attrs = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : array();
+		foreach ( $attrs as $key => $value ) {
+			if ( ! in_array( strtolower( (string) $key ), self::FORM_ID_KEYS, true ) ) {
+				continue;
+			}
+			return false === $this->support->form_exists( self::namespace_of( $block_name ), $value );
+		}
+
+		// No ID attribute at all — nothing to verify, so nothing to act on.
+		return false;
+	}
+
+	/**
+	 * Whether a registered block points at a pattern, synced pattern, template
+	 * part or menu that does not exist here.
+	 *
+	 * @param array<string, mixed> $block      Parsed block.
+	 * @param string               $block_name Fully-qualified block name.
+	 * @return bool
+	 */
+	private function has_missing_resource( array $block, string $block_name ): bool {
+		if ( ! isset( self::RESOURCE_BLOCKS[ $block_name ] ) ) {
+			return false;
+		}
+
+		// Saved content of its own still renders, whatever the reference does.
+		if ( ! self::block_renders_nothing( $block ) ) {
+			return false;
+		}
+
+		$spec  = self::RESOURCE_BLOCKS[ $block_name ];
+		$attrs = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : array();
+		$value = isset( $attrs[ $spec['attr'] ] ) ? $attrs[ $spec['attr'] ] : null;
+
+		if ( null === $value || '' === $value ) {
+			return (bool) $spec['required'];
+		}
+
+		if ( 'post' === $spec['kind'] ) {
+			return false === $this->support->post_exists( $value, $spec['post_type'] );
+		}
+		if ( 'pattern' === $spec['kind'] ) {
+			return false === $this->support->pattern_exists( (string) $value );
+		}
+
+		return false === $this->support->template_part_exists( (string) $value );
 	}
 
 	/**
@@ -351,15 +425,19 @@ class UnrenderableContentFallback implements Rule {
 	 */
 	private function replace( array $block, Context $ctx, bool $top_level ): array {
 		$block_name = isset( $block['blockName'] ) ? $block['blockName'] : null;
+		$reason     = $this->unrenderable_reason( $block );
 
-		if ( is_string( $block_name ) && '' !== $block_name
-			&& ! $this->supports( $block_name )
-			&& self::block_renders_nothing( $block ) ) {
-			return $this->substitute_block( $block_name, $ctx, $top_level );
+		if ( null !== $reason && 0 !== strpos( $reason, 'unsupported_shortcode:' ) ) {
+			// A form — from any of the three shapes — earns a real form;
+			// anything else unrenderable is dropped.
+			if ( is_string( $block_name ) && self::is_form_name( $block_name ) ) {
+				return $this->native_form( $ctx, $top_level );
+			}
+			return array();
 		}
 
 		$block      = $this->resolve_children( $block, $ctx );
-		$shortcodes = self::unrenderable_form_shortcodes( $block );
+		$shortcodes = $this->unrenderable_form_shortcodes( $block );
 		if ( array() === $shortcodes ) {
 			return array( $block );
 		}
@@ -375,10 +453,10 @@ class UnrenderableContentFallback implements Rule {
 	 * which is dropped, but a shortcode written inline after a sentence leaves
 	 * that sentence standing, with the form following it.
 	 *
-	 * @param array<string, mixed>                     $block      Parsed block.
+	 * @param array<string, mixed>                         $block      Parsed block.
 	 * @param array<int, array{tag: string, text: string}> $shortcodes Shortcodes to remove.
-	 * @param Context                                  $ctx        Theme/conformance context.
-	 * @param bool                                     $top_level  Whether the block sits at the top level of the page.
+	 * @param Context                                      $ctx        Theme/conformance context.
+	 * @param bool                                         $top_level  Whether the block sits at the top level of the page.
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function substitute_shortcodes( array $block, array $shortcodes, Context $ctx, bool $top_level ): array {
@@ -395,7 +473,7 @@ class UnrenderableContentFallback implements Rule {
 	/**
 	 * Remove shortcode text from a block's own literal chunks.
 	 *
-	 * @param array<string, mixed>                     $block      Parsed block.
+	 * @param array<string, mixed>                         $block      Parsed block.
 	 * @param array<int, array{tag: string, text: string}> $shortcodes Shortcodes to remove.
 	 * @return array<string, mixed>
 	 */
@@ -466,23 +544,6 @@ class UnrenderableContentFallback implements Rule {
 	}
 
 	/**
-	 * What replaces an unrenderable block: a native form when it was
-	 * form-shaped, nothing otherwise.
-	 *
-	 * @param string  $block_name Fully-qualified block name.
-	 * @param Context $ctx        Theme/conformance context.
-	 * @param bool    $top_level  Whether the block sits at the top level of the page.
-	 * @return array<int, array<string, mixed>>
-	 */
-	private function substitute_block( string $block_name, Context $ctx, bool $top_level ): array {
-		if ( ! self::is_form_name( $block_name ) ) {
-			return array();
-		}
-
-		return $this->native_form( $ctx, $top_level );
-	}
-
-	/**
 	 * The substitute form, parsed into blocks.
 	 *
 	 * A top-level replacement gets the whole {@see BookingForm} section, so the
@@ -528,20 +589,6 @@ class UnrenderableContentFallback implements Rule {
 	}
 
 	/**
-	 * Whether the block is one this site can render, honouring an injected
-	 * predicate when present.
-	 *
-	 * @param string $block_name Fully-qualified block name.
-	 * @return bool
-	 */
-	private function supports( string $block_name ): bool {
-		if ( null !== $this->is_supported ) {
-			return (bool) call_user_func( $this->is_supported, $block_name );
-		}
-		return self::block_is_supported( $block_name );
-	}
-
-	/**
 	 * Whether a block name or shortcode tag is form-shaped — matched on whole
 	 * name segments.
 	 *
@@ -557,13 +604,14 @@ class UnrenderableContentFallback implements Rule {
 	}
 
 	/**
-	 * Whether a block name is in the `core/` namespace.
+	 * The vendor half of a block name (`forminator/contact-form` → `forminator`).
 	 *
 	 * @param string $block_name Fully-qualified block name.
-	 * @return bool
+	 * @return string
 	 */
-	private static function is_core_block( string $block_name ): bool {
-		return 0 === strpos( $block_name, 'core/' );
+	private static function namespace_of( string $block_name ): string {
+		$parts = explode( '/', $block_name );
+		return $parts[0];
 	}
 
 	/**

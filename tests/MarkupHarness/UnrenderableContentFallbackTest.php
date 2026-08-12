@@ -101,14 +101,28 @@ class UnrenderableContentFallbackTest extends MarkupHarnessTestCase {
 		$this->assertStringContainsString( 'wp:spacer', ( new UnrenderableContentFallback() )->apply( $markup, $this->context() ) );
 	}
 
+	/**
+	 * A stock site: the usual core blocks registered, no plugins.
+	 *
+	 * @param array<string, array> $extra Extra environment (see {@see FakeRenderSupport}).
+	 * @return FakeRenderSupport
+	 */
+	private function stock_site( array $extra = array() ): FakeRenderSupport {
+		return new FakeRenderSupport(
+			array_merge(
+				array(
+					'blocks'     => array( 'core/paragraph', 'core/heading', 'core/group', 'core/html', 'core/block', 'core/pattern', 'core/template-part', 'core/navigation' ),
+					'shortcodes' => array( 'gallery', 'caption' ),
+				),
+				$extra
+			)
+		);
+	}
+
 	public function test_replaces_an_unregistered_core_block(): void {
 		// core/form ships with WordPress but is experimental and unregistered
 		// on a stock site, so it fails exactly like a plugin block.
-		$rule = new UnrenderableContentFallback(
-			static function ( $block_name ) {
-				return 'core/form' !== $block_name && 0 === strpos( $block_name, 'core/' );
-			}
-		);
+		$rule = new UnrenderableContentFallback( $this->stock_site() );
 
 		$out = $rule->apply( '<!-- wp:core/form {"submissionMethod":"email"} /-->', $this->context() );
 
@@ -118,15 +132,125 @@ class UnrenderableContentFallbackTest extends MarkupHarnessTestCase {
 
 	public function test_does_not_condemn_a_page_when_the_registry_is_empty(): void {
 		// Sentinel guard: with nothing registered at all, only the namespace is
-		// trusted, so core markup survives.
-		$rule = new UnrenderableContentFallback(
-			static function ( $block_name ) {
-				return 0 === strpos( $block_name, 'core/' );
-			}
-		);
+		// trusted, so core markup survives. (The real RenderSupport, not a
+		// double — this is the guard against blanking a page.)
+		$rule = new UnrenderableContentFallback();
 
 		$markup = '<!-- wp:paragraph -->' . "\n" . '<p>Kept</p>' . "\n" . '<!-- /wp:paragraph -->';
 		$this->assertStringContainsString( '<p>Kept</p>', $rule->apply( $markup, $this->context() ) );
+	}
+
+	public function test_drops_a_pattern_block_whose_pattern_is_not_registered(): void {
+		// The same instinct as reaching for a plugin: the model knows theme
+		// pattern slugs from training, and this site never registered one.
+		$rule = new UnrenderableContentFallback( $this->stock_site( array( 'patterns' => array( 'mytheme/hero' ) ) ) );
+
+		$markup = '<!-- wp:pattern {"slug":"twentytwentyfour/hero"} /-->' . "\n"
+			. '<!-- wp:paragraph -->' . "\n" . '<p>Kept</p>' . "\n" . '<!-- /wp:paragraph -->';
+
+		$out = $rule->apply( $markup, $this->context() );
+
+		$this->assertStringNotContainsString( 'twentytwentyfour/hero', $out );
+		$this->assertStringContainsString( '<p>Kept</p>', $out );
+	}
+
+	public function test_keeps_a_pattern_block_whose_pattern_exists(): void {
+		$rule   = new UnrenderableContentFallback( $this->stock_site( array( 'patterns' => array( 'mytheme/hero' ) ) ) );
+		$markup = '<!-- wp:pattern {"slug":"mytheme/hero"} /-->';
+
+		$this->assertStringContainsString( 'mytheme/hero', $rule->apply( $markup, $this->context() ) );
+	}
+
+	public function test_drops_a_synced_pattern_and_menu_reference_that_do_not_exist(): void {
+		$rule = new UnrenderableContentFallback( $this->stock_site( array( 'posts' => array( 7 => 'wp_block' ) ) ) );
+
+		$markup = '<!-- wp:block {"ref":9999} /-->' . "\n" . '<!-- wp:navigation {"ref":4321} /-->';
+		$out    = $rule->apply( $markup, $this->context() );
+
+		$this->assertStringNotContainsString( 'wp:block', $out );
+		$this->assertStringNotContainsString( 'wp:navigation', $out );
+		// The one that does exist survives.
+		$this->assertStringContainsString( 'wp:block', $rule->apply( '<!-- wp:block {"ref":7} /-->', $this->context() ) );
+	}
+
+	public function test_drops_a_template_part_that_does_not_resolve(): void {
+		$rule = new UnrenderableContentFallback( $this->stock_site( array( 'template_parts' => array( 'footer' ) ) ) );
+
+		$this->assertStringNotContainsString( 'wp:template-part', $rule->apply( '<!-- wp:template-part {"slug":"header"} /-->', $this->context() ) );
+		$this->assertStringContainsString( 'wp:template-part', $rule->apply( '<!-- wp:template-part {"slug":"footer"} /-->', $this->context() ) );
+	}
+
+	public function test_leaves_a_navigation_block_with_no_ref_alone(): void {
+		// core/navigation with no ref falls back to a page list — it renders.
+		$rule = new UnrenderableContentFallback( $this->stock_site() );
+
+		$this->assertStringContainsString( 'wp:navigation', $rule->apply( '<!-- wp:navigation /-->', $this->context() ) );
+	}
+
+	public function test_replaces_a_form_block_whose_form_id_does_not_exist(): void {
+		// The plugin IS installed — the block is registered — but the model
+		// invented the form ID, so the plugin renders "form not found".
+		$rule = new UnrenderableContentFallback(
+			$this->stock_site(
+				array(
+					'blocks' => array( 'core/paragraph', 'forminator/forms' ),
+					'posts'  => array( 12 => 'forminator_forms' ),
+				)
+			)
+		);
+
+		$out = $rule->apply( '<!-- wp:forminator/forms {"module_id":"999"} /-->', $this->context() );
+
+		$this->assertStringNotContainsString( 'forminator', $out );
+		$this->assertStringContainsString( '<form>', $out );
+	}
+
+	public function test_keeps_a_form_block_whose_form_id_exists(): void {
+		$rule = new UnrenderableContentFallback(
+			$this->stock_site(
+				array(
+					'blocks' => array( 'core/paragraph', 'forminator/forms' ),
+					'posts'  => array( 12 => 'forminator_forms' ),
+				)
+			)
+		);
+
+		$out = $rule->apply( '<!-- wp:forminator/forms {"module_id":"12"} /-->', $this->context() );
+
+		$this->assertStringContainsString( 'forminator', $out, 'a real form is left to the plugin' );
+		$this->assertStringNotContainsString( '<form>', $out );
+	}
+
+	public function test_replaces_a_shortcode_whose_form_id_does_not_exist(): void {
+		$rule = new UnrenderableContentFallback(
+			$this->stock_site(
+				array(
+					'shortcodes' => array( 'gallery', 'contact-form-7' ),
+					'posts'      => array( 12 => 'wpcf7_contact_form' ),
+				)
+			)
+		);
+
+		$markup = '<!-- wp:paragraph -->' . "\n" . '<p>[contact-form-7 id="999"]</p>' . "\n" . '<!-- /wp:paragraph -->';
+		$out    = $rule->apply( $markup, $this->context() );
+
+		$this->assertStringNotContainsString( 'contact-form-7', $out );
+		$this->assertStringContainsString( '<form>', $out );
+
+		// The same shortcode naming a form that really exists is left alone.
+		$real = '<!-- wp:paragraph -->' . "\n" . '<p>[contact-form-7 id="12"]</p>' . "\n" . '<!-- /wp:paragraph -->';
+		$this->assertSame( $real, $rule->apply( $real, $this->context() ) );
+	}
+
+	public function test_uncertainty_is_never_treated_as_absence(): void {
+		// Ninja Forms keeps forms in its own tables, so this module cannot
+		// verify the ID. "Cannot tell" must leave the markup alone.
+		$rule = new UnrenderableContentFallback(
+			$this->stock_site( array( 'shortcodes' => array( 'gallery', 'ninja_form' ) ) )
+		);
+
+		$markup = '<!-- wp:paragraph -->' . "\n" . '<p>[ninja_form id="3"]</p>' . "\n" . '<!-- /wp:paragraph -->';
+		$this->assertSame( $markup, $rule->apply( $markup, $this->context() ) );
 	}
 
 	public function test_preserves_sibling_order_when_replacing_inside_columns(): void {
