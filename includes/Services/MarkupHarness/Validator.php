@@ -7,7 +7,7 @@
 
 namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness;
 
-use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnsupportedBlockFallback;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnrenderableContentFallback;
 
 /**
  * Asserts that conformed markup satisfies the harness's definition-of-done.
@@ -34,7 +34,7 @@ class Validator {
 
 		$this->check_malformed_delimiters( $markup, $violations );
 		$this->check_document_wrappers( $markup, $violations );
-		$this->check_unsupported_blocks( $markup, $violations );
+		$this->check_unrenderable_content( $markup, $violations );
 		$this->check_run_together_grid( $markup, $violations );
 		$this->check_bare_units( $markup, $violations );
 		$this->check_vertical_only_padding( $markup, $violations );
@@ -89,44 +89,53 @@ class Validator {
 	}
 
 	/**
-	 * No block that this site cannot render and that renders nothing.
+	 * Nothing on the page that this site cannot render: no unregistered block
+	 * that renders nothing, and no form shortcode that will print as raw text.
 	 *
-	 * Mirrors {@see UnsupportedBlockFallback} — and literally shares its two
+	 * Mirrors {@see UnrenderableContentFallback} — and literally shares its
 	 * predicates, so "unrenderable" means exactly one thing in the repair and
-	 * in the assertion. A plugin form block on a site without that plugin
-	 * (`wp:forminator/contact-form`) is the canonical case: the section's
-	 * heading renders, the form does not.
+	 * in the assertion. The two canonical cases are a plugin form block on a
+	 * site without that plugin (`wp:forminator/contact-form`, whose section
+	 * shows its heading and nothing else) and a plugin form shortcode
+	 * (`[contact-form-7 id="0"]`, which the visitor reads verbatim).
 	 *
 	 * @param string             $markup     Block markup.
 	 * @param array<int, string> $violations Violation accumulator (by reference).
 	 * @return void
 	 */
-	private function check_unsupported_blocks( string $markup, array &$violations ) {
+	private function check_unrenderable_content( string $markup, array &$violations ) {
 		if ( ! function_exists( 'parse_blocks' ) ) {
 			return;
 		}
-		$unsupported = $this->find_unsupported_block( parse_blocks( $markup ) );
-		if ( null !== $unsupported ) {
-			$violations[] = 'unsupported_block:' . $unsupported;
+		$found = $this->find_unrenderable_content( parse_blocks( $markup ) );
+		if ( null !== $found ) {
+			$violations[] = $found;
 		}
 	}
 
 	/**
-	 * The name of the first unrenderable block in the tree, or null.
+	 * The first unrenderable block or shortcode in the tree, already formatted
+	 * as a violation string, or null.
 	 *
 	 * @param array<int, array<string, mixed>> $blocks Parsed blocks.
 	 * @return string|null
 	 */
-	private function find_unsupported_block( array $blocks ) {
+	private function find_unrenderable_content( array $blocks ) {
 		foreach ( $blocks as $block ) {
 			$block_name = isset( $block['blockName'] ) ? $block['blockName'] : null;
 			if ( is_string( $block_name ) && '' !== $block_name
-				&& ! UnsupportedBlockFallback::block_is_supported( $block_name )
-				&& UnsupportedBlockFallback::block_renders_nothing( $block ) ) {
-				return $block_name;
+				&& ! UnrenderableContentFallback::block_is_supported( $block_name )
+				&& UnrenderableContentFallback::block_renders_nothing( $block ) ) {
+				return 'unsupported_block:' . $block_name;
 			}
+
+			$shortcodes = UnrenderableContentFallback::unrenderable_form_shortcodes( $block );
+			if ( array() !== $shortcodes ) {
+				return 'unsupported_shortcode:' . $shortcodes[0]['tag'];
+			}
+
 			if ( ! empty( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ) {
-				$nested = $this->find_unsupported_block( $block['innerBlocks'] );
+				$nested = $this->find_unrenderable_content( $block['innerBlocks'] );
 				if ( null !== $nested ) {
 					return $nested;
 				}

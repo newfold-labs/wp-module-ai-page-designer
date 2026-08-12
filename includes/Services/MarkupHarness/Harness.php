@@ -10,7 +10,7 @@ namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\Rule;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\RepairDelimiters;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\SanitizeCss;
-use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnsupportedBlockFallback;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnrenderableContentFallback;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\BackgroundImagePlaceholder;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnwrapLoneGroup;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\SectionGroupPattern;
@@ -80,7 +80,7 @@ class Harness {
 	public static function default_rules(): array {
 		return array(
 			new RepairDelimiters(),
-			new UnsupportedBlockFallback(),
+			new UnrenderableContentFallback(),
 			new SanitizeCss(),
 			new BackgroundImagePlaceholder(),
 			new UnwrapLoneGroup(),

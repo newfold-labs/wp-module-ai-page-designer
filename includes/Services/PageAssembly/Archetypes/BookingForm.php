@@ -170,7 +170,7 @@ class BookingForm implements Archetype {
 	 * the form actually sits on.
 	 *
 	 * Public because it is also the single definition of "what a form looks
-	 * like" for {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnsupportedBlockFallback},
+	 * like" for {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnrenderableContentFallback},
 	 * which substitutes a bare form for a plugin form block the site cannot
 	 * render. That rule needs the form WITHOUT the surrounding section (it is
 	 * replacing a block nested inside the model's own section), so it cannot go
