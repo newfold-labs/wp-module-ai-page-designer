@@ -10,6 +10,7 @@ namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\Rule;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\RepairDelimiters;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\SanitizeCss;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnsupportedBlockFallback;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\BackgroundImagePlaceholder;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnwrapLoneGroup;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\SectionGroupPattern;
@@ -64,14 +65,22 @@ class Harness {
 	/**
 	 * The built-in rule pipeline, in execution order.
 	 *
-	 * Order matters: sanitize invalid CSS, then resolve structure, then layout,
-	 * then forms.
+	 * Order matters: swap out blocks this site cannot render, sanitize invalid
+	 * CSS, then resolve structure, then layout, then forms.
+	 *
+	 * The swap runs after RepairDelimiters (parse_blocks cannot see a block
+	 * behind a malformed delimiter) but before every other rule, because the
+	 * markup it substitutes has to be conformed by them in the SAME pass. Put
+	 * it after SanitizeCss instead and the substituted styles stay unsanitized
+	 * until the next conform — i.e. until save, which is exactly the
+	 * saved-differs-from-previewed break the harness exists to prevent.
 	 *
 	 * @return Rule[]
 	 */
 	public static function default_rules(): array {
 		return array(
 			new RepairDelimiters(),
+			new UnsupportedBlockFallback(),
 			new SanitizeCss(),
 			new BackgroundImagePlaceholder(),
 			new UnwrapLoneGroup(),

@@ -7,6 +7,8 @@
 
 namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness;
 
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnsupportedBlockFallback;
+
 /**
  * Asserts that conformed markup satisfies the harness's definition-of-done.
  *
@@ -32,6 +34,7 @@ class Validator {
 
 		$this->check_malformed_delimiters( $markup, $violations );
 		$this->check_document_wrappers( $markup, $violations );
+		$this->check_unsupported_blocks( $markup, $violations );
 		$this->check_run_together_grid( $markup, $violations );
 		$this->check_bare_units( $markup, $violations );
 		$this->check_vertical_only_padding( $markup, $violations );
@@ -83,6 +86,53 @@ class Validator {
 		if ( preg_match( '/<\s*(html|head|body|script|style)\b/i', $markup, $match ) ) {
 			$violations[] = 'document_wrapper:<' . strtolower( $match[1] ) . '>';
 		}
+	}
+
+	/**
+	 * No block that this site cannot render and that renders nothing.
+	 *
+	 * Mirrors {@see UnsupportedBlockFallback} — and literally shares its two
+	 * predicates, so "unrenderable" means exactly one thing in the repair and
+	 * in the assertion. A plugin form block on a site without that plugin
+	 * (`wp:forminator/contact-form`) is the canonical case: the section's
+	 * heading renders, the form does not.
+	 *
+	 * @param string             $markup     Block markup.
+	 * @param array<int, string> $violations Violation accumulator (by reference).
+	 * @return void
+	 */
+	private function check_unsupported_blocks( string $markup, array &$violations ) {
+		if ( ! function_exists( 'parse_blocks' ) ) {
+			return;
+		}
+		$unsupported = $this->find_unsupported_block( parse_blocks( $markup ) );
+		if ( null !== $unsupported ) {
+			$violations[] = 'unsupported_block:' . $unsupported;
+		}
+	}
+
+	/**
+	 * The name of the first unrenderable block in the tree, or null.
+	 *
+	 * @param array<int, array<string, mixed>> $blocks Parsed blocks.
+	 * @return string|null
+	 */
+	private function find_unsupported_block( array $blocks ) {
+		foreach ( $blocks as $block ) {
+			$block_name = isset( $block['blockName'] ) ? $block['blockName'] : null;
+			if ( is_string( $block_name ) && '' !== $block_name
+				&& ! UnsupportedBlockFallback::block_is_supported( $block_name )
+				&& UnsupportedBlockFallback::block_renders_nothing( $block ) ) {
+				return $block_name;
+			}
+			if ( ! empty( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ) {
+				$nested = $this->find_unsupported_block( $block['innerBlocks'] );
+				if ( null !== $nested ) {
+					return $nested;
+				}
+			}
+		}
+		return null;
 	}
 
 	/**

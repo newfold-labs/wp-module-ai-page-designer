@@ -169,13 +169,20 @@ class BookingForm implements Archetype {
 	 * carry explicit theme-derived inline styles computed against the surface
 	 * the form actually sits on.
 	 *
+	 * Public because it is also the single definition of "what a form looks
+	 * like" for {@see \NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Rules\UnsupportedBlockFallback},
+	 * which substitutes a bare form for a plugin form block the site cannot
+	 * render. That rule needs the form WITHOUT the surrounding section (it is
+	 * replacing a block nested inside the model's own section), so it cannot go
+	 * through {@see BookingForm::render()}.
+	 *
 	 * @param array<int, mixed> $fields       Field definitions.
 	 * @param string            $submit_label Submit button label.
 	 * @param Context           $ctx          Theme/conformance context.
 	 * @param string|null       $form_surface Slug of the surface behind the form (card or section).
 	 * @return string
 	 */
-	private function render_form_block( array $fields, string $submit_label, Context $ctx, ?string $form_surface ): string {
+	public function render_form_block( array $fields, string $submit_label, Context $ctx, ?string $form_surface ): string {
 		$field_html = '';
 		foreach ( $fields as $field ) {
 			if ( is_array( $field ) ) {
