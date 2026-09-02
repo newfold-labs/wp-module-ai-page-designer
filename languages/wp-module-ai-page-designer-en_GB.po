@@ -1,0 +1,125 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: https://github.com/newfold-labs/wp-module-ai-page-designer/issues\n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2025-03-10T00:00:00+00:00\n"
+"PO-Revision-Date: 2026-09-02T17:26:09+00:00\n"
+"Language: en_GB\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: wp-module-ai-page-designer\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: bootstrap.php:40
+msgid "AI Page Designer"
+msgstr "AI Page Designer"
+
+#: includes/RestApi/AIPageDesignerController.php:91
+#: includes/RestApi/AIPageDesignerController.php:117
+#: includes/RestApi/AIPageDesignerController.php:143
+msgid "Array of conversation messages"
+msgstr "Array of conversation messages"
+
+#: includes/RestApi/AIPageDesignerController.php:97
+#: includes/RestApi/AIPageDesignerController.php:123
+#: includes/RestApi/AIPageDesignerController.php:149
+msgid "Additional context like current markup"
+msgstr "Additional context like current markup"
+
+#: includes/RestApi/AIPageDesignerController.php:169
+#: includes/RestApi/AIPageDesignerController.php:190
+msgid "Generation ID"
+msgstr "Generation ID"
+
+#: includes/RestApi/AIPageDesignerController.php:178
+msgid "Chunk offset"
+msgstr "Chunk offset"
+
+#: includes/RestApi/AIPageDesignerController.php:349
+msgid "This section is too large to edit in one request — the page structure may be malformed. Try selecting a smaller block, or regenerate the page."
+msgstr "This section is too large to edit in one request — the page structure may be malformed. Try selecting a smaller block, or regenerate the page."
+
+#: includes/RestApi/AIPageDesignerController.php:513
+#: includes/RestApi/AIPageDesignerController.php:1350
+msgid "AI generation failed. Please try again."
+msgstr "AI generation failed. Please try again."
+
+#: includes/RestApi/AIPageDesignerController.php:533
+#: includes/RestApi/AIPageDesignerController.php:1397
+#: includes/RestApi/AIPageDesignerController.php:1407
+msgid "AI generation returned no content. Please try again."
+msgstr "AI generation returned no content. Please try again."
+
+#. translators: %s is the error message
+#. translators: %s is the error message.
+#: includes/RestApi/AIPageDesignerController.php:598
+#: includes/RestApi/AIPageDesignerController.php:1471
+#, php-format
+msgid "AI generation failed: %s"
+msgstr "AI generation failed: %s"
+
+#: includes/RestApi/AIPageDesignerController.php:629
+msgid "Post not found."
+msgstr "Post not found."
+
+#: includes/RestApi/AIPageDesignerController.php:637
+msgid "You are not allowed to edit this post."
+msgstr "You are not allowed to edit this post."
+
+#: includes/RestApi/AIPageDesignerController.php:653
+msgid "Invalid conversation_id format."
+msgstr "Invalid conversation_id format."
+
+#: includes/RestApi/AIPageDesignerController.php:1491
+#: includes/RestApi/AIPageDesignerController.php:1535
+msgid "Generation not found."
+msgstr "Generation not found."
+
+#: includes/RestApi/WordPressProxyController.php:43
+msgid "Content type: pages or posts"
+msgstr "Content type: pages or posts"
+
+#: includes/RestApi/WordPressProxyController.php:226
+#: includes/RestApi/WordPressProxyController.php:297
+msgid "Content not found"
+msgstr "Content not found"
+
+#: includes/RestApi/WordPressProxyController.php:365
+msgid "Invalid page ID"
+msgstr "Invalid page ID"
+
+#: includes/RestApi/WordPressProxyController.php:377
+msgid "Homepage set successfully"
+msgstr "Homepage set successfully"
+
+#: includes/Services/AiClientWorker.php:35
+#: includes/Services/AiClientWorker.php:155
+#: includes/Services/AiClientWorker.php:390
+msgid "You are not authorized to make this call."
+msgstr "You are not authorized to make this call."
+
+#: includes/Services/AiClientWorker.php:43
+#: includes/Services/AiClientWorker.php:163
+#: includes/Services/AiClientWorker.php:398
+msgid "AI service is not configured. Please contact support."
+msgstr "AI service is not configured. Please contact support."
+
+#: includes/Services/AiClientWorker.php:462
+msgid "Unable to reach the AI service. Check your network connection and try again."
+msgstr "Unable to reach the AI service. Check your network connection and try again."
+
+#: includes/Services/CapabilityGate.php:56
+msgid "You must have permission to edit pages"
+msgstr "You must have permission to edit pages"
+
+#: includes/Services/CapabilityGate.php:64
+msgid "AI Site Generation is not enabled for your site"
+msgstr "AI Site Generation is not enabled for your site"
+
+#: includes/Services/CapabilityGate.php:72
+msgid "AI Page Designer is not enabled for your site"
+msgstr "AI Page Designer is not enabled for your site"
