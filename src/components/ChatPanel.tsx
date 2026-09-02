@@ -57,7 +57,7 @@ const ChatPanel = ( {
           ? CHAT_EXISTING_PAGE_PROMPT_CHIPS( selectedTitle )
           : CHAT_NEW_PAGE_PROMPT_CHIPS;
 
-    return pickRandomPromptChips( pool, 2 );
+    return pickRandomPromptChips( pool, 3 );
   }, [ selectedBlockIndex, selectedItem, selectedTitle ] );
 
   return (

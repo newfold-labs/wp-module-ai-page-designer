@@ -12,6 +12,7 @@ use NewfoldLabs\WP\Module\AIPageDesigner\Services\CapabilityGate;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\FastPathHandler;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\ImageService;
 use NewfoldLabs\WP\Module\AIPageDesigner\Services\PatternLayoutProvider;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Harness;
 use Web\AIPageDesignerDebug;
 
 /**
@@ -864,6 +865,21 @@ class AIPageDesignerController extends \WP_REST_Controller {
 					$final_html .= serialize_blocks( array( $block ) );
 				}
 			}
+		}
+
+		// Conform the markup to the active theme before it is previewed. The
+		// harness is idempotent, so the same pass runs again on save without the
+		// saved page ever diverging from what was previewed (WYSIWYG).
+		if ( ! empty( $final_html ) ) {
+			$final_html = ( new Harness() )->conform( $final_html );
+		}
+
+		// Final image guarantee: no placehold.co image ever reaches the preview.
+		// Covers placeholders the block-scoped replacement above misses (e.g. a
+		// background-image on a plain core/group) or that survived an edit where
+		// no fresh imagery was fetched. Runs before returning so preview == save.
+		if ( ! empty( $final_html ) ) {
+			$final_html = $this->image_service->replace_placeholder_images( $final_html, $search_context );
 		}
 
 		// Handle metadata-only responses (e.g., when user asks for excerpt generation)

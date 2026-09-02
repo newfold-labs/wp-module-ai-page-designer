@@ -1,0 +1,160 @@
+<?php
+/**
+ * PricingTiers archetype tests.
+ *
+ * @package NewfoldLabs\WP\Module\AIPageDesigner
+ */
+
+namespace NewfoldLabs\WP\Module\AIPageDesigner\Tests\PageAssembly;
+
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Validator;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes\PricingTiers;
+use PHPUnit\Framework\Attributes\CoversClass;
+
+#[CoversClass( PricingTiers::class )]
+class PricingTiersTest extends PageAssemblyTestCase {
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function content(): array {
+		return array(
+			'heading' => 'Pricing',
+			'tiers'   => array(
+				array(
+					'name'     => 'Basic',
+					'price'    => '$9',
+					'period'   => 'mo',
+					'features' => array( 'Feature A', 'Feature B' ),
+					'cta'      => array(
+						'label' => 'Choose Basic',
+						'url'   => '#basic',
+					),
+				),
+				array(
+					'name'        => 'Pro',
+					'price'       => '$19',
+					'period'      => 'mo',
+					'features'    => array( 'Feature A', 'Feature B', 'Feature C' ),
+					'cta'         => array(
+						'label' => 'Choose Pro',
+						'url'   => '#pro',
+					),
+					'highlighted' => true,
+				),
+			),
+		);
+	}
+
+	public function test_renders_expected_slots(): void {
+		$pricing = new PricingTiers();
+		$out     = $pricing->render( $this->content(), '3-tier', $this->context(), null );
+
+		$this->assertStringContainsString( 'Pricing', $out );
+		$this->assertStringContainsString( 'Basic', $out );
+		$this->assertStringContainsString( '$9', $out );
+		$this->assertStringContainsString( 'Feature A', $out );
+		$this->assertStringContainsString( 'Choose Basic', $out );
+		$this->assertStringContainsString( 'Pro', $out );
+		$this->assertSame( 2, substr_count( $out, '<!-- wp:column ' ) );
+	}
+
+	public function test_highlighted_tier_is_wrapped_in_a_card(): void {
+		$pricing = new PricingTiers();
+		$out     = $pricing->render( $this->content(), '3-tier', $this->context(), null );
+
+		// The highlighted tier's card is a nested group inside its column.
+		$this->assertGreaterThanOrEqual( 2, substr_count( $out, '<!-- wp:group ' ) );
+	}
+
+	public function test_columns_never_declare_a_width(): void {
+		$pricing = new PricingTiers();
+		$out     = $pricing->render( $this->content(), '3-tier', $this->context(), null );
+		$this->assertStringNotContainsString( 'width', $out );
+	}
+
+	public function test_is_correct_by_construction_plain_and_on_background(): void {
+		$pricing = new PricingTiers();
+		$ctx     = $this->context();
+		$v       = new Validator();
+		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), '3-tier', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), '3-tier', $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_default_background_is_null_surface(): void {
+		$pricing = new PricingTiers();
+		$this->assertNull( $pricing->default_background( $this->context() ) );
+	}
+
+	public function test_is_deterministic(): void {
+		$pricing = new PricingTiers();
+		$ctx     = $this->context();
+		$once    = $pricing->render( $this->content(), '3-tier', $ctx, null );
+		$this->assertSame( $once, $pricing->render( $this->content(), '3-tier', $ctx, null ) );
+	}
+
+	public function test_cards_is_the_default_variant_and_every_tier_gets_a_card(): void {
+		$pricing = new PricingTiers();
+		$out     = $pricing->render( $this->content(), 'cards', $this->context(), null );
+
+		$this->assertSame( 2, substr_count( $out, 'class="card-hover-lift' ) );
+	}
+
+	public function test_cards_variant_highlighted_tier_keeps_the_loud_accent_card(): void {
+		$pricing = new PricingTiers();
+		$ctx     = $this->context();
+		$out     = $pricing->render( $this->content(), 'cards', $ctx, null );
+
+		$this->assertStringContainsString( '"backgroundColor":"' . $ctx->accent_slug() . '"', $out );
+	}
+
+	public function test_cards_variant_is_correct_by_construction_with_and_without_background(): void {
+		$pricing = new PricingTiers();
+		$ctx     = $this->context();
+		$v       = new Validator();
+
+		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), 'cards', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), 'cards', $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_3_tier_variant_stays_flat_for_plain_tiers(): void {
+		$pricing = new PricingTiers();
+		$out     = $pricing->render( $this->content(), '3-tier', $this->context(), null );
+
+		$this->assertStringNotContainsString( 'class="card-hover-lift', $out );
+	}
+
+	public function test_accent_bar_variant_bars_plain_tiers_and_cards_the_highlighted_one(): void {
+		$pricing = new PricingTiers();
+		$ctx     = $this->context();
+		$out     = $pricing->render( $this->content(), 'accent-bar', $ctx, null );
+
+		// One plain tier gets the bar; the highlighted tier keeps the loud card.
+		$this->assertSame( 1, substr_count( $out, '<!-- wp:separator ' ) );
+		$this->assertSame( 1, substr_count( $out, 'class="card-hover-lift' ) );
+		$this->assertStringContainsString( '"backgroundColor":"' . $ctx->accent_slug() . '"', $out );
+	}
+
+	public function test_accent_bar_variant_is_correct_by_construction_with_and_without_background(): void {
+		$pricing = new PricingTiers();
+		$ctx     = $this->context();
+		$v       = new Validator();
+
+		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), 'accent-bar', $ctx, null ), $ctx ) );
+		$this->assertSame( array(), $v->validate( $pricing->render( $this->content(), 'accent-bar', $ctx, $ctx->muted_light_slug() ), $ctx ) );
+	}
+
+	public function test_unspecified_variant_resolves_into_the_pickable_pool(): void {
+		$pricing = new PricingTiers();
+		$ctx     = $this->context();
+		$out     = $pricing->render( $this->content(), null, $ctx, null );
+
+		$this->assertSame( $out, $pricing->render( $this->content(), null, $ctx, null ) );
+
+		$explicit = array();
+		foreach ( PricingTiers::VARIANTS as $variant ) {
+			$explicit[] = $pricing->render( $this->content(), $variant, $ctx, null );
+		}
+		$this->assertContains( $out, $explicit );
+	}
+}

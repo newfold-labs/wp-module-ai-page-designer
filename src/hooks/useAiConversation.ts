@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { HistoryEntry, Message, WPItem } from '../types';
 import { generateContent, generateContentStream } from '../api';
 import { extractHtml } from '../util/aiDesignerHelpers';
+import { classifyIntent, generateMetadata, isIntentClassifierEnabled, type EditIntent } from '../util/intentClassifier';
+import { generatePagePlanPage, isPagePlanEnabled } from '../util/pagePlan';
 
 type UseAiConversationOptions = {
   apiUrl: string;
@@ -22,6 +24,19 @@ type UseAiConversationOptions = {
   clearSelection: (iframeRef?: RefObject<HTMLIFrameElement>) => void;
 };
 
+// Thread state that's worth restoring on an instant switch back to a page
+// (plan: "cache last ~5 pages' chat threads in memory for instant
+// switch-back") — the rest of the hook's internal state (parsedBlocks,
+// lastGeneratedHtml, etc.) self-heals from previewHtml once this is set,
+// same as it does today on a fresh page load.
+export type ConversationSnapshot = {
+  messages: Message[];
+  historyEntries: HistoryEntry[];
+  hasAIGenerated: boolean;
+  conversationId: string | null;
+  responseId: string | null;
+};
+
 type UseAiConversationResult = {
   messages: Message[];
   input: string;
@@ -30,15 +45,19 @@ type UseAiConversationResult = {
   isHistoryOpen: boolean;
   hasAIGenerated: boolean;
   publishTitle: string;
+  conversationId: string | null;
+  responseId: string | null;
   chatMessagesRef: RefObject<HTMLDivElement>;
   setInput: (value: string) => void;
   setIsHistoryOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
   setPublishTitle: (value: string) => void;
-  handleSend: (overrideText?: string) => Promise<void>;
+  handleSend: (overrideText?: string, opts?: { forceNewPage?: boolean }) => Promise<void>;
   handleConfirmRevertChanges: () => void;
   handleRevertToEntry: (id: string) => void;
   resetAiConversation: () => void;
+  restoreConversation: (snapshot: ConversationSnapshot) => void;
   appendAssistantMessage: (message: Message) => void;
+  addHistoryEntry: (label: string) => void;
 };
 
 const REMOVAL_KEYWORDS = [ 'remove', 'delete', 'get rid of', 'take out', 'eliminate', 'cut this', 'hide this' ];
@@ -123,8 +142,18 @@ const extractRequestedTextColor = ( text: string ): { label: string; value: stri
     const parts = cleaned.split( ' ' );
     for ( let len = Math.min( 4, parts.length ); len >= 1; len-- ) {
       const candidate = parts.slice( 0, len ).join( ' ' ).trim();
-      if ( candidate && isValidCssColor( candidate ) ) {
+      if ( ! candidate ) {
+        continue;
+      }
+      if ( isValidCssColor( candidate ) ) {
         return { label: candidate, value: candidate };
+      }
+      // Multi-word CSS named colours have no space ("light blue" -> "lightblue").
+      // Mirror the background extractor so a deterministic edit still applies
+      // instead of falling through to the AI (which echoes the page unchanged).
+      const collapsed = candidate.replace( /\s+/g, '' );
+      if ( collapsed !== candidate && isValidCssColor( collapsed ) ) {
+        return { label: candidate, value: collapsed };
       }
     }
   }
@@ -200,6 +229,100 @@ const extractRequestedBackgroundColor = ( text: string ): { label: string; value
   return null;
 };
 
+// A real excerpt/title describes the page; it never narrates the edit. When the
+// model writes its acknowledgment into the PAGE_EXCERPT/PAGE_TITLE field
+// ("Updated the page excerpt for the current layout."), reject it so we don't
+// overwrite good metadata with a status line.
+const looksLikeAcknowledgment = ( value: string ): boolean => {
+  const t = value.trim();
+  if ( ! t ) {
+    return false;
+  }
+  // Self-referential editing vocabulary a genuine excerpt/title would never
+  // contain ("...the hero excerpt...", "...improve SEO", "...as requested").
+  if ( /\b(excerpt|metadata|the (?:current )?layout|page title|improve(?:d)? seo|as requested)\b/i.test( t ) ) {
+    return true;
+  }
+  // Unambiguous edit-acknowledgment openers. Kept conservative: verbs like
+  // "set"/"added" can legitimately start real prose, so they're excluded — the
+  // self-referential check above carries those cases.
+  if ( /^(?:updated|changed|rewrote|revised|refreshed|regenerated|here(?:'|’|`|)s|here is|i(?:'|’|`|)ve|i have)\b/i.test( t ) ) {
+    return true;
+  }
+  return false;
+};
+
+// Map an explicit block noun in an additive request ("add a gallery below this")
+// to the core block type(s) we'll accept back. Lets us reject an obviously-wrong
+// block (model returns a cover for a gallery request) instead of splicing it in.
+// Returns null when no specific block was named, so the guard stays inert.
+const expectedAdditiveTypes = ( text: string ): string[] | null => {
+  const t = text.toLowerCase();
+  if ( /\bgaller(?:y|ies)\b/.test( t ) ) {
+    return [ 'gallery', 'image', 'columns' ];
+  }
+  if ( /\btable\b/.test( t ) ) {
+    return [ 'table', 'columns', 'group' ];
+  }
+  if ( /\b(?:buttons?|cta)\b/.test( t ) ) {
+    return [ 'buttons', 'button' ];
+  }
+  if ( /\b(?:quote|testimonials?)\b/.test( t ) ) {
+    return [ 'quote', 'pullquote', 'columns', 'group' ];
+  }
+  if ( /\blist\b/.test( t ) ) {
+    return [ 'list' ];
+  }
+  return null;
+};
+
+// A page title must stay short and read like a title — the AI sometimes returns a
+// whole sentence, or stuffs the excerpt into the title field. Collapse whitespace,
+// keep only the first sentence, and cap to ~10 words / 70 chars on a word boundary.
+const sanitizeTitle = ( raw: string ): string => {
+  let t = ( raw || '' ).replace( /\s+/g, ' ' ).trim();
+  if ( ! t ) {
+    return '';
+  }
+  // Keep only the first sentence (drops an excerpt accidentally placed in the title).
+  const firstSentence = ( t.match( /^[^.!?]*[.!?]/ )?.[ 0 ] || t ).trim();
+  if ( firstSentence.length >= 12 ) {
+    t = firstSentence;
+  }
+  const words = t.split( ' ' );
+  if ( words.length > 10 ) {
+    t = words.slice( 0, 10 ).join( ' ' );
+  }
+  if ( t.length > 70 ) {
+    const clipped = t.slice( 0, 70 );
+    const space = clipped.lastIndexOf( ' ' );
+    t = space > 0 ? clipped.slice( 0, space ) : clipped;
+  }
+  return t.replace( /[\s.,;:—–-]+$/, '' ).trim();
+};
+
+// Strip developer jargon from AI status messages shown in chat — novice users
+// don't know (or need) terms like "Gutenberg". Keeps the sentence readable.
+const sanitizeAssistantSummary = ( raw: string ): string =>
+  ( raw || '' )
+    .replace( /\busing Gutenberg\b/gi, '' )
+    .replace( /\bGutenberg\b\s*/gi, '' )
+    .replace( /\s{2,}/g, ' ' )
+    .replace( /\s+([.,;:])/g, '$1' )
+    .trim();
+
+// Display-only: a colour name a novice would recognise, or null when all we
+// have is a hex/rgb value (jargon). Lets messages read "now light blue" when we
+// know the name and stay generic ("updated the colour") when we only have a hex.
+const niceColorName = ( label: string ): string | null => {
+  const t = ( label || '' ).trim();
+  const lower = t.toLowerCase();
+  if ( ! t || t.startsWith( '#' ) || lower.startsWith( 'rgb' ) || lower.startsWith( 'hsl' ) ) {
+    return null;
+  }
+  return t;
+};
+
 const getPreviewHtmlFromDocument = ( doc: Document ): string => {
   const root = doc.getElementById( 'nfd-preview-root' );
 
@@ -259,37 +382,57 @@ const wpBlocksSerialize = ( blocks: any[] ): string => {
 // Split Gutenberg block markup into an array of top-level block strings.
 // Does not require wp.blocks — works purely on the comment delimiter syntax.
 //
-// Each new top-level block start (opening OR self-closing) begins a fresh segment so
-// that self-closing blocks (<!-- wp:separator /--> + <hr>) stay with their rendered
-// HTML instead of leaking into the next segment and offsetting all subsequent indices.
+// Token-based: scans EVERY block delimiter (opening, closing, self-closing)
+// with a single regex and tracks nesting depth by token, so it is immune to
+// formatting — delimiters mid-line, whole sections on one line, indentation.
+// The previous line-based version only classified the FIRST token of each
+// line; PageAssembler markup nests delimiters after HTML on the same line,
+// which silently desynced the depth count and put "top-level" boundaries
+// inside the hero (the "insert landed inside the hero section" bug).
+// Matches a block-comment delimiter: optional closing slash, block name
+// (optionally namespaced), optional JSON attrs, optional self-closing slash.
+// Same practical assumption as WP's own tokenizer: attr JSON never contains
+// a literal `} -->` inside a string value.
+const BLOCK_DELIMITER_RE = /<!--\s*(\/)?wp:[a-z0-9_-]+(?:\/[a-z0-9_-]+)?(?:\s+\{[\s\S]*?\})?\s*(\/)?-->/gi;
+
 const splitTopLevelBlocks = ( markup: string ): string[] => {
-  const segments: string[][] = [ [] ];
-  let segIdx = 0;
+  // Character offsets where a depth-0 block (opening or self-closing) starts —
+  // each is the start of a top-level segment.
+  const boundaries: number[] = [];
   let depth = 0;
-
-  for ( const line of markup.split( '\n' ) ) {
-    const trimmed = line.trim();
-    const isSelfClosing = /^<!--\s*wp:[^ ].*?\/-->/i.test( trimmed );
-    const isOpening = ! isSelfClosing && /^<!--\s*wp:/i.test( trimmed );
-    const isClosing = /^<!--\s*\/wp:/i.test( trimmed );
-
-    // Each top-level block start opens a new segment.
-    if ( ( isOpening || isSelfClosing ) && depth === 0 ) {
-      segments.push( [] );
-      segIdx++;
+  BLOCK_DELIMITER_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ( ( m = BLOCK_DELIMITER_RE.exec( markup ) ) !== null ) {
+    const isClosing = m[ 1 ] === '/';
+    const isSelfClosing = m[ 2 ] === '/';
+    if ( isClosing ) {
+      // Clamp so stray closers in malformed markup can't push depth negative
+      // and swallow every following section into one segment.
+      depth = Math.max( 0, depth - 1 );
+    } else {
+      if ( depth === 0 ) {
+        boundaries.push( m.index );
+      }
+      if ( ! isSelfClosing ) {
+        depth++;
+      }
     }
-
-    segments[ segIdx ].push( line );
-
-    if ( isOpening ) depth++;
-    if ( isClosing ) depth--;
   }
 
-  // Join each segment and drop any that contain no block comments (e.g. leading whitespace,
-  // trailing fastpath cache-buster comments).
-  return segments
-    .map( seg => seg.join( '\n' ).trim() )
-    .filter( s => s.length > 0 && /<!--\s*\/?wp:/i.test( s ) );
+  if ( boundaries.length === 0 ) {
+    return [];
+  }
+
+  const segments: string[] = [];
+  for ( let i = 0; i < boundaries.length; i++ ) {
+    // Fold any prefix before the first block (whitespace, stray comments)
+    // into the first segment; trim makes it invisible when pure whitespace.
+    const start = i === 0 ? 0 : boundaries[ i ];
+    const end = i + 1 < boundaries.length ? boundaries[ i + 1 ] : markup.length;
+    segments.push( markup.slice( start, end ).trim() );
+  }
+
+  return segments.filter( ( s ) => s.length > 0 && /<!--\s*\/?wp:/i.test( s ) );
 };
 
 // During streaming the buffer almost always ends mid-block — a tag or a class name cut
@@ -450,6 +593,11 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
   // block + new content, plus the selected block's type to tell those apart.
   const pendingInsertDirectionRef = useRef<'before' | 'after' | null>( null );
   const pendingSelectedTypeRef = useRef<string | null>( null );
+  // For an additive request that explicitly names a block ("add a gallery"),
+  // the core block type(s) we'll accept back. If the model returns something
+  // else (e.g. a cover), we refuse the splice instead of inserting the wrong
+  // block — see the additive-splice guard in applyFinalResponse.
+  const pendingExpectedTypesRef = useRef<string[] | null>( null );
 
   // Controls when the initial-load useEffect fires to populate the block registry.
   const parsedInitialRef = useRef<boolean>( false );
@@ -497,7 +645,17 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setMessages( ( prev ) => [ ...prev, message ] );
   }, [] );
 
-  const handleSend = useCallback( async ( overrideText?: string ) => {
+  // `opts.forceNewPage` marks "this message starts a page from nothing", which
+  // the caller knows for certain but this callback cannot infer. App.tsx's
+  // handleCreateWithPrompt() clears previewHtml/selectedItem and then calls
+  // handleSend() synchronously in the same tick, so the state resets have not
+  // been applied yet and this closure still sees the OUTGOING page's
+  // previewHtml. Without the flag, `isBrandNewPage` below reads false for what
+  // is unambiguously a brand-new page, and a prompt with no redesign keyword
+  // then fell through to the freeform markup path — which is why "New Page ->
+  // Generate" produced an undesigned page while the very first generation
+  // after a hard reload (genuinely null previewHtml) came out correct.
+  const handleSend = useCallback( async ( overrideText?: string, opts?: { forceNewPage?: boolean } ) => {
     const text = ( overrideText !== undefined ? overrideText : input ).trim();
     const wantsExcerpt = /excerpt/i.test( text );
     const wantsFeaturedImage = /(featured image|feature image|featured-image|featured-img)/i.test( text );
@@ -511,6 +669,12 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     const newMessages = [ ...messages.filter( ( m ) => ! m.isError ), userMsg ];
     setMessages( newMessages );
 
+    // Redesign requests generate a full new page — never treat them as targeted
+    // follow-up edits. Hoisted above the page-plan branch below (which also
+    // needs it) rather than computed twice.
+    const REDESIGN_KEYWORDS = [ 'redesign', 'regenerate', 'generate again', 'redo', 'remake', 'rebuild', 'start over', 'start fresh', 'from scratch', 'create new', 'make a new', 'build a new', 'try again', 'new version', 'new design', 'another version', 'different version', 'another design', 'different design', 'another look', 'different look' ];
+    const isRedesignRequest = REDESIGN_KEYWORDS.some( ( kw ) => text.toLowerCase().includes( kw ) );
+
     const applyMetadataOnlyResponse = ( responseData: any ) => {
       const title = responseData?.title || '';
       const excerpt = responseData?.excerpt || '';
@@ -521,26 +685,50 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       // (the base prompt requires it), so without this intent gate an
       // "add an excerpt" request would also overwrite the title, and vice versa.
       const applied: string[] = [];
+      const rejected: string[] = [];
       if ( title && wantsTitle ) {
-        setPublishTitle( title );
-        setMetaTitle( title );
-        applied.push( 'title' );
+        if ( looksLikeAcknowledgment( title ) ) {
+          rejected.push( 'title' );
+        } else {
+          const cleanTitle = sanitizeTitle( title );
+          setPublishTitle( cleanTitle );
+          setMetaTitle( cleanTitle );
+          applied.push( 'title' );
+        }
       }
       if ( excerpt && wantsExcerpt ) {
-        setMetaExcerpt( excerpt );
-        applied.push( 'excerpt' );
+        if ( looksLikeAcknowledgment( excerpt ) ) {
+          rejected.push( 'excerpt' );
+        } else {
+          setMetaExcerpt( excerpt );
+          applied.push( 'excerpt' );
+        }
       }
 
-      const fallback = applied.length
-        ? `Updated ${ applied.join( ' and ' ) }.`
-        : 'No changes were made.';
+      // Always show OUR message here, never the model's summary: the model
+      // narrates what IT generated ("Added SEO-ready page title and excerpt")
+      // even when the intent gate above only applied one of those fields —
+      // the chat must state exactly what actually changed.
+      let fallback;
+      if ( applied.length ) {
+        fallback = `Done! I’ve refreshed your ${ applied.join( ' and ' ) }.`;
+      } else if ( rejected.length ) {
+        // The model returned a status line instead of real metadata — don't
+        // overwrite, and tell the user so they can retry rather than silently
+        // landing "Updated the page excerpt…" as the excerpt value.
+        fallback = `I couldn't generate a clean ${ rejected.join( ' and ' ) } — nothing was changed. Try rephrasing.`;
+      } else {
+        fallback = 'No changes were made.';
+      }
 
+      const blocked = rejected.length > 0 && applied.length === 0;
       setMessages( [
         ...newMessages,
         {
           role: 'assistant',
-          content: summary || fallback,
-          summary: summary || undefined,
+          content: fallback,
+          summary: blocked ? undefined : ( summary || undefined ),
+          isError: blocked || undefined,
         },
       ] );
 
@@ -572,7 +760,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     };
 
     const applyFinalResponse = ( rawContent: string, responseData: any, isFollowUpEdit: boolean ) => {
-      const responseSummary = responseData?.summary ?? '';
+      const responseSummary = sanitizeAssistantSummary( responseData?.summary ?? '' );
       const title = responseData?.title || '';
       const fallbackSummary = selectedItem ? 'Update ready.' : 'New page ready.';
 
@@ -653,6 +841,83 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           }
         };
 
+        // Deterministic additive insert: an "add X above/below [selection]"
+        // request places the new section as a TOP-LEVEL sibling, computed purely
+        // by string-splitting the current page into top-level blocks and splicing
+        // at the selected section's index. No wp.blocks round-trip and no DOM
+        // patch — so a NESTED selection (e.g. a heading inside the hero) still
+        // inserts the new section at the top level, never inside the selected
+        // section (the "it went into the hero" bug). Runs before the general
+        // single-block handler below so it owns every positioned-add request.
+        if ( pendingInsertDirectionRef.current !== null ) {
+          const insertDir = pendingInsertDirectionRef.current;
+
+          let topIdx = pendingTopLevelIndexRef.current;
+          if ( topIdx === null && selectedBlockIndex !== null ) {
+            const parsedIdx = parseInt( selectedBlockIndex.split( '-' )[ 0 ], 10 );
+            topIdx = isNaN( parsedIdx ) ? null : parsedIdx;
+          }
+
+          const pageTop = previewHtml ? splitTopLevelBlocks( previewHtml ) : [];
+          const newSection = html.trim();
+
+          // Type guard: refuse an obviously-wrong single block (asked for a
+          // pricing table, got a cover) instead of splicing it in.
+          const expectedTypes = pendingExpectedTypesRef.current;
+          const returnedCount = splitTopLevelBlocks( newSection ).length;
+          const returnedTypeMatch = newSection.match( /<!--\s*wp:([a-z0-9\/-]+)/i );
+          const returnedType = returnedTypeMatch ? returnedTypeMatch[ 1 ].replace( /^core\//, '' ) : null;
+          const wrongType =
+            expectedTypes !== null &&
+            returnedCount === 1 &&
+            returnedType !== null &&
+            ! expectedTypes.includes( returnedType );
+
+          const resetPending = () => {
+            isSingleBlockRequestRef.current = false;
+            pendingTopLevelIndexRef.current = null;
+            pendingInsertDirectionRef.current = null;
+            pendingSelectedTypeRef.current = null;
+            pendingExpectedTypesRef.current = null;
+          };
+
+          if ( wrongType ) {
+            setMessages( [
+              ...newMessages,
+              {
+                role: 'assistant',
+                content: 'That didn’t come out the way you asked. Nothing was changed — want to try describing it a little differently?',
+                isError: true,
+              },
+            ] );
+            resetPending();
+            clearSelection( iframeRef );
+            return;
+          }
+
+          if ( topIdx !== null && topIdx >= 0 && '' !== newSection && pageTop.length > 0 ) {
+            const at = Math.min( Math.max( insertDir === 'before' ? topIdx : topIdx + 1, 0 ), pageTop.length );
+            const updated = [ ...pageTop ];
+            updated.splice( at, 0, newSection );
+            const merged = updated.join( '\n\n' );
+            const mergedBlocks = wpBlocksParse( merged );
+            if ( mergedBlocks.length > 0 ) {
+              setParsedBlocks( mergedBlocks );
+            }
+            setPreviewHtml( merged );
+            addHistoryEntry( merged );
+            setLastGeneratedHtml( null );
+            // This early return skips the shared post-apply block below, so the
+            // unsaved-changes flag (which gates the Publish button) must be set here.
+            setHasAIGenerated( true );
+            clearSelection( iframeRef );
+            resetPending();
+            return;
+          }
+          // If we couldn't resolve a top-level index, fall through to the general
+          // handler below rather than dropping the request.
+        }
+
         if ( isSingleBlockRequestRef.current && pendingTopLevelIndexRef.current !== null ) {
           const idx = pendingTopLevelIndexRef.current;
           let handled = false;
@@ -664,8 +929,40 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           // replacing the selected block with it.
           const insertDirection = pendingInsertDirectionRef.current;
           const selectedType = pendingSelectedTypeRef.current;
+          const expectedTypes = pendingExpectedTypesRef.current;
           const returnedTypeMatch = html.match( /<!--\s*wp:([a-z0-9\/-]+)/i );
           const returnedType = returnedTypeMatch ? returnedTypeMatch[ 1 ].replace( /^core\//, '' ) : null;
+
+          // Guard: an additive request named a specific block ("add a gallery")
+          // but the model returned a single block of the wrong type (e.g. a
+          // cover). Refuse rather than splice the wrong block in silently. Only
+          // applies to the lone-new-block insert case — when the model returns
+          // the selected block plus siblings, returnedType is the selected
+          // block's type and the check would misfire.
+          const returnedCount = wpBlocksParse( html ).length || splitTopLevelBlocks( html ).length;
+          if (
+            insertDirection !== null &&
+            expectedTypes !== null &&
+            returnedCount === 1 &&
+            returnedType !== null &&
+            ! expectedTypes.includes( returnedType )
+          ) {
+            setMessages( [
+              ...newMessages,
+              {
+                role: 'assistant',
+                content: 'That didn’t come out the way you asked. Nothing was changed — want to try describing it a little differently?',
+                isError: true,
+              },
+            ] );
+            isSingleBlockRequestRef.current = false;
+            pendingTopLevelIndexRef.current = null;
+            pendingInsertDirectionRef.current = null;
+            pendingSelectedTypeRef.current = null;
+            pendingExpectedTypesRef.current = null;
+            clearSelection( iframeRef );
+            return;
+          }
 
           // Primary: wp.blocks parse+serialize if available. Splice in ALL
           // returned top-level blocks — additive requests ("add a section
@@ -719,6 +1016,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           pendingTopLevelIndexRef.current = null;
           pendingInsertDirectionRef.current = null;
           pendingSelectedTypeRef.current = null;
+          pendingExpectedTypesRef.current = null;
         } else if ( selectedBlockIndex !== null && selectedBlockHtml !== null ) {
           // Try Gutenberg block-marker replacement first; fall back to DOM patch.
           const hasBlockMarkers = /<!--\s*wp:/.test( html );
@@ -882,15 +1180,20 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         }
         const isFirstGeneration = ! selectedItem && ! hasAIGenerated;
         setHasAIGenerated( true );
-        if ( title && ( isFirstGeneration || wantsTitle ) ) {
-          setPublishTitle( title );
-          setMetaTitle( title );
+        // Reject acknowledgments the model sometimes writes into the title/excerpt
+        // fields ("Updated the hero excerpt to sharpen the story…") so we never
+        // overwrite real metadata with a status line. Same guard as the
+        // metadata-only path.
+        if ( title && ( isFirstGeneration || wantsTitle ) && ! looksLikeAcknowledgment( title ) ) {
+          const cleanTitle = sanitizeTitle( title );
+          setPublishTitle( cleanTitle );
+          setMetaTitle( cleanTitle );
         }
         // Apply the excerpt on a fresh generation too (not just explicit "add an excerpt"
         // requests) so title and excerpt land together when a new page is created.
         if ( isFirstGeneration || wantsExcerpt ) {
           const excerpt = responseData?.excerpt || '';
-          if ( excerpt ) {
+          if ( excerpt && ! looksLikeAcknowledgment( excerpt ) ) {
             setMetaExcerpt( excerpt );
           }
         }
@@ -905,6 +1208,312 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
     try {
       setIsLoading( true );
+
+      const hasSelection = selectedBlockIndex !== null && selectedBlockHtml !== null;
+      const selectedTypeForCtx = ( () => {
+        if ( ! hasSelection || ! previewHtml ) {
+          return '';
+        }
+        const idx = parseInt( String( selectedBlockIndex ).split( '-' )[ 0 ], 10 );
+        const tops = splitTopLevelBlocks( previewHtml );
+        const m = ! isNaN( idx ) && tops[ idx ] ? tops[ idx ].match( /<!--\s*wp:([a-z0-9\/-]+)/i ) : null;
+        return m ? m[ 1 ].replace( /^core\//, '' ) : '';
+      } )();
+
+      // One classify call per message, shared by the whole-page routing gate
+      // just below and the edit-intent handlers much further down. Both need
+      // the same answer for the same text, so memoise it rather than paying for
+      // two identical model round-trips.
+      let cachedIntent: EditIntent | null = null;
+      const getIntent = async (): Promise< EditIntent > => {
+        if ( ! cachedIntent ) {
+          cachedIntent = await classifyIntent( apiUrl, text, {
+            has_selection: hasSelection,
+            selected_block_type: selectedTypeForCtx,
+            has_generated: hasAIGenerated || !! previewHtml,
+            palette: ( window as any )?.nfdAIPageDesigner?.colorPalette || [],
+          } );
+        }
+        return cachedIntent;
+      };
+
+      // Build a page from a PageAssembler page-plan (typed archetypes) instead of
+      // freeform AI markup. Engages for a brand-new page ("create a new page
+      // from a prompt", no existing preview/selected item) OR an explicit
+      // redesign-from-scratch request on an existing WordPress Page — never a
+      // Post, whose "structure" is just its article body, not landing-page
+      // sections. On an existing-page redesign the user's message is sent
+      // unmodified; only the title/excerpt go along as separate params, which
+      // the server folds into the SYSTEM prompt rather than the old body
+      // markup/images — this is what actually fixes "redesign" only
+      // re-skinning colors/images instead of changing the layout. Falls
+      // through to the normal AI generate path on any failure or if disabled
+      // (generatePagePlanPage never throws).
+      // See the note on handleSend's `opts.forceNewPage` param: the flag is the
+      // only reliable signal here, because the state resets that would make
+      // previewHtml/selectedItem falsy have not been applied yet when the
+      // new-page flow calls this in the same tick.
+      const isBrandNewPage = !! opts?.forceNewPage || ( ! previewHtml && ! selectedItem );
+
+      // Whether this message means "(re)build the whole page" rather than "edit
+      // what's already here". A brand-new page is unambiguous and needs no model
+      // call; for a page that already HAS content this used to be a literal
+      // substring match against REDESIGN_KEYWORDS, which silently misrouted any
+      // full-page request phrased outside that list — "Create a modern homepage
+      // with a hero section, key features, and a call to action" contains
+      // "create" but not the listed "create new" — into the freeform edit
+      // pipeline. Those pages then came back as raw model markup with none of
+      // the archetype typography or sections (no fancy display heading, no
+      // eyebrow labels, no parallax banner), which is exactly the "the styling
+      // only applies to some pages" bug. The classifier already models this
+      // distinction properly (a `redesign` action plus a selected-vs-page
+      // `target`), so ask it instead of pattern-matching prose.
+      //
+      // Never consulted while a block is selected: a scoped single-block edit
+      // must stay scoped and can never escalate into rebuilding the page.
+      let wantsWholePageRedesign = isRedesignRequest;
+      if ( ! isBrandNewPage && ! hasSelection && isIntentClassifierEnabled() ) {
+        const routeIntent = await getIntent();
+        // action 'freeform' at confidence 0 is precisely how BOTH failure paths
+        // report "no usable classification" — the client's own catch and the
+        // server's fail-soft freeform( 'classifier_unavailable' | 'unparseable' ).
+        // Keep the keyword answer in that case so a classifier outage degrades
+        // to the old behaviour instead of regressing routing that used to work.
+        const classifierAnswered = ! ( routeIntent.action === 'freeform' && routeIntent.confidence === 0 );
+        if ( classifierAnswered ) {
+          wantsWholePageRedesign = routeIntent.action === 'redesign' && routeIntent.target !== 'selected';
+        }
+      }
+
+      // Both of these are mutually exclusive with a brand-new page by
+      // definition, and stating that explicitly matters: on the forceNewPage
+      // path the stale previewHtml/selectedItem this closure still sees could
+      // otherwise make one of them true and send the OUTGOING page's
+      // title/excerpt along as "redesign context" for the new page.
+      const isExistingPageRedesign = ! isBrandNewPage && !! selectedItem && selectedItem.type === 'page' && wantsWholePageRedesign;
+      // "Create another version" of a page generated THIS session (previewHtml
+      // exists but nothing is saved/selected yet). Without this, the request
+      // fell through to the edit pipeline, which reliably returned near-empty
+      // markup for a whole-page regenerate instruction — tripping the
+      // blank-page guard's "kept the current version" refusal every time. The
+      // current title/excerpt ride along as redesign context, same as the
+      // saved-page path, so a bare "create another version" (no topic in the
+      // message itself) still tells the planner what the page is about.
+      const isInSessionRegenerate = ! isBrandNewPage && !! previewHtml && ! selectedItem && wantsWholePageRedesign;
+      if ( isPagePlanEnabled() && ( isBrandNewPage || isExistingPageRedesign || isInSessionRegenerate ) ) {
+        const planResult = isExistingPageRedesign || isInSessionRegenerate
+          ? await generatePagePlanPage( apiUrl, text, metaTitle, metaExcerpt )
+          : await generatePagePlanPage( apiUrl, text );
+        if ( planResult?.content ) {
+          const parsed = wpBlocksParse( planResult.content );
+
+          // Render the whole page ONCE, then reveal its top-level sections one at
+          // a time by directly toggling their opacity in the iframe DOM (this
+          // bypasses the render pipeline that batches intermediate previewHtml
+          // states) and scrolling each into view.
+          const sections = splitTopLevelBlocks( planResult.content );
+          setPreviewHtml( planResult.content );
+
+          if ( streamEnabled && sections.length > 1 ) {
+            const SECTION_GAP_MS = 400;
+            const ELEMENT_STEP_MS = 500;
+            // The visible "leaves" of a section, faded in one at a time. Lists,
+            // quotes and figures fade as a unit (per-<li>/per-<img> is too slow
+            // and too twitchy); the ancestor filter below drops anything nested
+            // inside another match so nothing double-fades.
+            const CONTENT_SELECTOR = 'h1,h2,h3,h4,h5,h6,p,ul,ol,blockquote,figure,.wp-block-buttons,img';
+            const sleep = ( ms: number ) => new Promise<void>( ( resolve ) => setTimeout( resolve, ms ) );
+
+            // Hide a section's content elements inline (marked with
+            // data-nfd-reveal so cleanup can find them) and return them in DOM
+            // order for the staggered fade-in. Inline opacity survives the
+            // stylesheet cascade; the marker also self-cleans if the iframe
+            // re-renders, because innerHTML replacement rebuilds the nodes.
+            const hideContent = ( sectionEl: Element ): HTMLElement[] => {
+              // NOTE: no `instanceof HTMLElement` here — these nodes live in the
+              // iframe's realm, whose HTMLElement constructor is a different
+              // object, so instanceof against the parent window's is always false.
+              const els = Array.from( sectionEl.querySelectorAll<HTMLElement>( CONTENT_SELECTOR ) )
+                .filter( ( el ) => ! el.parentElement?.closest( CONTENT_SELECTOR ) );
+              els.forEach( ( el ) => {
+                el.setAttribute( 'data-nfd-reveal', '' );
+                el.style.setProperty( 'opacity', '0', 'important' );
+              } );
+              return els;
+            };
+
+            const revealContent = async ( els: HTMLElement[] ) => {
+              for ( const el of els ) {
+                // eslint-disable-next-line no-await-in-loop
+                await sleep( ELEMENT_STEP_MS );
+                el.style.setProperty( 'opacity', '1', 'important' );
+              }
+            };
+
+            // The reveal is driven ENTIRELY by a head <style> rule, never by
+            // element references: the iframe swaps its whole document when
+            // srcdoc loads, and nfdSetContent replaces root.innerHTML on
+            // re-renders, so any node/document captured across an await can go
+            // stale. ensureRule() re-reads the CURRENT document every call and
+            // (re)injects the rule if that document doesn't have it — the hide
+            // state survives both kinds of replacement. Revealing section N is
+            // just loosening nth-child(n+2) to nth-child(n+N+1).
+            const ensureRule = ( hiddenFrom: number ): Document | null => {
+              const doc = iframeRef.current?.contentDocument;
+              if ( ! doc?.head ) {
+                return null;
+              }
+              let st = doc.getElementById( 'nfd-reveal-style' );
+              if ( ! st ) {
+                st = doc.createElement( 'style' );
+                st.id = 'nfd-reveal-style';
+                doc.head.appendChild( st );
+              }
+              // The fade needs !important + the [data-nfd-streaming] selector to
+              // out-cascade the srcdoc's blanket transition:none streaming rule
+              // (same specificity, later in the document, so it wins).
+              // The [data-nfd-streaming] variants match the specificity of the
+              // srcdoc's streaming rules (e.g. its .nfd-scroll-fade{opacity:1
+              // !important} guard, which sections now carry) so this later
+              // stylesheet wins the cascade and the hide actually hides.
+              st.textContent =
+                `#nfd-preview-root[data-nfd-streaming] > :nth-child(n+${ hiddenFrom }), #nfd-preview-root > :nth-child(n+${ hiddenFrom }){opacity:0 !important;}` +
+                '#nfd-preview-root[data-nfd-streaming] > *, #nfd-preview-root > *{transition:opacity 500ms ease !important;}' +
+                '#nfd-preview-root[data-nfd-streaming] [data-nfd-reveal], #nfd-preview-root [data-nfd-reveal]{transition:opacity 350ms ease !important;}';
+              return doc;
+            };
+
+            // Poll until the sections exist in the CURRENT document, keeping the
+            // hide rule alive across the srcdoc document swap so they never flash.
+            let sectionCount = 0;
+            const started = performance.now();
+            while ( performance.now() - started < 6000 ) {
+              const doc = ensureRule( 2 );
+              const root = doc?.getElementById( 'nfd-preview-root' ) ?? null;
+              if ( root && root.children.length >= 2 ) {
+                sectionCount = root.children.length;
+                break;
+              }
+              // eslint-disable-next-line no-await-in-loop
+              await sleep( 80 );
+            }
+
+            if ( sectionCount >= 2 ) {
+              // The hero is already visible — stagger its content first so the
+              // page builds element by element from the very top.
+              {
+                const doc = ensureRule( 2 );
+                const heroEl = doc?.getElementById( 'nfd-preview-root' )?.children[ 0 ];
+                if ( heroEl ) {
+                  await revealContent( hideContent( heroEl ) );
+                }
+              }
+              for ( let i = 2; i <= sectionCount; i++ ) {
+                // eslint-disable-next-line no-await-in-loop
+                await sleep( SECTION_GAP_MS );
+                // Hide the section's content while the section itself is still
+                // hidden by the nth-child rule, THEN loosen the rule — the shell
+                // (background, padding) fades in empty and the content follows.
+                const doc = ensureRule( i );
+                const el = doc?.getElementById( 'nfd-preview-root' )?.children[ i - 1 ];
+                const contentEls = el ? hideContent( el ) : [];
+                ensureRule( i + 1 );
+                try {
+                  el?.scrollIntoView( { behavior: 'smooth', block: 'start' } );
+                } catch {
+                  // ignore
+                }
+                // eslint-disable-next-line no-await-in-loop
+                await revealContent( contentEls );
+              }
+              await sleep( 800 );
+              const doc = iframeRef.current?.contentDocument;
+              doc?.getElementById( 'nfd-reveal-style' )?.remove();
+              doc?.querySelectorAll( '[data-nfd-reveal]' ).forEach( ( el ) => {
+                ( el as HTMLElement ).style.removeProperty( 'opacity' );
+                el.removeAttribute( 'data-nfd-reveal' );
+              } );
+              try {
+                doc?.getElementById( 'nfd-preview-root' )?.children[ 0 ]?.scrollIntoView( { behavior: 'smooth', block: 'start' } );
+              } catch {
+                // ignore
+              }
+            } else {
+              // Poll timed out — remove the hide rule so nothing stays invisible.
+              iframeRef.current?.contentDocument?.getElementById( 'nfd-reveal-style' )?.remove();
+            }
+          }
+
+          if ( parsed.length > 0 ) {
+            setParsedBlocks( parsed );
+          }
+          setHasAIGenerated( true );
+
+          if ( isExistingPageRedesign ) {
+            // The user asked to rebuild the layout, not rename the page — keep
+            // its saved title/excerpt/featured image untouched, and log a
+            // history entry so the pre-redesign version stays revertible (a
+            // brand-new page has nothing to revert to, so this only applies
+            // here).
+            const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+            setHistoryEntries( ( prev ) => [
+              ...prev,
+              {
+                id: `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`,
+                html: planResult.content,
+                label: `Redesigned from scratch: ${ text.substring( 0, 60 ) }`,
+                timestamp,
+                publishTitle: metaTitle || publishTitle,
+                metaExcerpt,
+              },
+            ] );
+            setMessages( [ ...newMessages, { role: 'assistant', content: 'Here is a fresh redesign.' } ] );
+            return;
+          }
+
+          // The server guarantees a title/excerpt via its own fallback chain,
+          // but if either ever arrives empty, derive one from the page itself
+          // (first heading / first paragraph) — a fresh generation must never
+          // leave the PAGE TITLE or EXCERPT fields blank.
+          let planTitle = planResult.title;
+          if ( ! planTitle ) {
+            // eslint-disable-next-line no-console
+            console.warn( '[AI Page Designer] /page-plan returned no title; deriving from content.' );
+            const headingMatch = planResult.content.match( /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i );
+            planTitle = ( headingMatch?.[ 1 ] || '' ).replace( /<[^>]+>/g, '' ).trim();
+          }
+          if ( planTitle ) {
+            const cleanTitle = sanitizeTitle( planTitle );
+            setPublishTitle( cleanTitle );
+            setMetaTitle( cleanTitle );
+          }
+          let planExcerpt = planResult.excerpt;
+          if ( ! planExcerpt ) {
+            // eslint-disable-next-line no-console
+            console.warn( '[AI Page Designer] /page-plan returned no excerpt; deriving from content.' );
+            const paragraphMatch = planResult.content.match( /<p[^>]*>([\s\S]*?)<\/p>/i );
+            planExcerpt = ( paragraphMatch?.[ 1 ] || '' ).replace( /<[^>]+>/g, '' ).trim();
+          }
+          if ( planExcerpt ) {
+            setMetaExcerpt( planExcerpt );
+          }
+          // Prefer the model's own one-liner (already sanitized server-side by
+          // trim_reply; the length/character re-check here is belt-and-braces).
+          // Fall back to a deterministic line matched to what actually
+          // happened — a regenerate answered with "Here is a first draft."
+          // reads like the request was ignored.
+          const aiReply = ( planResult.reply || '' ).trim();
+          const fallbackReply = isInSessionRegenerate
+            ? 'Here is a new version of the page.'
+            : isExistingPageRedesign
+              ? 'Here is the redesigned page.'
+              : 'Here is a first draft.';
+          const planReply =
+            aiReply && aiReply.length <= 200 && ! /[<>{}\n\r]/.test( aiReply ) ? aiReply : fallbackReply;
+          setMessages( [ ...newMessages, { role: 'assistant', content: planReply } ] );
+          return;
+        }
+      }
 
       const applySelectedTextColor = ( color: { label: string; value: string } ): boolean => {
         const doc = iframeRef.current?.contentDocument;
@@ -952,9 +1561,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           ] );
         }
 
+        const textName = niceColorName( color.label );
         setMessages( [
           ...newMessages,
-          { role: 'assistant', content: didChange ? `Updated text color to ${ color.label } for this section.` : 'No visible text color changes were applied.' },
+          {
+            role: 'assistant',
+            content: didChange
+              ? ( textName ? `Done! The text is now ${ textName }.` : 'Done! I’ve updated the text color.' )
+              : 'I couldn’t change the text color here. Want to try wording it a little differently?',
+          },
         ] );
         clearSelection( iframeRef );
         return true;
@@ -1003,9 +1618,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           ] );
         }
 
+        const bgName = niceColorName( color.label );
         setMessages( [
           ...newMessages,
-          { role: 'assistant', content: didChange ? `Updated background color to ${ color.label } for this section.` : 'No visible background changes were applied.' },
+          {
+            role: 'assistant',
+            content: didChange
+              ? ( bgName ? `Done! This section now has a ${ bgName } background.` : 'Done! I’ve updated this section’s background.' )
+              : 'I couldn’t update the background here. Want to try wording it a little differently?',
+          },
         ] );
         clearSelection( iframeRef );
         return true;
@@ -1063,9 +1684,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
           },
         ] );
 
+        const pageName = niceColorName( color.label );
         setMessages( [
           ...newMessages,
-          { role: 'assistant', content: `Updated the page background to ${ color.label }.` },
+          {
+            role: 'assistant',
+            content: pageName
+              ? `All set — your page background is now ${ pageName }.`
+              : 'All set — I’ve updated your page background.',
+          },
         ] );
         clearSelection( iframeRef );
         return true;
@@ -1215,6 +1842,98 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         }
       };
 
+      // PROTOTYPE: AI intent classifier. When enabled, one cheap classify call
+      // decides the action and resolves fuzzy colours ("light blue", "a bit
+      // darker", "match the theme") that the keyword regexes choke on. We then
+      // run the SAME deterministic handlers below. Only the unambiguous
+      // deterministic actions short-circuit here; everything else falls through
+      // to the existing regex + AI-generate path, so this never blocks an edit.
+      // When the classifier recognises an add_block request, remember any
+      // direction it extracted — the additive-insert routing below consults it
+      // for requests that don't spell out "above"/"below" themselves.
+      let classifiedInsertDirection: 'before' | 'after' | null = null;
+
+      if ( isIntentClassifierEnabled() ) {
+        // Reuses the memoised classification from the routing gate above
+        // (hasSelection/selectedTypeForCtx are hoisted there too), so a message
+        // that already consulted the classifier for routing doesn't pay for a
+        // second identical call here.
+        const intent = await getIntent();
+
+        if ( intent.confidence >= 0.5 ) {
+          if ( intent.action === 'remove' && hasSelection ) {
+            removeSelectedBlock();
+            setMessages( [ ...newMessages, { role: 'assistant', content: 'Section removed.' } ] );
+            clearSelection( iframeRef );
+            return;
+          }
+
+          // Prefer the friendly colour name for display; the hex is only for applying.
+          const friendlyColor = intent.color_label || intent.color || '';
+
+          if ( intent.action === 'recolor_text' && hasSelection && intent.color ) {
+            if ( applySelectedTextColor( { label: friendlyColor, value: intent.color } ) ) {
+              return;
+            }
+          }
+
+          if ( intent.action === 'recolor_background' && intent.color ) {
+            const swatch = { label: friendlyColor, value: intent.color, adjustText: false };
+            if ( hasSelection && intent.target !== 'page' ) {
+              if ( applySelectedBackgroundColor( swatch ) ) {
+                return;
+              }
+            } else if ( applyPageBackgroundColor( swatch ) ) {
+              return;
+            }
+          }
+          // Harness-owned metadata generation: produce a real excerpt/title from
+          // the page content via our own /metadata call (not the page-generate
+          // path that leaked acknowledgment text). Apply only the field(s) asked.
+          if ( intent.action === 'edit_metadata' && intent.metadata_fields.length > 0 && previewHtml ) {
+            const fields = intent.metadata_fields.filter(
+              ( f ) => f === 'excerpt' || f === 'title'
+            ) as Array<'excerpt' | 'title'>;
+
+            if ( fields.length > 0 ) {
+              const applied: string[] = [];
+              for ( const field of fields ) {
+                const value = await generateMetadata( apiUrl, field, previewHtml );
+                if ( value && ! looksLikeAcknowledgment( value ) ) {
+                  if ( field === 'excerpt' ) {
+                    setMetaExcerpt( value );
+                  } else {
+                    setPublishTitle( value );
+                    setMetaTitle( value );
+                  }
+                  applied.push( field );
+                }
+              }
+
+              if ( applied.length > 0 ) {
+                const label = applied.join( ' and ' );
+                setMessages( [
+                  ...newMessages,
+                  { role: 'assistant', content: `Done! I’ve refreshed your ${ label }.` },
+                ] );
+              } else {
+                setMessages( [
+                  ...newMessages,
+                  { role: 'assistant', content: 'I couldn’t update that just now. Want to try again?', isError: true },
+                ] );
+              }
+              clearSelection( iframeRef );
+              return;
+            }
+          }
+          if ( intent.action === 'add_block' && hasSelection ) {
+            classifiedInsertDirection = intent.insert_direction;
+          }
+          // Other actions (add_block, replace_image, redesign, freeform)
+          // intentionally fall through to the existing routing.
+        }
+      }
+
       // Fast path: remove selected block without an AI round-trip.
       if ( selectedBlockIndex !== null && selectedBlockHtml !== null && isRemovalIntent( text ) ) {
         removeSelectedBlock();
@@ -1256,11 +1975,11 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
 
       // Check if this is a metadata-only request first, before follow-up edit detection.
       // Metadata requests (excerpt, title, summary) should never send page content as context.
-      const isMetadataRequest = /\b(add|create|generate|write)\s+(an?\s+)?(excerpt|title|summary)\b|^(excerpt|title|summary)$/i.test(text);
+      // Match "add/create/generate/write/update/edit/rewrite/revise/improve/refresh the excerpt",
+      // but NOT "change the title color/font/…" — those are block-style edits, not metadata.
+      const isMetadataRequest = /\b(?:add|create|generate|write|update|edit|rewrite|revise|improve|refresh|change|set)\s+(?:an?\s+|the\s+)?(?:excerpt|title|summary)\b(?!\s+(?:color|colour|font|text|size|style|background))|^(?:excerpt|title|summary)$/i.test(text);
 
-      // Redesign requests generate a full new page — never treat them as targeted follow-up edits.
-      const REDESIGN_KEYWORDS = [ 'redesign', 'regenerate', 'generate again', 'redo', 'remake', 'rebuild', 'start over', 'start fresh', 'from scratch', 'create new', 'make a new', 'build a new', 'try again', 'new version', 'new design' ];
-      const isRedesignRequest = REDESIGN_KEYWORDS.some( ( kw ) => text.toLowerCase().includes( kw ) );
+      // isRedesignRequest is computed once, above, near the top of handleSend.
 
       // Detect if this is a follow-up request to a previously generated block.
       const isFollowUpEdit = !isMetadataRequest && !isRedesignRequest && selectedBlockIndex === null && lastGeneratedHtml !== null && !!previewHtml?.includes(lastGeneratedHtml);
@@ -1301,14 +2020,32 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
       const additiveVerb = /\b(add|insert|create|put|place)\b/i.test( text );
       const positionBefore = /\b(above|before|on top of)\b/i.test( text );
       const positionAfter = /\b(below|under|underneath|beneath|after)\b/i.test( text );
+      const explicitDirection =
+        positionBefore || positionAfter ? ( positionBefore ? 'before' : 'after' ) : null;
+      // A direction-less "add a pricing table" with a block selected must ALSO
+      // insert a new sibling section — routing it as an edit of the selection
+      // makes the model nest the new content inside the selected section (the
+      // "pricing table appeared inside the hero" bug). Gated on a section-scale
+      // noun, and containment phrasing ("add a button to this section") keeps
+      // the edit behavior. Defaults to inserting after the selected section.
+      const sectionScaleNoun =
+        /\b(?:pricing|tables?|galler(?:y|ies)|testimonials?|quotes?|sections?|faqs?|accordion|stats?|cta|banners?|forms?|features?|hero)\b/i.test( text );
+      const containmentPhrasing =
+        /\b(?:in|into|inside|within|to)\s+(?:this|that|it\b|the\s+(?:selected|current))/i.test( text );
+      const impliedDirection =
+        sectionScaleNoun && ! containmentPhrasing
+          ? classifiedInsertDirection || 'after'
+          : null;
       pendingInsertDirectionRef.current =
-        isSingleBlockEdit && additiveVerb && ( positionBefore || positionAfter )
-          ? ( positionBefore ? 'before' : 'after' )
+        isSingleBlockEdit && additiveVerb
+          ? explicitDirection ?? impliedDirection
           : null;
       const selectedTypeMatch = isSingleBlockEdit
         ? selectedBlockGutenbergMarkup!.match( /<!--\s*wp:([a-z0-9\/-]+)/i )
         : null;
       pendingSelectedTypeRef.current = selectedTypeMatch ? selectedTypeMatch[ 1 ].replace( /^core\//, '' ) : null;
+      pendingExpectedTypesRef.current =
+        isSingleBlockEdit && additiveVerb ? expectedAdditiveTypes( text ) : null;
 
       // For single-block edits: send only the selected block — no full page markup.
       // For all other cases: use existing context logic.
@@ -1348,6 +2085,29 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         ...( selectedImageUrl ? { selected_image_url: selectedImageUrl } : {} ),
       };
 
+      // For an "add X above/below [selection]" request, the model must return a
+      // NEW standalone section to insert as a sibling — NOT a modified copy of
+      // the selected block. When the selection is nested (e.g. a heading inside
+      // the hero), the selected_block_markup we send is the whole containing
+      // section, and asking the model to "add X above it" makes it embed the new
+      // content inside that section. Send an explicit instruction so it returns
+      // only the new section's block(s); the insert logic then places them at the
+      // selected section's top-level position (before/after), never modifying it.
+      const isAdditiveInsert = isSingleBlockEdit && pendingInsertDirectionRef.current !== null;
+      const apiMessages: Message[] = isAdditiveInsert
+        ? [
+            ...newMessages.slice( 0, -1 ),
+            {
+              role: 'user',
+              content:
+                `Create a NEW, standalone section for this request: "${ text }". ` +
+                `Return ONLY the new section as its own top-level Gutenberg block(s). ` +
+                `Do NOT include, repeat, or modify the selected block or any existing section. ` +
+                `Match the site's existing theme colors and styling.`,
+            },
+          ]
+        : newMessages;
+
       const shouldStream =
         streamEnabled &&
         ! selectedItem &&
@@ -1358,7 +2118,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         let finalData: any = null;
         let streamError: string | null = null;
 
-        await generateContentStream( apiUrl, newMessages, context, ( event ) => {
+        await generateContentStream( apiUrl, apiMessages, context, ( event ) => {
           if ( event.type === 'delta' ) {
             streamBuffer += event.text;
 
@@ -1421,7 +2181,7 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
         return;
       }
 
-      const response = await generateContent( apiUrl, newMessages, context );
+      const response = await generateContent( apiUrl, apiMessages, context );
 
       const rawContent = response?.data?.content ?? '';
       const serverMessage = response?.data?.message ?? '';
@@ -1473,12 +2233,15 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     input,
     isLoading,
     messages,
+    metaExcerpt,
+    metaTitle,
     originalPreviewHtml,
     parsedBlocks,
     previewHtml,
     publishTitle,
     selectedBlockHtml,
     selectedBlockIndex,
+    selectedItem,
     setHasAIGenerated,
     setInput,
     setMessages,
@@ -1488,6 +2251,28 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     setPreviewHtml,
     setPublishTitle,
   ] );
+
+  // Logs a non-AI edit (e.g. a Design tab palette/font change) into the same
+  // History timeline as chat-driven edits, per the plan's "manual Design
+  // changes log to History" requirement — without needing Phase 4's backend
+  // version log, since History here is already a local, in-session list.
+  // The snapshot is the current previewHtml unchanged (palette/font are a
+  // presentation overlay, not a markup change), so reverting to this entry
+  // is a no-op on content but still restores the point in the timeline.
+  const addHistoryEntry = useCallback( ( label: string ) => {
+    if ( ! previewHtml ) {
+      return;
+    }
+    const timestamp = new Date().toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+    const historyId = `${ Date.now() }-${ Math.random().toString( 16 ).slice( 2 ) }`;
+    setHistoryEntries( ( prev ) => [ ...prev, {
+      id: historyId,
+      html: previewHtml,
+      label,
+      timestamp,
+      publishTitle,
+    } ] );
+  }, [ previewHtml, publishTitle ] );
 
   const handleConfirmRevertChanges = useCallback( () => {
     parsedInitialRef.current = false;
@@ -1551,6 +2336,24 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     clearSelection( iframeRef );
   }, [ clearSelection, iframeRef ] );
 
+  // Same shape as resetAiConversation, but hydrates from a cached snapshot
+  // instead of clearing — the caller is expected to also call setPreviewHtml
+  // with the snapshot's page content; parsedInitialRef reset below makes the
+  // initial-load effect above reparse it into parsedBlocks, same as a fresh
+  // page load does.
+  const restoreConversation = useCallback( ( snapshot: ConversationSnapshot ) => {
+    parsedInitialRef.current = false;
+    setParsedBlocks( [] );
+    setMessages( snapshot.messages );
+    setInput( '' );
+    setHistoryEntries( snapshot.historyEntries );
+    setIsHistoryOpen( false );
+    setHasAIGenerated( snapshot.hasAIGenerated );
+    setConversationId( snapshot.conversationId );
+    setResponseId( snapshot.responseId );
+    clearSelection( iframeRef );
+  }, [ clearSelection, iframeRef ] );
+
   return {
     messages,
     input,
@@ -1559,6 +2362,8 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     isHistoryOpen,
     hasAIGenerated,
     publishTitle,
+    conversationId,
+    responseId,
     chatMessagesRef,
     setInput,
     setIsHistoryOpen,
@@ -1567,7 +2372,9 @@ export const useAiConversation = ( options: UseAiConversationOptions ): UseAiCon
     handleConfirmRevertChanges,
     handleRevertToEntry,
     resetAiConversation,
+    restoreConversation,
     appendAssistantMessage,
+    addHistoryEntry,
   };
 };
 

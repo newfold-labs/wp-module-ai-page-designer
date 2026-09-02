@@ -1,3 +1,5 @@
+import type { PersistedDesignTokens } from './designTokens';
+
 export type Message = {
   role: 'user' | 'assistant';
   content: string;
@@ -20,6 +22,7 @@ export type WPItem = {
   type: string;
   date?: string;
   modified?: string;
+  design_tokens?: PersistedDesignTokens | null;
 };
 
 export type PublishStatus = { type: 'success' | 'error'; message: string } | null;

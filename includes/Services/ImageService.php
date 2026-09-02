@@ -187,6 +187,57 @@ class ImageService {
 	}
 
 	/**
+	 * Guarantee that no placeholder (placehold.co) image is ever previewed or
+	 * published by swapping every placeholder for a real Unsplash image.
+	 *
+	 * A no-op when the markup carries no placeholders, so it is safe to call
+	 * unconditionally at both the generate seam (so the preview shows real
+	 * imagery) and the save seam (final guarantee). Search keywords are derived
+	 * from the markup's own headings/text — plus the site name/tagline that
+	 * get_unsplash_images() folds in — so the imagery stays on-topic even when
+	 * no explicit prompt is available. If Unsplash is unavailable the markup is
+	 * returned unchanged rather than blanked.
+	 *
+	 * @param string $html           Block markup.
+	 * @param string $search_context Optional extra keywords (page title / prompt).
+	 * @return string
+	 */
+	public function replace_placeholder_images( $html, $search_context = '' ) {
+		if ( strpos( (string) $html, self::PLACEHOLDER_HOST ) === false ) {
+			return $html;
+		}
+
+		$context = trim( $search_context . ' ' . $this->extract_text_context( $html ) );
+		$images  = $this->get_unsplash_images( $context );
+		if ( empty( $images ) ) {
+			return $html;
+		}
+
+		shuffle( $images );
+		return $this->replace_images_in_html( $html, $images, true );
+	}
+
+	/**
+	 * Pull a short bag of keywords from block markup for image search: the
+	 * headings first (most descriptive), then any remaining text, capped so the
+	 * query stays focused.
+	 *
+	 * @param string $html Block markup.
+	 * @return string
+	 */
+	private function extract_text_context( $html ) {
+		$parts = array();
+		if ( preg_match_all( '/<h[1-4][^>]*>(.*?)<\/h[1-4]>/is', (string) $html, $m ) ) {
+			foreach ( $m[1] as $heading ) {
+				$parts[] = wp_strip_all_tags( $heading );
+			}
+		}
+		$text  = trim( implode( ' ', $parts ) );
+		$words = array_slice( array_filter( explode( ' ', $text ) ), 0, 12 );
+		return implode( ' ', $words );
+	}
+
+	/**
 	 * Check whether a URL is a placeholder that should be replaced.
 	 *
 	 * Only placehold.co URLs are placeholders. Real image URLs (Unsplash, WordPress
@@ -255,11 +306,19 @@ class ImageService {
 	 * @return string The updated string.
 	 */
 	private function replace_urls_in_block_html( $html_string, $new_url ) {
+		// esc_url() HTML-attribute-escapes (raw & becomes &#038;) — required so
+		// the replaced value matches what the block's own save() output would
+		// contain, the same "no unescaped value in the stored markup" rule as
+		// every archetype's inline-style fixes (see RendersMarkup::render_heading()'s
+		// note): a raw, unescaped URL here mismatches Gutenberg's re-escaped
+		// re-serialization and fails its own block validation.
+		$escaped_url = esc_url( $new_url );
+
 		// Replace src= attribute values.
 		$html_string = preg_replace_callback(
 			'/(src=["\'])([^"\']+)(["\'])/i',
-			function ( $matches ) use ( $new_url ) {
-				return $matches[1] . $new_url . $matches[3];
+			function ( $matches ) use ( $escaped_url ) {
+				return $matches[1] . $escaped_url . $matches[3];
 			},
 			$html_string
 		);
@@ -267,17 +326,22 @@ class ImageService {
 		// Replace CSS url() values (used by core/cover).
 		$html_string = preg_replace_callback(
 			'/url\([\'"]?([^\'"]+)[\'"]?\)/i',
-			function ( $matches ) use ( $new_url ) {
-				return 'url(' . $new_url . ')';
+			function ( $matches ) use ( $escaped_url ) {
+				return 'url(' . $escaped_url . ')';
 			},
 			$html_string
 		);
 
-		// Replace JSON "url":"..." values.
+		// Replace JSON "url":"..." values — JSON-string-escaped via
+		// wp_json_encode(), the same encoder every block comment's attrs go
+		// through (it unicode-escapes ampersands), NOT the HTML-escaped
+		// value above: inserting the HTML-escaped "&#038;" form into a JSON
+		// string instead is what previously left literal, corrupted "u0026"
+		// text in the stored comment after a later re-encode pass.
 		$html_string = preg_replace_callback(
 			'/"url":"([^"]+)"/i',
 			function ( $matches ) use ( $new_url ) {
-				return '"url":"' . $new_url . '"';
+				return '"url":' . wp_json_encode( $new_url );
 			},
 			$html_string
 		);

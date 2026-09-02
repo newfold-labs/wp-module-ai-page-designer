@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+		bootstrap="tests/bootstrap.php"
+		colors="true"
+		cacheResultFile=".phpunit.cache/test-results"
+		failOnWarning="true"
+		failOnRisky="true">
+	<testsuites>
+		<testsuite name="markup-harness">
+			<directory>tests/MarkupHarness</directory>
+		</testsuite>
+		<testsuite name="page-assembly">
+			<directory>tests/PageAssembly</directory>
+		</testsuite>
+		<testsuite name="services">
+			<directory>tests/Services</directory>
+		</testsuite>
+	</testsuites>
+	<coverage>
+		<include>
+			<directory>includes/Services</directory>
+		</include>
+	</coverage>
+</phpunit>

@@ -57,7 +57,7 @@ const DashboardView = ( {
   onTogglePostsExpanded,
 }: Props ) => {
   const heroPromptSuggestions = useMemo(
-    () => pickRandomPromptChips( DASHBOARD_PROMPT_CHIPS, 2 ),
+    () => pickRandomPromptChips( DASHBOARD_PROMPT_CHIPS, 3 ),
     []
   );
   const [ heroPrompt, setHeroPrompt ] = useState( 'Create a modern homepage with a hero section, key features, and a call to action' );

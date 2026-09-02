@@ -1,3 +1,4 @@
+import type { PersistedDesignTokens } from '../designTokens';
 import type { Message, PublishStatus, WPItem } from '../types';
 type UsePublishFlowOptions = {
     apiUrl: string;
@@ -6,6 +7,7 @@ type UsePublishFlowOptions = {
     metaTitle?: string;
     metaExcerpt?: string;
     metaFeaturedMediaId?: number | null;
+    designTokens?: PersistedDesignTokens | null;
     onMetaUpdated?: (item: WPItem) => void;
     onPublished?: (item: WPItem) => void;
     appendAssistantMessage: (message: Message) => void;

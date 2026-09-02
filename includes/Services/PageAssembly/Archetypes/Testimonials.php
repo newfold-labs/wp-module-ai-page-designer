@@ -1,0 +1,295 @@
+<?php
+/**
+ * Testimonials section archetype: a row of quote cards.
+ *
+ * @package NewfoldLabs\WP\Module\AIPageDesigner
+ */
+
+namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes;
+
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
+
+/**
+ * Renders a {@see RendersMarkup::render_section()} surface section with a
+ * `core/columns` row, one `core/quote` per testimonial. As with
+ * {@see FeatureGrid}, columns never declare a `width` attr.
+ *
+ * Content shape:
+ * ```
+ * [
+ *   'heading' => string|null,
+ *   'quotes'  => [ [ 'quote' => string, 'author' => string, 'role' => string|null, 'avatarUrl' => string|null ], ... ],
+ * ]
+ * ```
+ * `avatarUrl` is resolved by PageAssembler from an `avatarQuery` slot.
+ *
+ * Auto-pickable variants:
+ *  - `cards` (default): each quote wrapped in a light
+ *    {@see RendersMarkup::render_floating_card()} card — the modern "lifted
+ *    cards" treatment matching {@see FeatureGrid}'s default.
+ *  - `spotlight`: quotes stacked full-width, one centered width-constrained
+ *    row each, with larger quote type — an editorial single-voice treatment
+ *    instead of the side-by-side grid.
+ *
+ * Legacy (explicit-only):
+ *  - `grid-3`: the original flat quote columns, reachable only via an explicit
+ *    `variant: "grid-3"` plan item.
+ */
+class Testimonials implements Archetype {
+
+	use RendersMarkup;
+
+	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'cards', 'spotlight' );
+
+	/**
+	 * Explicit-only legacy variants, never auto-picked.
+	 *
+	 * @var string[]
+	 */
+	const LEGACY_VARIANTS = array( 'grid-3' );
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function name(): string {
+		return 'testimonials';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return self::LEGACY_VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * No fixed default — see {@see FeatureGrid::default_background()} for why.
+	 *
+	 * @param Context $ctx Theme/conformance context.
+	 * @return string|null
+	 */
+	public function default_background( Context $ctx ): ?string {
+		return null;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @param array<string, mixed> $content         Fully-resolved slot content (see the concrete class docblock for its shape).
+	 * @param string|null          $variant         Requested variant, or null for the archetype's default.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Palette slug to use as this section's background, or null for none.
+	 * @return string Gutenberg block markup for one section.
+	 */
+	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
+		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$quotes  = isset( $content['quotes'] ) && is_array( $content['quotes'] ) ? array_slice( $content['quotes'], 0, 3 ) : array();
+
+		$variant = $this->resolve_variant( $variant, $heading );
+
+		$inner = '';
+		if ( ! empty( $quotes ) ) {
+			$inner = 'spotlight' === $variant
+				? $this->render_spotlight( $quotes, $ctx )
+				: $this->render_columns( $quotes, $ctx, $background_slug, 'grid-3' !== $variant );
+		}
+
+		return $this->render_section( $heading, null, $inner, $ctx, $background_slug );
+	}
+
+	/**
+	 * Render the `spotlight` variant: each quote as its own centered,
+	 * width-constrained full-width row with larger quote type.
+	 *
+	 * @param array<int, array<string, mixed>> $quotes Up to 3 testimonials.
+	 * @param Context                          $ctx    Theme/conformance context.
+	 * @return string
+	 */
+	private function render_spotlight( array $quotes, Context $ctx ): string {
+		$rows = '';
+		foreach ( $quotes as $entry ) {
+			$quote      = isset( $entry['quote'] ) ? (string) $entry['quote'] : '';
+			$author     = isset( $entry['author'] ) ? (string) $entry['author'] : '';
+			$role       = isset( $entry['role'] ) ? (string) $entry['role'] : '';
+			$avatar_url = isset( $entry['avatarUrl'] ) ? (string) $entry['avatarUrl'] : '';
+
+			$row_inner = '';
+			if ( '' !== $avatar_url ) {
+				// A real `wp:image` child, not a raw wrapper div/img — see
+				// TeamGrid::render_columns()'s note: a `core/group`'s actual
+				// save() output only ever expects direct, comment-delimited
+				// child blocks. "nfd-avatar-56" (circle-crop/size/centering) is
+				// real CSS in get_motion_css().
+				$row_inner .= $this->comment_wrap(
+					'image',
+					array(
+						'sizeSlug'  => 'large',
+						'className' => 'nfd-avatar-56',
+					),
+					'<figure class="nfd-avatar-56 wp-block-image size-large"><img src="' . $this->esc_url( $avatar_url ) . '" alt=""/></figure>'
+				);
+			}
+			$row_inner .= $this->render_spotlight_quote( $quote, $author, $role );
+
+			// Symmetric on all four sides — top/bottom-only padding is the
+			// exact `asymmetric_padding:group` defect the Validator rejects.
+			// className "nfd-max-w-720" for width/centering, not an unbacked
+			// inline style — see RendersMarkup::render_heading()'s note.
+			$row_attrs = array(
+				'className' => 'nfd-max-w-720',
+				'style'     => array(
+					'spacing' => array(
+						'padding' => array(
+							'top'    => $ctx->spacing_attr( 'sm' ),
+							'right'  => $ctx->spacing_attr( 'sm' ),
+							'bottom' => $ctx->spacing_attr( 'sm' ),
+							'left'   => $ctx->spacing_attr( 'sm' ),
+						),
+					),
+				),
+			);
+			$row_style = 'padding-top:' . $ctx->spacing_css( 'sm' ) . ';padding-right:' . $ctx->spacing_css( 'sm' )
+				. ';padding-bottom:' . $ctx->spacing_css( 'sm' ) . ';padding-left:' . $ctx->spacing_css( 'sm' );
+
+			$rows .= $this->comment_wrap( 'group', $row_attrs, '<div class="nfd-max-w-720 wp-block-group" style="' . $row_style . '">' . $row_inner . '</div>' );
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * Render a spotlight `core/quote`: the same centered quote/citation shape
+	 * as {@see render_quote()}, at larger, statement-piece type.
+	 *
+	 * @param string $quote  Quote text.
+	 * @param string $author Author name.
+	 * @param string $role   Author role/company, or empty string to omit.
+	 * @return string
+	 */
+	private function render_spotlight_quote( string $quote, string $author, string $role ): string {
+		$citation = $author;
+		if ( '' !== $role ) {
+			$citation .= ', ' . $role;
+		}
+
+		// core/quote's actual save() output has no inline style at all — its
+		// text-align is class-only, same as every other block covered by
+		// RendersMarkup::render_heading()'s note — and, in this WP version, its
+		// quoted text is a NESTED wp:paragraph child block, not raw HTML: a
+		// blockquote's own save() only ever expects direct, comment-delimited
+		// children (confirmed live via wp.blocks.parse().isValid, same
+		// structural rule as core/group). The larger statement-piece type IS
+		// legitimately inlined though — style.typography.fontSize/lineHeight
+		// is a real block attribute that core/paragraph's save() does inline
+		// verbatim for a custom (non-preset) value.
+		$html = $this->comment_wrap(
+			'paragraph',
+			array(
+				'className' => 'nfd-fancy-quote',
+				'style'     => array(
+					'typography' => array(
+						'fontSize'   => '1.375rem',
+						'lineHeight' => '1.6',
+					),
+				),
+			),
+			'<p class="nfd-fancy-quote" style="font-size:1.375rem;line-height:1.6">' . $this->esc_html( $quote ) . '</p>'
+		);
+		if ( '' !== $citation ) {
+			$html .= '<cite>' . $this->esc_html( $citation ) . '</cite>';
+		}
+
+		return $this->comment_wrap(
+			'quote',
+			array( 'textAlign' => 'center' ),
+			'<blockquote class="wp-block-quote has-text-align-center">' . $html . '</blockquote>'
+		);
+	}
+
+	/**
+	 * Render one column per testimonial.
+	 *
+	 * @param array<int, array<string, mixed>> $quotes          Up to 3 testimonials.
+	 * @param Context                          $ctx             Theme/conformance context.
+	 * @param string|null                      $background_slug The section's own background slug.
+	 * @param bool                             $as_cards        Whether to wrap each quote in a floating card.
+	 * @return string
+	 */
+	private function render_columns( array $quotes, Context $ctx, ?string $background_slug, bool $as_cards ): string {
+		$card_slug = $as_cards ? $this->card_slug_for_section( $ctx, $background_slug ) : null;
+		$card_text = null !== $card_slug ? $this->text_slug_for_background( $ctx, $card_slug ) : null;
+
+		$columns = '';
+		foreach ( $quotes as $entry ) {
+			$quote      = isset( $entry['quote'] ) ? (string) $entry['quote'] : '';
+			$author     = isset( $entry['author'] ) ? (string) $entry['author'] : '';
+			$role       = isset( $entry['role'] ) ? (string) $entry['role'] : '';
+			$avatar_url = isset( $entry['avatarUrl'] ) ? (string) $entry['avatarUrl'] : '';
+
+			$column_inner = '';
+			if ( '' !== $avatar_url ) {
+				$column_inner .= $this->comment_wrap(
+					'image',
+					array(
+						'sizeSlug'  => 'large',
+						'className' => 'nfd-avatar-56',
+					),
+					'<figure class="nfd-avatar-56 wp-block-image size-large"><img src="' . $this->esc_url( $avatar_url ) . '" alt=""/></figure>'
+				);
+			}
+			$column_inner .= $this->render_quote( $quote, $author, $role );
+
+			if ( $as_cards ) {
+				$column_inner = $this->render_floating_card( $column_inner, $ctx, $card_slug, $card_text );
+			}
+
+			$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $column_inner . '</div>' );
+		}
+
+		return $this->render_columns_wrap( $columns, $ctx, false, 'md', true );
+	}
+
+	/**
+	 * Render a `core/quote` block with an author (and optional role) citation.
+	 *
+	 * @param string $quote  Quote text.
+	 * @param string $author Author name.
+	 * @param string $role   Author role/company, or empty string to omit.
+	 * @return string
+	 */
+	private function render_quote( string $quote, string $author, string $role ): string {
+		$citation = $author;
+		if ( '' !== $role ) {
+			$citation .= ', ' . $role;
+		}
+
+		// Nested wp:paragraph child — see render_spotlight_quote()'s note.
+		// "nfd-fancy-quote" (real CSS in get_motion_css(), same italic serif
+		// face as the spotlight variant's quote) is the one styling difference
+		// from a bare paragraph here.
+		$html = $this->comment_wrap( 'paragraph', array( 'className' => 'nfd-fancy-quote' ), '<p class="nfd-fancy-quote">' . $this->esc_html( $quote ) . '</p>' );
+		if ( '' !== $citation ) {
+			$html .= '<cite>' . $this->esc_html( $citation ) . '</cite>';
+		}
+
+		return $this->comment_wrap(
+			'quote',
+			array( 'textAlign' => 'center' ),
+			'<blockquote class="wp-block-quote has-text-align-center">' . $html . '</blockquote>'
+		);
+	}
+}
