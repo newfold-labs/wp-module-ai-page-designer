@@ -1,6 +1,6 @@
 # WP Module AI Page Designer
 
-**Version 1.0.5**
+**Version 1.1.0**
 
 AI-powered page and post designer for WordPress with live preview and publishing capabilities.
 
