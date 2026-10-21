@@ -20,6 +20,7 @@ declare global {
                 name: string;
                 color: string;
             }>;
+            previewMotionCss?: string;
         };
     }
 }

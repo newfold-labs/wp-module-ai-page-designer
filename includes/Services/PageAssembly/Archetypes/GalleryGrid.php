@@ -1,0 +1,114 @@
+<?php
+/**
+ * Gallery grid section archetype: a grid of rounded images.
+ *
+ * @package NewfoldLabs\WP\Module\AIPageDesigner
+ */
+
+namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes;
+
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
+
+/**
+ * Renders a {@see RendersMarkup::render_section()} wide section holding rows of
+ * `core/columns`, one rounded {@see RendersMarkup::render_image_block()} image
+ * per column, 3 per row (portfolio / product shots / interior photos). Columns
+ * never declare a `width` attr — the one width state the Validator's
+ * column-width check always accepts, same as {@see FeatureGrid}.
+ *
+ * Content shape (imageQuery slots are resolved to imageUrl by PageAssembler
+ * before this archetype ever runs — archetypes stay pure):
+ * ```
+ * [
+ *   'heading' => string|null,
+ *   'intro'   => string|null,
+ *   'images'  => [ [ 'imageUrl' => string ], ... ] (3-6 typical, capped at 6),
+ * ]
+ * ```
+ *
+ * Auto-pickable variants:
+ *  - `grid-3` (default): rows of 3 images.
+ *  - `grid-2`: rows of 2 — larger, more editorial images from the same
+ *    markup shape.
+ */
+class GalleryGrid implements Archetype {
+
+	use RendersMarkup;
+
+	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'grid-3', 'grid-2' );
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function name(): string {
+		return 'galleryGrid';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return array();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * No fixed default — see {@see FeatureGrid::default_background()} for why.
+	 *
+	 * @param Context $ctx Theme/conformance context.
+	 * @return string|null
+	 */
+	public function default_background( Context $ctx ): ?string {
+		return null;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @param array<string, mixed> $content         Fully-resolved slot content (see the concrete class docblock for its shape).
+	 * @param string|null          $variant         Requested variant, or null for the archetype's default.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Palette slug to use as this section's background, or null for none.
+	 * @return string Gutenberg block markup for one section.
+	 */
+	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
+		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$intro   = isset( $content['intro'] ) ? (string) $content['intro'] : '';
+		$images  = isset( $content['images'] ) && is_array( $content['images'] ) ? array_slice( $content['images'], 0, 6 ) : array();
+
+		$urls = array();
+		foreach ( $images as $image ) {
+			$url = is_array( $image ) && isset( $image['imageUrl'] ) ? (string) $image['imageUrl'] : '';
+			if ( '' !== $url ) {
+				$urls[] = $url;
+			}
+		}
+
+		$variant = $this->resolve_variant( $variant, $heading );
+		$per_row = 'grid-2' === $variant ? 2 : 3;
+
+		$rows = '';
+		foreach ( array_chunk( $urls, $per_row ) as $row_urls ) {
+			$columns = '';
+			foreach ( $row_urls as $url ) {
+				$columns .= $this->comment_wrap( 'column', array(), '<div class="wp-block-column">' . $this->render_image_block( $url, true ) . '</div>' );
+			}
+			$rows .= $this->render_columns_wrap( $columns, $ctx, false, 'md', true );
+		}
+
+		return $this->render_section( $heading, $intro, $rows, $ctx, $background_slug );
+	}
+}

@@ -1,6 +1,18 @@
+import type { PersistedDesignTokens } from './designTokens';
 import type { Message, WPItem } from './types';
 export declare const fetchSitePages: (apiUrl: string) => Promise<WPItem[]>;
 export declare const fetchSitePosts: (apiUrl: string) => Promise<WPItem[]>;
+export declare const fetchRecentItems: (apiUrl: string) => Promise<WPItem[]>;
+export declare const touchRecentItem: (apiUrl: string, id: number) => Promise<WPItem[]>;
+export type SearchResult = {
+    id: number;
+    title: string;
+    url: string;
+    type: string;
+    subtype: string;
+};
+export declare const searchSite: (query: string) => Promise<SearchResult[]>;
+export declare const fetchContentItem: (apiUrl: string, subtype: string, id: number) => Promise<WPItem>;
 export type GenerateContentContext = {
     current_markup: string;
     post_id?: number;
@@ -46,8 +58,10 @@ type UpdateExistingMeta = {
     title?: string;
     excerpt?: string;
     featuredMedia?: number;
+    designTokens?: PersistedDesignTokens | null;
 };
 export declare const updateExistingItem: (apiUrl: string, item: WPItem, content: string, meta?: UpdateExistingMeta) => Promise<any>;
+export declare const saveDesignTokens: (apiUrl: string, itemType: "post" | "page", id: number, designTokens: PersistedDesignTokens | null) => Promise<any>;
 export declare const setHomepage: (pageId: number) => Promise<unknown>;
 export {};
 //# sourceMappingURL=api.d.ts.map

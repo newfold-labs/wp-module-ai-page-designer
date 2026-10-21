@@ -1,3 +1,1095 @@
+/**
+ * Colors
+ */
+/**
+ * SCSS Variables.
+ *
+ * Please use variables from this sheet to ensure consistency across the UI.
+ * Don't add to this sheet unless you're pretty sure the value will be reused in many places.
+ * For example, don't add rules to this sheet that affect block visuals. It's purely for UI.
+ */
+/**
+ * Fonts & basic variables.
+ */
+/**
+ * Typography
+ */
+/**
+ * Grid System.
+ * https://make.wordpress.org/design/2019/10/31/proposal-a-consistent-spacing-system-for-wordpress/
+ */
+/**
+ * Radius scale.
+ */
+/**
+ * Elevation scale.
+ */
+/**
+ * Dimensions.
+ */
+/**
+ * Mobile specific styles
+ */
+/**
+ * Editor styles.
+ */
+/**
+ * Block & Editor UI.
+ */
+/**
+ * Block paddings.
+ */
+/**
+ * React Native specific.
+ * These variables do not appear to be used anywhere else.
+ */
+.interface-complementary-area-header {
+  background: #fff;
+  padding-right: 8px;
+  gap: 4px;
+}
+.interface-complementary-area-header .interface-complementary-area-header__title {
+  margin: 0 auto 0 0;
+}
+
+/**
+ * Typography
+ */
+/**
+ * Breakpoints & Media Queries
+ */
+/**
+*  Converts a hex value into the rgb equivalent.
+*
+* @param {string} hex - the hexadecimal value to convert
+* @return {string} comma separated rgb values
+*/
+/**
+ * Long content fade mixin
+ *
+ * Creates a fading overlay to signify that the content is longer
+ * than the space allows.
+ */
+/**
+ * Breakpoint mixins
+ */
+/**
+ * Focus styles.
+ */
+/**
+ * Applies editor left position to the selector passed as argument
+ */
+/**
+ * Styles that are reused verbatim in a few places
+ */
+/**
+ * Allows users to opt-out of animations via OS-level preferences.
+ */
+/**
+ * Reset default styles for JavaScript UI based pages.
+ * This is a WP-admin agnostic reset
+ */
+/**
+ * Reset the WP Admin page styles for Gutenberg-like pages.
+ */
+/**
+ * Creates a checkerboard pattern background to indicate transparency.
+ * @param {String} $size - The size of the squares in the checkerboard pattern. Default is 12px.
+ */
+.interface-complementary-area {
+  background: #fff;
+  color: #1e1e1e;
+  height: 100%;
+  overflow: auto;
+}
+@media (min-width: 782px) {
+  .interface-complementary-area {
+    width: 280px;
+  }
+}
+.interface-complementary-area .components-panel {
+  border: none;
+  position: relative;
+  z-index: 0;
+}
+.interface-complementary-area .components-panel__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.interface-complementary-area .components-panel__header.editor-sidebar__panel-tabs {
+  top: 0;
+}
+.interface-complementary-area p:not(.components-base-control__help, .components-form-token-field__help) {
+  margin-top: 0;
+}
+.interface-complementary-area h2 {
+  font-size: 13px;
+  font-weight: 499;
+  color: #1e1e1e;
+  margin-bottom: 1.5em;
+}
+.interface-complementary-area h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 499;
+  color: #1e1e1e;
+  margin-bottom: 1.5em;
+}
+.interface-complementary-area hr {
+  border-top: none;
+  border-bottom: 1px solid #f0f0f0;
+  margin: 1.5em 0;
+}
+.interface-complementary-area div.components-toolbar-group,
+.interface-complementary-area div.components-toolbar {
+  box-shadow: none;
+  margin-bottom: 1.5em;
+}
+.interface-complementary-area div.components-toolbar-group:last-child,
+.interface-complementary-area div.components-toolbar:last-child {
+  margin-bottom: 0;
+}
+.interface-complementary-area .block-editor-skip-to-selected-block:focus {
+  top: auto;
+  right: 10px;
+  bottom: 10px;
+  left: auto;
+}
+
+.interface-complementary-area__fill {
+  height: 100%;
+}
+
+@media (min-width: 782px) {
+  body.js.is-fullscreen-mode {
+    margin-top: -32px;
+    height: calc(100% + 32px);
+  }
+  body.js.is-fullscreen-mode #adminmenumain,
+  body.js.is-fullscreen-mode #wpadminbar {
+    display: none;
+  }
+  body.js.is-fullscreen-mode #wpcontent,
+  body.js.is-fullscreen-mode #wpfooter {
+    margin-left: 0;
+  }
+}
+
+html.interface-interface-skeleton__html-container {
+  position: fixed;
+  width: 100%;
+}
+@media (min-width: 782px) {
+  html.interface-interface-skeleton__html-container:not(:has(.is-zoom-out)) {
+    position: initial;
+    width: initial;
+  }
+}
+
+.interface-interface-skeleton {
+  display: flex;
+  flex-direction: row;
+  height: auto;
+  max-height: 100%;
+  position: fixed;
+  top: 46px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+@media (min-width: 783px) {
+  .interface-interface-skeleton {
+    top: 32px;
+  }
+  .is-fullscreen-mode .interface-interface-skeleton {
+    top: 0;
+  }
+}
+
+.interface-interface-skeleton__editor {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 100%;
+  overflow: hidden;
+}
+
+.interface-interface-skeleton { /* Set left position when auto-fold is not on the body element. */
+  left: 0;
+}
+@media (min-width: 783px) {
+  .interface-interface-skeleton {
+    left: 160px;
+  }
+}
+
+.auto-fold .interface-interface-skeleton { /* Auto fold is when on smaller breakpoints, nav menu auto collapses. */ }
+@media (min-width: 783px) {
+  .auto-fold .interface-interface-skeleton {
+    left: 36px;
+  }
+}
+@media (min-width: 961px) {
+  .auto-fold .interface-interface-skeleton {
+    left: 160px;
+  }
+}
+
+/* Sidebar manually collapsed. */
+.folded .interface-interface-skeleton {
+  left: 0;
+}
+@media (min-width: 783px) {
+  .folded .interface-interface-skeleton {
+    left: 36px;
+  }
+}
+
+body.is-fullscreen-mode .interface-interface-skeleton {
+  left: 0 !important;
+}
+
+.interface-interface-skeleton__body {
+  position: relative;
+  flex-grow: 1;
+  display: flex;
+  overflow: auto;
+  overscroll-behavior-y: none;
+}
+@media (min-width: 782px) {
+  .has-footer .interface-interface-skeleton__body {
+    padding-bottom: 25px;
+  }
+}
+
+.interface-interface-skeleton__content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  z-index: 20;
+}
+@media (min-width: 782px) {
+  .interface-interface-skeleton__content {
+    z-index: auto;
+  }
+}
+
+.interface-interface-skeleton__secondary-sidebar,
+.interface-interface-skeleton__sidebar {
+  flex-shrink: 0;
+  position: absolute;
+  z-index: 100000;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: #fff;
+  color: #1e1e1e;
+  width: auto;
+}
+@media (min-width: 782px) {
+  .interface-interface-skeleton__secondary-sidebar,
+  .interface-interface-skeleton__sidebar {
+    position: relative !important;
+  }
+}
+
+.interface-interface-skeleton__sidebar {
+  border-top: 1px solid #e0e0e0;
+  overflow: hidden;
+}
+@media (min-width: 782px) {
+  .interface-interface-skeleton__sidebar {
+    box-shadow: -1px 0 0 0 rgba(0, 0, 0, 0.133);
+    outline: 1px solid transparent;
+  }
+}
+
+.interface-interface-skeleton__secondary-sidebar {
+  border-top: 1px solid #e0e0e0;
+  right: 0;
+}
+@media (min-width: 782px) {
+  .interface-interface-skeleton__secondary-sidebar {
+    box-shadow: 1px 0 0 0 rgba(0, 0, 0, 0.133);
+    outline: 1px solid transparent;
+  }
+}
+
+.interface-interface-skeleton__header {
+  flex-shrink: 0;
+  height: auto;
+  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.133);
+  z-index: 30;
+  color: #1e1e1e;
+  outline: 1px solid transparent;
+}
+
+.interface-interface-skeleton__footer {
+  height: auto;
+  flex-shrink: 0;
+  border-top: 1px solid #e0e0e0;
+  color: #1e1e1e;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background-color: #fff;
+  z-index: 90;
+  display: none;
+}
+@media (min-width: 782px) {
+  .interface-interface-skeleton__footer {
+    display: flex;
+  }
+}
+.interface-interface-skeleton__footer .block-editor-block-breadcrumb {
+  z-index: 30;
+  display: flex;
+  background: #fff;
+  height: 24px;
+  align-items: center;
+  font-size: 13px;
+  padding: 0 18px;
+}
+
+.interface-interface-skeleton__actions {
+  z-index: 100000;
+  position: fixed !important;
+  top: -9999em;
+  bottom: auto;
+  left: auto;
+  right: 0;
+  color: #1e1e1e;
+  background: #fff;
+  width: 100vw;
+}
+@media (min-width: 782px) {
+  .interface-interface-skeleton__actions {
+    width: 280px;
+  }
+}
+.interface-interface-skeleton__actions:focus, .interface-interface-skeleton__actions:focus-within {
+  top: auto;
+  bottom: 0;
+}
+.is-entity-save-view-open .interface-interface-skeleton__actions:focus, .is-entity-save-view-open .interface-interface-skeleton__actions:focus-within {
+  top: 46px;
+}
+@media (min-width: 782px) {
+  .is-entity-save-view-open .interface-interface-skeleton__actions:focus, .is-entity-save-view-open .interface-interface-skeleton__actions:focus-within {
+    border-left: 1px solid #ddd;
+    top: 32px;
+  }
+  .is-fullscreen-mode .is-entity-save-view-open .interface-interface-skeleton__actions:focus, .is-fullscreen-mode .is-entity-save-view-open .interface-interface-skeleton__actions:focus-within {
+    top: 0;
+  }
+}
+
+.interface-pinned-items {
+  display: flex;
+}
+.interface-pinned-items .components-button {
+  display: none;
+  margin: 0;
+}
+.interface-pinned-items .components-button[aria-controls="edit-post:document"], .interface-pinned-items .components-button[aria-controls="edit-post:block"], .interface-pinned-items .components-button[aria-controls="edit-site:template"], .interface-pinned-items .components-button[aria-controls="edit-site:block-inspector"] {
+  display: flex;
+}
+.interface-pinned-items .components-button svg {
+  max-width: 24px;
+  max-height: 24px;
+}
+@media (min-width: 600px) {
+  .interface-pinned-items .components-button {
+    display: flex;
+  }
+}
+.interface-pinned-items {
+  gap: 8px;
+}
+/* ============================================================
+   WORKSPACE SHELL
+
+   Responds to the shell's own available width, not the viewport — the
+   wp-admin menu can be expanded/collapsed independently, so a media query
+   would give the wrong answer at the same viewport width.
+   ============================================================ */
+
+/* Fullscreen takeover: no core CSS backs Gutenberg's own fullscreen body
+   class outside the post/site editor bundle, so this covers the wp-admin
+   chrome (toolbar z-index 99999) directly instead. */
+body.nfd-ai-workspace-active {
+  overflow: hidden;
+}
+
+.ai-workspace-shell {
+  container-type: inline-size;
+  container-name: ai-workspace;
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: var(--color-surface);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  color: var(--color-on-surface);
+}
+
+/* @wordpress/interface's own build-style/style.css hardcodes
+   `.interface-interface-skeleton { position: fixed; left: 160px; ... }` —
+   a block-editor assumption that the wp-admin left menu (160px) stays
+   visible alongside it. Neither that nor our own .ai-workspace-shell fixed
+   wrapper establishes a containing block for the other, so its fixed
+   position resolves independently against the true viewport, leaving a
+   stray 160px gap. Pin it to fill this wrapper instead. */
+.ai-workspace-shell .interface-interface-skeleton {
+  position: absolute;
+  inset: 0;
+  left: 0;
+  height: 100%;
+}
+
+.ai-workspace-shell .interface-interface-skeleton__header {
+  height: 52px;
+}
+
+.ai-workspace-shell .interface-interface-skeleton__sidebar {
+  width: var(--ai-workspace-sidebar-width);
+}
+
+/* The secondary sidebar's open width/position are driven by Framer Motion
+   animating toward useResizeObserver's measurement of our drawer content.
+   Since the drawer only mounts at the instant it opens, that measurement
+   hasn't landed yet when the "open" transition starts, so it animates
+   toward a stale (near-zero) target and never retriggers once the real
+   size arrives — leaving the drawer permanently near-invisible. We only
+   ever mount this content in its "open" state (no exit animation relied
+   on), so forcing the resolved layout here is safe: it just trades the
+   slide-in animation for the drawer actually being visible and usable. */
+.ai-workspace-shell .interface-interface-skeleton__secondary-sidebar {
+  width: 300px !important;
+}
+
+.ai-workspace-shell .interface-interface-skeleton__secondary-sidebar > div {
+  transform: none !important;
+}
+
+/* wp-components' base CSS forces `fill: currentColor` on every button SVG
+   (it assumes WP's own solid-fill dashicon-style icons) — a CSS property
+   always wins over an SVG presentation attribute, so it silently overrides
+   heroicons' `fill="none" stroke="currentColor"` outline style, rendering
+   every heroicon inside a <Button> as a solid blob instead of an outline. */
+.ai-workspace-shell .components-button svg[data-slot="icon"] {
+  fill: none;
+  stroke: currentColor;
+}
+
+/* ============================================================
+   HEADER — fixed grammar across every workspace state
+   ============================================================ */
+.ai-workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 100%;
+  padding: 0 16px;
+  background: var(--color-surface-bright);
+  border-bottom: 1px solid var(--color-outline-variant);
+  box-shadow: var(--shadow-header);
+}
+
+.ai-workspace-header__left,
+.ai-workspace-header__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.ai-workspace-header__right {
+  justify-content: flex-end;
+}
+
+/* The global .icon-sm (14px, used for compact chat/dashboard UI) reads as
+   cramped at header scale — size up here, and give the plain icon-only
+   buttons (back/drawer-toggle/sidebar-toggle) a fixed, generously-padded
+   square instead of wp-components' tight default icon-button padding. */
+.ai-workspace-header .icon-sm {
+  width: 18px;
+  height: 18px;
+}
+
+.ai-workspace-header__back,
+.ai-workspace-header__drawer-toggle,
+.ai-workspace-header__sidebar-toggle {
+  width: 36px;
+  height: 36px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md) !important;
+}
+
+.ai-workspace-header__new-page,
+.ai-workspace-header__publish {
+  height: 36px;
+  padding: 0 16px !important;
+}
+
+.ai-workspace-header__center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ai-workspace-header__title {
+  font-family: 'Manrope', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 32ch;
+}
+
+.ai-workspace-header__viewport-toggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container);
+}
+
+/* wp-components' own .has-icon button base style adds a lopsided
+   `padding: 0 16px 0 0` (room for a label next to the icon) which wins over
+   the rule above on equal specificity since its stylesheet is enqueued
+   after ours — it left these icon-only buttons uncentered with uneven
+   gaps. !important forces our fixed square over it, matching the same
+   override already used for the header's other icon-only buttons above. */
+.ai-workspace-header__viewport-toggle .components-button {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm) !important;
+}
+
+.ai-workspace-header__viewport-toggle .components-button.is-pressed {
+  background: var(--color-surface-bright) !important;
+  color: var(--color-on-surface) !important;
+}
+
+/* ============================================================
+   PAGE DRAWER — left, transient overlay
+   ============================================================ */
+.ai-page-drawer {
+  width: 300px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-bright);
+  border-right: 1px solid var(--color-outline-variant);
+  overflow-y: auto;
+}
+
+.ai-page-drawer__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container);
+}
+
+.ai-page-drawer__search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  color: var(--color-on-surface);
+}
+
+.ai-page-drawer__search .icon-sm {
+  color: var(--color-on-surface-variant);
+  flex-shrink: 0;
+}
+
+.ai-page-drawer__search-hint {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.ai-page-drawer__search-hint kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-bright);
+  border: 1px solid var(--color-outline-variant);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-on-surface-variant);
+}
+
+.ai-page-drawer__search-hint:hover kbd {
+  border-color: var(--color-outline);
+  color: var(--color-on-surface);
+}
+
+.ai-page-drawer__section-label {
+  padding: 4px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-on-surface-variant);
+}
+
+.ai-page-drawer__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 12px;
+}
+
+.ai-page-drawer__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.ai-page-drawer__item:hover {
+  background: var(--color-surface-container);
+}
+
+.ai-page-drawer__item.is-active {
+  background: var(--color-surface-container-high);
+  font-weight: 600;
+}
+
+.ai-page-drawer__item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-page-drawer__item-meta {
+  color: var(--color-on-surface-variant);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.ai-page-drawer__loading,
+.ai-page-drawer__empty {
+  padding: 12px 8px;
+  color: var(--color-on-surface-variant);
+  font-size: 13px;
+}
+
+/* ============================================================
+   SIDEBAR — reuses <SidePanel> (Chat/History tabs) unmodified. Its
+   `flex: 0 0 32%` in styles.css was sized for the old side-by-side
+   .ai-designer-content row; here the skeleton's sidebar region already
+   owns the width (--ai-workspace-sidebar-width), so SidePanel just fills it.
+   ============================================================ */
+.interface-interface-skeleton__sidebar .ai-side-panel {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  border-right: none;
+}
+
+/* ============================================================
+   DESIGN TAB — palette grid + typography pairing list, third sidebar tab
+   ============================================================ */
+.ai-design-tab {
+  padding: 16px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.ai-design-tab__section + .ai-design-tab__section {
+  margin-top: 24px;
+}
+
+.ai-design-tab__section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-design-tab__suggest-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-on-primary, #fff);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ai-design-tab__suggest-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ai-design-tab .ai-design-tab__section-title {
+  margin: 0 0 2px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-on-surface);
+}
+
+.ai-design-tab .ai-design-tab__section-hint {
+  margin: 0 0 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-on-surface-variant);
+}
+
+.ai-design-tab__palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.ai-design-tab__palette {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* padding/border-width need !important: WP admin's own button reset zeroes
+     both on native <button> elements with equal-or-higher specificity, which
+     otherwise lets this row's inner content sit flush against the edges and
+     visually mask the button's own rounded corners. */
+  padding: 10px !important;
+  border: 1.5px solid var(--color-outline-variant) !important;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-bright);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ai-design-tab__palette:hover {
+  border-color: var(--color-outline) !important;
+}
+
+.ai-design-tab__palette.is-selected {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.ai-design-tab__palette-swatches {
+  display: flex;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.ai-design-tab__palette-swatches--default {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-surface-container),
+    var(--color-surface-container) 4px,
+    var(--color-surface-container-high) 4px,
+    var(--color-surface-container-high) 8px
+  );
+}
+
+.ai-design-tab__palette-swatch {
+  flex: 1;
+}
+
+.ai-design-tab__palette-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-on-surface);
+}
+
+.ai-design-tab__font-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-design-tab__font {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  /* padding/border-width need !important: WP admin's own button reset zeroes
+     both on native <button> elements with equal-or-higher specificity, which
+     otherwise lets the "Aa" preview box sit flush against the row's edges
+     and visually mask its rounded corners on the left side. */
+  padding: 10px !important;
+  border: 1.5px solid var(--color-outline-variant) !important;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-bright);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ai-design-tab__font:hover {
+  border-color: var(--color-outline) !important;
+}
+
+.ai-design-tab__font.is-selected {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.ai-design-tab__font-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+.ai-design-tab__font-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-on-surface);
+}
+
+/* ============================================================
+   CANVAS — center content region (MetaStrip + PreviewFrame, or the
+   no-page-selected empty state)
+   ============================================================ */
+.ai-workspace-canvas {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ai-workspace-empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.ai-workspace-empty-state .ai-hero {
+  width: 100%;
+  max-width: 720px;
+  border-radius: var(--radius-2xl);
+  flex-shrink: initial;
+}
+
+/* ============================================================
+   VIEWPORT TOGGLE — constrains the preview frame to emulate
+   tablet/mobile widths; desktop stays full-bleed (no wrapper sizing).
+   ============================================================ */
+.preview-viewport-frame {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.ai-preview-panel[data-viewport="tablet"] .preview-viewport-frame,
+.ai-preview-panel[data-viewport="mobile"] .preview-viewport-frame {
+  padding-top: 8px;
+}
+
+.ai-preview-panel[data-viewport="tablet"] .preview-iframe {
+  width: 820px;
+  max-width: 100%;
+  flex: none;
+}
+
+.ai-preview-panel[data-viewport="mobile"] .preview-iframe {
+  width: 390px;
+  max-width: 100%;
+  flex: none;
+}
+
+/* ≥ 1600px — drawer overlay (closed by default), sidebar docked at 380px */
+.ai-workspace-shell {
+  --ai-workspace-sidebar-width: 380px;
+  --ai-workspace-drawer-mode: overlay;
+}
+
+/* 1200–1600px — drawer overlay, sidebar docked but narrower (min 340px) */
+@container ai-workspace (max-width: 1600px) {
+  .ai-workspace-shell {
+    --ai-workspace-sidebar-width: 340px;
+    --ai-workspace-drawer-mode: overlay;
+  }
+}
+
+/* < 1200px — sidebar detaches into a floating slide-over; canvas goes full
+   width; viewport toggle auto-selects mobile (user can still override it) */
+@container ai-workspace (max-width: 1199px) {
+  .ai-workspace-shell {
+    --ai-workspace-sidebar-width: 100%;
+    --ai-workspace-drawer-mode: overlay;
+    --ai-workspace-sidebar-mode: slide-over;
+  }
+}
+
+/* ============================================================
+   COMMAND PALETTE — Cmd/Ctrl+K
+   ============================================================ */
+.ai-command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100010;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.ai-command-palette {
+  width: 100%;
+  max-width: 560px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  padding: 25px 12px 12px;
+  background: var(--color-surface-bright);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-editorial);
+  overflow: hidden;
+}
+
+.ai-command-palette__search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 14px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--color-outline-variant);
+  flex-shrink: 0;
+}
+
+.ai-command-palette__search .icon-sm {
+  color: var(--color-on-surface-variant);
+  flex-shrink: 0;
+}
+
+.ai-command-palette__search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--color-on-surface);
+}
+
+.ai-command-palette__hint {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface-variant);
+  font-family: inherit;
+}
+
+.publish-status.ai-command-palette__error {
+  /* .publish-status's own margin (12px 20px 0) is tuned for PublishModal's
+     layout, not this one — zero it out and rely on the search box's existing
+     8px margin-bottom for the gap above, matched here for the gap below. */
+  margin: 0 0 8px;
+}
+
+.ai-command-palette__list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.ai-command-palette__status {
+  padding: 16px 8px;
+  color: var(--color-on-surface-variant);
+  font-size: 13px;
+  text-align: center;
+}
+
+.ai-command-palette__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.ai-command-palette__item + .ai-command-palette__item {
+  margin-top: 2px;
+}
+
+.ai-command-palette__item:hover {
+  background: var(--color-surface-container);
+}
+
+.ai-command-palette__item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+.ai-command-palette__item-type {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-on-surface-variant);
+  flex-shrink: 0;
+}
+
+.ai-command-palette__item-loading {
+  font-size: 12px;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+/* @wordpress/interface ships its own compiled CSS (InterfaceSkeleton layout
+   primitives) — bundled here since wp-interface has no WP-core script handle
+   to load it from (unlike wp-components, which core registers separately). */
+
 /* ============================================================
    FONTS
    ============================================================ */
@@ -108,8 +1200,11 @@
   min-height: 0 !important;
 }
 
+/* The old embedded-card layout sized itself to 80% of the viewport; the
+   fullscreen workspace shell (.ai-workspace-shell, position:fixed;inset:0)
+   now owns this element's sizing entirely, so this just avoids fighting it. */
 #nfd-ai-page-designer-root {
-  height: calc(80vh - 10px);
+  height: 100%;
   width: 100%;
 }
 

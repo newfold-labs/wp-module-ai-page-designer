@@ -1,0 +1,157 @@
+<?php
+/**
+ * Base test case for the markup harness.
+ *
+ * @package NewfoldLabs\WP\Module\AIPageDesigner
+ */
+
+namespace NewfoldLabs\WP\Module\AIPageDesigner\Tests\MarkupHarness;
+
+use PHPUnit\Framework\TestCase;
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
+
+/**
+ * Provides a Context built from a synthetic palette mirroring the real theme
+ * (dark contrast, light base, mid accent), so tests are deterministic and do
+ * not require a WordPress bootstrap.
+ */
+abstract class MarkupHarnessTestCase extends TestCase {
+
+	/**
+	 * Build a deterministic Context for tests.
+	 *
+	 * @return Context
+	 */
+	protected function context(): Context {
+		return new Context(
+			array(
+				array(
+					'slug'  => 'base',
+					'color' => '#f5f1e9',
+					'name'  => 'Base',
+				),
+				array(
+					'slug'  => 'contrast',
+					'color' => '#1c1917',
+					'name'  => 'Contrast',
+				),
+				array(
+					'slug'  => 'accent-4',
+					'color' => '#a0522d',
+					'name'  => 'Accent 4',
+				),
+			)
+		);
+	}
+
+	/**
+	 * The real "Ready when you are" CTA section: a group with vertical-only padding.
+	 *
+	 * @return string
+	 */
+	protected function cta_section(): string {
+		return '<!-- wp:group {"backgroundColor":"accent-4","textColor":"base","style":{"spacing":{"padding":{"top":"64px","bottom":"64px"}}}} -->' . "\n"
+			. '<div class="wp-block-group has-accent-4-background-color has-base-color has-background has-text-color fade-in is-layout-flow wp-block-group-is-layout-flow" style="background-color:var(--wp--preset--color--accent-4);color:var(--wp--preset--color--base);padding-top:64px;padding-bottom:64px"><p>x</p></div>' . "\n"
+			. '<!-- /wp:group -->';
+	}
+
+	/**
+	 * The real form grid with run-together track sizes.
+	 *
+	 * @return string
+	 */
+	protected function form_grid(): string {
+		return '<div style="display:grid;grid-template-columns:1fr1fr;gap:12px">a</div>'
+			. '<div style="display:grid;grid-template-columns:1fr;gap:12px">b</div>';
+	}
+
+	/**
+	 * The real bare "Confirm participation" submit button.
+	 *
+	 * @return string
+	 */
+	protected function bare_button(): string {
+		return '<button>Confirm participation</button>';
+	}
+
+	/**
+	 * Four columns each declaring 50% — they sum to 200% and overflow.
+	 *
+	 * @return string
+	 */
+	/**
+	 * An accent button sitting inside an accent-background section (invisible).
+	 *
+	 * @return string
+	 */
+	protected function accent_button_on_accent_section(): string {
+		return '<!-- wp:group {"backgroundColor":"accent-4"} -->' . "\n"
+			. '<div class="wp-block-group has-accent-4-background-color has-background">' . "\n"
+			. '<!-- wp:buttons -->' . "\n"
+			. '<div class="wp-block-buttons">' . "\n"
+			. '<!-- wp:button {"backgroundColor":"accent-4","textColor":"base"} -->' . "\n"
+			. '<div class="wp-block-button"><a class="wp-block-button__link has-base-color has-accent-4-background-color has-text-color has-background wp-element-button" style="color:var(--wp--preset--color--base);background-color:var(--wp--preset--color--accent-4)">Click</a></div>' . "\n"
+			. '<!-- /wp:button -->' . "\n"
+			. '</div>' . "\n"
+			. '<!-- /wp:buttons -->' . "\n"
+			. '</div>' . "\n"
+			. '<!-- /wp:group -->';
+	}
+
+	/**
+	 * A cover declaring a background image url but rendering no image element.
+	 * Carries the other cover defaults so it violates only the image concern.
+	 *
+	 * @return string
+	 */
+	protected function cover_missing_image(): string {
+		return '<!-- wp:cover {"url":"https://images.unsplash.com/photo-123","dimRatio":60,"minHeight":520,"minHeightUnit":"px","backgroundColor":"contrast"} -->' . "\n"
+			. '<div class="wp-block-cover has-background-dim has-contrast-background-color has-background" style="min-height:520px">' . "\n"
+			. '<div class="wp-block-cover__inner-container">' . "\n"
+			. '<!-- wp:heading -->' . "\n"
+			. '<h2 class="wp-block-heading">Welcome</h2>' . "\n"
+			. '<!-- /wp:heading -->' . "\n"
+			. '</div>' . "\n"
+			. '</div>' . "\n"
+			. '<!-- /wp:cover -->';
+	}
+
+	/**
+	 * A cover that renders its image but is missing minHeight / dimRatio / background.
+	 *
+	 * @return string
+	 */
+	protected function cover_missing_defaults(): string {
+		return '<!-- wp:cover {"url":"https://images.unsplash.com/photo-123"} -->' . "\n"
+			. '<div class="wp-block-cover">' . "\n"
+			. '<img class="wp-block-cover__image-background" alt="" src="https://images.unsplash.com/photo-123" data-object-fit="cover"/>' . "\n"
+			. '<div class="wp-block-cover__inner-container">' . "\n"
+			. '<!-- wp:heading -->' . "\n"
+			. '<h2 class="wp-block-heading">Welcome</h2>' . "\n"
+			. '<!-- /wp:heading -->' . "\n"
+			. '</div>' . "\n"
+			. '</div>' . "\n"
+			. '<!-- /wp:cover -->';
+	}
+
+	/**
+	 * Four columns each declaring 50% — they sum to 200% and overflow.
+	 *
+	 * @return string
+	 */
+	protected function four_fifty_columns(): string {
+		$column = function ( $letter ) {
+			return '<!-- wp:column {"width":"50%"} -->' . "\n"
+				. '<div class="wp-block-column" style="flex-basis:50%"><p>' . $letter . '</p></div>' . "\n"
+				. '<!-- /wp:column -->';
+		};
+		return '<!-- wp:columns -->' . "\n"
+			. '<div class="wp-block-columns">' . "\n"
+			. $column( 'a' ) . "\n"
+			. $column( 'b' ) . "\n"
+			. $column( 'c' ) . "\n"
+			. $column( 'd' ) . "\n"
+			. '</div>' . "\n"
+			. '<!-- /wp:columns -->';
+	}
+}

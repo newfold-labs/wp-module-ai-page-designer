@@ -1,7 +1,10 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { registerWorkspaceStore } from './store/workspaceStore';
 import './styles.css';
+
+registerWorkspaceStore();
 
 // Extend Window interface for TypeScript
 declare global {

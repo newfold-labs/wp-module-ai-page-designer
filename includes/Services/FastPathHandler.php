@@ -7,6 +7,8 @@
 
 namespace NewfoldLabs\WP\Module\AIPageDesigner\Services;
 
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Harness;
+
 /**
  * Handles requests that can be resolved without calling the AI service.
  */
@@ -62,7 +64,7 @@ class FastPathHandler {
 		$prompt_lower = strtolower( $last_user_prompt );
 
 		$has_image_noun   = (bool) preg_match( '/\b(images?|pictures?|photos?|pics?)\b/i', $prompt_lower );
-		$has_background    = (bool) preg_match( '/\bbackgrounds?\b/i', $prompt_lower );
+		$has_background   = (bool) preg_match( '/\bbackgrounds?\b/i', $prompt_lower );
 		$has_replace_verb = (bool) preg_match( '/\b(change|update|replace|swap|regenerate|refresh|new|different)\b/i', $prompt_lower );
 		$has_add_verb     = (bool) preg_match( '/\b(add|insert|include|put|place|append)\b/i', $prompt_lower );
 
@@ -456,7 +458,8 @@ class FastPathHandler {
 	 * @return \WP_REST_Response
 	 */
 	private function build_response( $html, $append_cache_buster = true ) {
-		$content = trim( $html );
+		// Conform fast-path output before preview, same as the AI path (WYSIWYG).
+		$content = ( new Harness() )->conform( trim( $html ) );
 		if ( $append_cache_buster ) {
 			$content .= '<!-- fastpath_cb=' . time() . ' -->';
 		}

@@ -301,7 +301,7 @@ class AiClientWorker {
 			AIPageDesignerDebug::debug_log(
 				'Streaming returned error status',
 				array(
-					'status_code' => $response_code,
+					'status_code'  => $response_code,
 					// On an error the Worker returns a JSON body (not SSE), so it has no "\n\n"
 					// terminator and stays unprocessed in the buffer — surface it for debugging.
 					'raw_response' => substr( (string) $buffer, 0, 2000 ),
@@ -557,6 +557,14 @@ class AiClientWorker {
 		$site_name = get_bloginfo( 'name' );
 		if ( $site_name ) {
 			$context['siteName'] = $site_name;
+		}
+
+		// Site tagline — a short business/niche signal (e.g. "Coffee that wakes you up")
+		// that costs nothing extra to attach and helps the model write copy specific to
+		// the actual site rather than generic placeholder text.
+		$site_tagline = get_bloginfo( 'description' );
+		if ( $site_tagline ) {
+			$context['siteTagline'] = $site_tagline;
 		}
 
 		return $context;

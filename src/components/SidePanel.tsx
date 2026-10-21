@@ -1,7 +1,9 @@
 import React, { useState, type RefObject } from 'react';
-import { ChatBubbleLeftRightIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { ChatBubbleLeftRightIcon, ClockIcon, SwatchIcon } from '@heroicons/react/24/outline';
 import ChatPanel from './ChatPanel';
+import DesignTab from './workspace/DesignTab';
 import HistoryPane from './HistoryPane';
+import type { DesignPalette } from '../designTokens';
 import type { HistoryEntry, Message, WPItem } from '../types';
 
 type Props = {
@@ -17,15 +19,24 @@ type Props = {
   selectedBlockLabel: string | null;
   historyEntries: HistoryEntry[];
   previewHtml: string | null;
+  selectedPaletteId: string | null;
+  selectedFontPairingId: string;
+  themePalettes: DesignPalette[];
+  canSuggestPalette: boolean;
+  suggestingPalette: boolean;
   onInputChange: ( value: string ) => void;
   onSend: () => void;
   onClearSelection: () => void;
   onPublish: () => void;
   onRevertTo: ( id: string ) => void;
+  onSelectPalette: ( paletteId: string | null ) => void;
+  onSelectFontPairing: ( fontPairingId: string ) => void;
+  onSuggestPalette: () => void;
 };
 
 const TABS = [
   { id: 'chat', label: 'Chat', Icon: ChatBubbleLeftRightIcon },
+  { id: 'design', label: 'Design', Icon: SwatchIcon },
   { id: 'history', label: 'History', Icon: ClockIcon },
 ];
 
@@ -42,11 +53,19 @@ const SidePanel = ( {
   selectedBlockLabel,
   historyEntries,
   previewHtml,
+  selectedPaletteId,
+  selectedFontPairingId,
+  themePalettes,
+  canSuggestPalette,
+  suggestingPalette,
   onInputChange,
   onSend,
   onClearSelection,
   onPublish,
   onRevertTo,
+  onSelectPalette,
+  onSelectFontPairing,
+  onSuggestPalette,
 }: Props ) => {
   const [ activeTab, setActiveTab ] = useState( 0 );
 
@@ -102,6 +121,22 @@ const SidePanel = ( {
           className="ai-side-panel__panel"
           style={ { transform: getTransform( 1 ) } }
           aria-hidden={ activeTab !== 1 }
+        >
+          <DesignTab
+            selectedPaletteId={ selectedPaletteId }
+            selectedFontPairingId={ selectedFontPairingId }
+            themePalettes={ themePalettes }
+            canSuggest={ canSuggestPalette }
+            suggesting={ suggestingPalette }
+            onSelectPalette={ onSelectPalette }
+            onSelectFontPairing={ onSelectFontPairing }
+            onSuggestPalette={ onSuggestPalette }
+          />
+        </div>
+        <div
+          className="ai-side-panel__panel"
+          style={ { transform: getTransform( 2 ) } }
+          aria-hidden={ activeTab !== 2 }
         >
           <HistoryPane
             historyEntries={ historyEntries }

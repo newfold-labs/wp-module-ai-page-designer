@@ -18,6 +18,13 @@ type UseAiConversationOptions = {
     setMetaFeaturedImageUrl: (value: string | null) => void;
     clearSelection: (iframeRef?: RefObject<HTMLIFrameElement>) => void;
 };
+export type ConversationSnapshot = {
+    messages: Message[];
+    historyEntries: HistoryEntry[];
+    hasAIGenerated: boolean;
+    conversationId: string | null;
+    responseId: string | null;
+};
 type UseAiConversationResult = {
     messages: Message[];
     input: string;
@@ -26,15 +33,21 @@ type UseAiConversationResult = {
     isHistoryOpen: boolean;
     hasAIGenerated: boolean;
     publishTitle: string;
+    conversationId: string | null;
+    responseId: string | null;
     chatMessagesRef: RefObject<HTMLDivElement>;
     setInput: (value: string) => void;
     setIsHistoryOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
     setPublishTitle: (value: string) => void;
-    handleSend: (overrideText?: string) => Promise<void>;
+    handleSend: (overrideText?: string, opts?: {
+        forceNewPage?: boolean;
+    }) => Promise<void>;
     handleConfirmRevertChanges: () => void;
     handleRevertToEntry: (id: string) => void;
     resetAiConversation: () => void;
+    restoreConversation: (snapshot: ConversationSnapshot) => void;
     appendAssistantMessage: (message: Message) => void;
+    addHistoryEntry: (label: string) => void;
 };
 export declare const useAiConversation: (options: UseAiConversationOptions) => UseAiConversationResult;
 export default useAiConversation;

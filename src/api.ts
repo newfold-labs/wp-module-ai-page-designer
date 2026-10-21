@@ -1,4 +1,5 @@
 import apiFetch from '@wordpress/api-fetch';
+import type { PersistedDesignTokens } from './designTokens';
 import type { Message, WPItem } from './types';
 
 export const fetchSitePages = ( apiUrl: string ) => apiFetch<WPItem[]>( {
@@ -8,6 +9,39 @@ export const fetchSitePages = ( apiUrl: string ) => apiFetch<WPItem[]>( {
 export const fetchSitePosts = ( apiUrl: string ) => apiFetch<WPItem[]>( {
   path: `${ apiUrl }/content/posts`,
 } );
+
+// Server-persisted per user (_apd_recent_ids) so the workspace drawer's
+// Recent list follows the user across devices.
+export const fetchRecentItems = ( apiUrl: string ) => apiFetch<WPItem[]>( {
+  path: `${ apiUrl }/recent`,
+} );
+
+export const touchRecentItem = ( apiUrl: string, id: number ) => apiFetch<WPItem[]>( {
+  path: `${ apiUrl }/recent`,
+  method: 'POST',
+  data: { id },
+} );
+
+export type SearchResult = {
+  id: number;
+  title: string;
+  url: string;
+  type: string;
+  subtype: string;
+};
+
+// WP core's search endpoint returns a lightweight shape (no content/status) —
+// selecting a result fetches the full item via fetchContentItem below.
+export const searchSite = ( query: string ) => apiFetch<SearchResult[]>( {
+  path: `/wp/v2/search?search=${ encodeURIComponent( query ) }&per_page=20&subtype=page,post`,
+} );
+
+export const fetchContentItem = ( apiUrl: string, subtype: string, id: number ) => {
+  const type = 'page' === subtype ? 'pages' : 'posts';
+  return apiFetch<WPItem>( {
+    path: `${ apiUrl }/content/${ type }/${ id }`,
+  } );
+};
 
 export type GenerateContentContext = {
   current_markup: string;
@@ -182,6 +216,7 @@ type UpdateExistingMeta = {
   title?: string;
   excerpt?: string;
   featuredMedia?: number;
+  designTokens?: PersistedDesignTokens | null;
 };
 
 export const updateExistingItem = (
@@ -202,11 +237,33 @@ export const updateExistingItem = (
   if ( typeof meta.featuredMedia === 'number' ) {
     data.featured_media = meta.featuredMedia;
   }
+  if ( 'designTokens' in meta ) {
+    data.design_tokens = meta.designTokens;
+  }
 
   return apiFetch<any>( {
     path: `${ apiUrl }/content/${ itemType }/${ item.id }`,
     method: 'POST',
     data,
+  } );
+};
+
+// publishNewContent (above) hits WP core's /wp/v2/posts|pages directly, which
+// has no knowledge of design_tokens — this is a lightweight follow-up call
+// through the module's own content endpoint instead, sending only
+// design_tokens so it doesn't re-run the content conform/sanitize pipeline
+// for a field that hasn't changed.
+export const saveDesignTokens = (
+  apiUrl: string,
+  itemType: 'post' | 'page',
+  id: number,
+  designTokens: PersistedDesignTokens | null
+) => {
+  const type = itemType === 'post' ? 'posts' : 'pages';
+  return apiFetch<any>( {
+    path: `${ apiUrl }/content/${ type }/${ id }`,
+    method: 'POST',
+    data: { design_tokens: designTokens },
   } );
 };
 

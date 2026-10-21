@@ -1,0 +1,108 @@
+<?php
+/**
+ * Rich text section archetype: a plain heading + prose section, with an optional CTA.
+ *
+ * @package NewfoldLabs\WP\Module\AIPageDesigner
+ */
+
+namespace NewfoldLabs\WP\Module\AIPageDesigner\Services\PageAssembly\Archetypes;
+
+use NewfoldLabs\WP\Module\AIPageDesigner\Services\MarkupHarness\Context;
+
+/**
+ * The escape hatch: a {@see RendersMarkup::render_section()} surface section
+ * with just a body paragraph and an optional CTA button — for content that
+ * doesn't fit any other archetype's shape.
+ *
+ * The body renders left-aligned with a drop cap (`core/paragraph`'s own native
+ * `dropCap` attribute — see {@see RendersMarkup::render_paragraph()}'s
+ * `$drop_cap` param) inside a centered, width-constrained column, rather than
+ * through {@see RendersMarkup::render_section()}'s own centered `$intro` slot
+ * — an editorial "magazine" treatment for the one archetype whose whole job is
+ * prose, matching the drop-cap bios/story sections used throughout Bluehost's
+ * own AI site generator output.
+ *
+ * Content shape:
+ * ```
+ * [
+ *   'heading' => string|null,
+ *   'body'    => string (required),
+ *   'cta'     => [ 'label' => string, 'url' => string ]|null,
+ * ]
+ * ```
+ *
+ * v1 supports a single variant, `default`.
+ */
+class RichText implements Archetype {
+
+	use RendersMarkup;
+
+	/**
+	 * Auto-pickable variant names — see the class docblock.
+	 *
+	 * @var string[]
+	 */
+	const VARIANTS = array( 'default' );
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function name(): string {
+		return 'richText';
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function variants(): array {
+		return self::VARIANTS;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function legacy_variants(): array {
+		return array();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * No fixed default — see {@see FeatureGrid::default_background()} for why.
+	 *
+	 * @param Context $ctx Theme/conformance context.
+	 * @return string|null
+	 */
+	public function default_background( Context $ctx ): ?string {
+		return null;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @param array<string, mixed> $content         Fully-resolved slot content (see the concrete class docblock for its shape).
+	 * @param string|null          $variant         Requested variant, or null for the archetype's default.
+	 * @param Context              $ctx             Theme/conformance context.
+	 * @param string|null          $background_slug Palette slug to use as this section's background, or null for none.
+	 * @return string Gutenberg block markup for one section.
+	 */
+	public function render( array $content, ?string $variant, Context $ctx, ?string $background_slug ): string {
+		$heading = isset( $content['heading'] ) ? (string) $content['heading'] : '';
+		$body    = isset( $content['body'] ) ? (string) $content['body'] : '';
+		$cta     = isset( $content['cta'] ) && is_array( $content['cta'] ) ? $content['cta'] : null;
+
+		$text_slug = $this->text_slug_for_background( $ctx, $background_slug );
+
+		$stack = '';
+		if ( '' !== $body ) {
+			$stack .= $this->render_paragraph( $body, $text_slug, false, true );
+		}
+		if ( null !== $cta && ! empty( $cta['label'] ) ) {
+			$button_bg   = $this->contrasting_slug( $ctx, $background_slug );
+			$button_text = $this->text_slug_for_background( $ctx, $button_bg );
+			$stack      .= $this->render_buttons_wrap( $this->render_button( (string) $cta['label'], isset( $cta['url'] ) ? (string) $cta['url'] : '#', $button_bg, $button_text ), false );
+		}
+
+		return $this->render_section( $heading, null, $this->wrap_constrained( $stack ), $ctx, $background_slug );
+	}
+}
