@@ -1,125 +1,183 @@
+#
 msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: https://github.com/newfold-labs/wp-module-ai-page-designer/issues\n"
+"POT-Creation-Date: 2025-03-10T00:00:00+00:00\n"
+"PO-Revision-Date: 2026-10-21T15:36:53+00:00\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
+"Language: nl\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2025-03-10T00:00:00+00:00\n"
-"PO-Revision-Date: 2026-09-02T17:26:09+00:00\n"
-"Language: nl\n"
-"X-Generator: WP-CLI 2.12.0\n"
-"X-Domain: wp-module-ai-page-designer\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Domain: wp-module-ai-page-designer\n"
+"X-Generator: WP-CLI 2.12.0\n"
+
+#: includes/RestApi/PagePlanController.php:141
+msgid "A description of the page to build."
+msgstr "Een beschrijving van de pagina die gebouwd moet worden."
 
 #: bootstrap.php:40
 msgid "AI Page Designer"
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:91
-#: includes/RestApi/AIPageDesignerController.php:117
-#: includes/RestApi/AIPageDesignerController.php:143
-msgid "Array of conversation messages"
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:97
-#: includes/RestApi/AIPageDesignerController.php:123
-#: includes/RestApi/AIPageDesignerController.php:149
-msgid "Additional context like current markup"
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:169
-#: includes/RestApi/AIPageDesignerController.php:190
-msgid "Generation ID"
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:178
-msgid "Chunk offset"
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:349
-msgid "This section is too large to edit in one request — the page structure may be malformed. Try selecting a smaller block, or regenerate the page."
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:513
-#: includes/RestApi/AIPageDesignerController.php:1350
-msgid "AI generation failed. Please try again."
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:533
-#: includes/RestApi/AIPageDesignerController.php:1397
-#: includes/RestApi/AIPageDesignerController.php:1407
-msgid "AI generation returned no content. Please try again."
-msgstr ""
-
-#. translators: %s is the error message
-#. translators: %s is the error message.
-#: includes/RestApi/AIPageDesignerController.php:598
-#: includes/RestApi/AIPageDesignerController.php:1471
-#, php-format
-msgid "AI generation failed: %s"
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:629
-msgid "Post not found."
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:637
-msgid "You are not allowed to edit this post."
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:653
-msgid "Invalid conversation_id format."
-msgstr ""
-
-#: includes/RestApi/AIPageDesignerController.php:1491
-#: includes/RestApi/AIPageDesignerController.php:1535
-msgid "Generation not found."
-msgstr ""
-
-#: includes/RestApi/WordPressProxyController.php:43
-msgid "Content type: pages or posts"
-msgstr ""
-
-#: includes/RestApi/WordPressProxyController.php:226
-#: includes/RestApi/WordPressProxyController.php:297
-msgid "Content not found"
-msgstr ""
-
-#: includes/RestApi/WordPressProxyController.php:365
-msgid "Invalid page ID"
-msgstr ""
-
-#: includes/RestApi/WordPressProxyController.php:377
-msgid "Homepage set successfully"
-msgstr ""
-
-#: includes/Services/AiClientWorker.php:35
-#: includes/Services/AiClientWorker.php:155
-#: includes/Services/AiClientWorker.php:390
-msgid "You are not authorized to make this call."
-msgstr ""
-
-#: includes/Services/AiClientWorker.php:43
-#: includes/Services/AiClientWorker.php:163
-#: includes/Services/AiClientWorker.php:398
-msgid "AI service is not configured. Please contact support."
-msgstr ""
-
-#: includes/Services/AiClientWorker.php:462
-msgid "Unable to reach the AI service. Check your network connection and try again."
-msgstr ""
-
-#: includes/Services/CapabilityGate.php:56
-msgid "You must have permission to edit pages"
-msgstr ""
-
-#: includes/Services/CapabilityGate.php:64
-msgid "AI Site Generation is not enabled for your site"
-msgstr ""
+msgstr "AI Page Designer"
 
 #: includes/Services/CapabilityGate.php:72
 msgid "AI Page Designer is not enabled for your site"
-msgstr ""
+msgstr "AI Page Designer is niet ingeschakeld voor je site"
+
+#: includes/Services/CapabilityGate.php:64
+msgid "AI Site Generation is not enabled for your site"
+msgstr "AI Site Generation is niet ingeschakeld voor jouw site"
+
+#: includes/RestApi/AIPageDesignerController.php:514 includes/RestApi/AIPageDesignerController.php:1366
+msgid "AI generation failed. Please try again."
+msgstr "AI-generatie is mislukt. Probeer het alsjeblieft opnieuw."
+
+#. translators: %s is the error message
+#. translators: %s is the error message.
+#: includes/RestApi/AIPageDesignerController.php:599 includes/RestApi/AIPageDesignerController.php:1487
+#, php-format
+msgid "AI generation failed: %s"
+msgstr "AI-generatie mislukt: %s"
+
+#: includes/RestApi/AIPageDesignerController.php:534 includes/RestApi/AIPageDesignerController.php:1413 includes/RestApi/AIPageDesignerController.php:1423
+msgid "AI generation returned no content. Please try again."
+msgstr "AI-generatie leverde geen inhoud op. Probeer het alsjeblieft opnieuw."
+
+#: includes/Services/AiClientWorker.php:43 includes/Services/AiClientWorker.php:163 includes/Services/AiClientWorker.php:398
+msgid "AI service is not configured. Please contact support."
+msgstr "AI-dienst is niet geconfigureerd. Neem contact op met support."
+
+#: includes/RestApi/AIPageDesignerController.php:98 includes/RestApi/AIPageDesignerController.php:124 includes/RestApi/AIPageDesignerController.php:150
+msgid "Additional context like current markup"
+msgstr "Extra context zoals de huidige markup"
+
+#: includes/RestApi/AIPageDesignerController.php:92 includes/RestApi/AIPageDesignerController.php:118 includes/RestApi/AIPageDesignerController.php:144
+msgid "Array of conversation messages"
+msgstr "Reeks gespreksberichten"
+
+#: includes/RestApi/IntentClassifierController.php:141
+msgid "Candidate palettes to choose from: [{id, name}]."
+msgstr "Kandidaatpaletten om uit te kiezen: [{id, name}]."
+
+#: includes/RestApi/AIPageDesignerController.php:179
+msgid "Chunk offset"
+msgstr "Chunk-offset"
+
+#: includes/RestApi/WordPressProxyController.php:270 includes/RestApi/WordPressProxyController.php:352 includes/RestApi/WordPressProxyController.php:512
+msgid "Content not found"
+msgstr "Inhoud niet gevonden"
+
+#: includes/RestApi/WordPressProxyController.php:46
+msgid "Content type: pages or posts"
+msgstr "Inhoudstype: pagina's of berichten"
+
+#: includes/RestApi/IntentClassifierController.php:248 includes/RestApi/IntentClassifierController.php:253
+msgid "Could not generate that right now. Please try again."
+msgstr "Kan dat nu niet genereren. Probeer het alsjeblieft opnieuw."
+
+#: includes/RestApi/IntentClassifierController.php:322 includes/RestApi/IntentClassifierController.php:330
+msgid "Could not suggest a palette right now. Please try again."
+msgstr "Ik kan nu geen palet aanraden. Probeer het alsjeblieft opnieuw."
+
+#: includes/RestApi/PagePlanController.php:153
+msgid "Excerpt of an existing page being redesigned, for context only."
+msgstr "Fragment van een bestaande pagina die wordt herontworpen, alleen ter context."
+
+#: includes/RestApi/AIPageDesignerController.php:170 includes/RestApi/AIPageDesignerController.php:191
+msgid "Generation ID"
+msgstr "Generatie-ID"
+
+#: includes/RestApi/AIPageDesignerController.php:1507 includes/RestApi/AIPageDesignerController.php:1551
+msgid "Generation not found."
+msgstr "Generatie niet gevonden."
+
+#: includes/RestApi/WordPressProxyController.php:443
+msgid "Homepage set successfully"
+msgstr "Startpagina succesvol ingesteld"
+
+#: includes/RestApi/AIPageDesignerController.php:654
+msgid "Invalid conversation_id format."
+msgstr "Ongeldig conversation_id formaat."
+
+#: includes/RestApi/WordPressProxyController.php:431
+msgid "Invalid page ID"
+msgstr "Ongeldige pagina-ID"
+
+#: includes/RestApi/IntentClassifierController.php:286
+msgid "No candidate palettes provided."
+msgstr "Geen kandidatenpaletten verstrekt."
+
+#: includes/RestApi/IntentClassifierController.php:168
+msgid "No instruction to classify."
+msgstr "Geen instructie om te classificeren."
+
+#: includes/RestApi/PagePlanController.php:181
+msgid "No page description provided."
+msgstr "Geen paginabeschrijving verstrekt."
+
+#: includes/RestApi/AIPageDesignerController.php:630
+msgid "Post not found."
+msgstr "Bericht niet gevonden."
+
+#: includes/RestApi/PagePlanController.php:285 includes/RestApi/PagePlanController.php:299
+msgid "The AI response could not be turned into a page. Please try again."
+msgstr "De AI-reactie kon niet in een pagina worden omgezet. Probeer het alsjeblieft opnieuw."
+
+#: includes/RestApi/IntentClassifierController.php:136
+msgid "The current page content to base the suggestion on."
+msgstr "De inhoud van de huidige pagina waarop de suggestie wordt gebaseerd."
+
+#: includes/RestApi/IntentClassifierController.php:114
+msgid "The current page content to summarise."
+msgstr "De inhoud van de huidige pagina om samen te vatten."
+
+#: includes/RestApi/IntentClassifierController.php:88
+msgid "The user instruction to classify."
+msgstr "De gebruikersinstructie om te classificeren."
+
+#: includes/RestApi/IntentClassifierController.php:291
+msgid "There is no page content to base a suggestion on yet."
+msgstr "Er is nog geen pagina-inhoud om een suggestie op te baseren."
+
+#: includes/RestApi/IntentClassifierController.php:218
+msgid "There is no page content to summarise yet."
+msgstr "Er is nog geen pagina-inhoud om samen te vatten."
+
+#: includes/RestApi/WordPressProxyController.php:637
+msgid "This page is managed by WooCommerce and can't be opened in the AI Page Designer."
+msgstr "Deze pagina wordt beheerd door WooCommerce en kan niet worden geopend in de AI Page Designer."
+
+#: includes/RestApi/AIPageDesignerController.php:350
+msgid "This section is too large to edit in one request — the page structure may be malformed. Try selecting a smaller block, or regenerate the page."
+msgstr "Deze sectie is te groot om in één verzoek te bewerken — de paginastructuur kan misvormd zijn. Probeer een kleiner blok te selecteren of genereer de pagina opnieuw."
+
+#: includes/RestApi/PagePlanController.php:147
+msgid "Title of an existing page being redesigned, for context only."
+msgstr "Titel van een bestaande pagina die wordt herontworpen, alleen voor de context."
+
+#: includes/Services/AiClientWorker.php:462
+msgid "Unable to reach the AI service. Check your network connection and try again."
+msgstr "Kan de AI-dienst niet bereiken. Controleer je netwerkverbinding en probeer het opnieuw."
+
+#: includes/RestApi/IntentClassifierController.php:213
+msgid "Unsupported metadata field."
+msgstr "Niet-ondersteund metadataveld."
+
+#: includes/RestApi/IntentClassifierController.php:108
+msgid "Which metadata field to generate: excerpt or title."
+msgstr "Welk metadataveld te genereren: fragment of titel."
+
+#: includes/RestApi/AIPageDesignerController.php:638
+msgid "You are not allowed to edit this post."
+msgstr "Je mag dit bericht niet bewerken."
+
+#: includes/Services/AiClientWorker.php:35 includes/Services/AiClientWorker.php:155 includes/Services/AiClientWorker.php:390
+msgid "You are not authorized to make this call."
+msgstr "Je bent niet bevoegd om dit gesprek te plegen."
+
+#: includes/Services/CapabilityGate.php:56
+msgid "You must have permission to edit pages"
+msgstr "Je moet toestemming hebben om pagina's te bewerken"
