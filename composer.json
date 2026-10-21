@@ -48,7 +48,7 @@
         "i18n-mo": "vendor/bin/wp i18n make-mo ./languages"
     },
     "require-dev": {
-        "newfold-labs/wp-php-standards": "^1.2.5",
+        "newfold-labs/wp-php-standards": "^2.0",
         "wp-cli/i18n-command": "^2.7.0",
         "roave/security-advisories": "dev-latest",
         "phpunit/phpunit": "^9.6"
